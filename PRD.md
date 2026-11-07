@@ -207,7 +207,21 @@ Launch as a web application whose home view opens directly on Word lookup, with 
   - Lookups run on the server. The lexicon is never shipped to the browser, so serving the site is not distribution under the GPL.
   - AraDict's own code is licensed GPL-2.0-or-later, so any combined distribution with the GPL v2-only data, including the public repository, stays compatible.
   - Any changes AraDict makes to GPL data (gloss fixes, additions) live in AraDict's own files with a dated change note, as GPL v2 §2(a) requires.
-  - The frontend framework remains open.
+- **Frontend:** server-rendered HTML from the same Python app, with no separate frontend framework or second runtime.
+  - **Stack:** FastAPI renders every page, so word, root, and related-forms URLs return complete HTML. That gives fast first paint on phones, working links and previews, and search-engine-indexable entries.
+  - **Views in Python:** markup is written with htpy (MIT), a small typed HTML-builder library, instead of a template language. The whole app is then Python, type checking catches markup mistakes, and view components are plain functions that can be tested on their own.
+  - **Rejected alternatives:**
+    - Python UI frameworks (Reflex, NiceGUI, Streamlit, Flet and similar) keep per-visitor state on the server and render content with JavaScript or a canvas. That hurts shareable URLs, search indexing, accessibility, and right-to-left control. Reflex also brings back a Node build.
+    - FastHTML is pre-1.0 and replaces FastAPI with its own conventions.
+    - Python in the browser (Pyodide/PyScript) means a multi-megabyte runtime on phones and would ship the GPL data to every visitor.
+  - **Live behaviour:** htmx (0BSD license) provides live lookup and URL updates. Input is debounced, newer requests replace older ones, and the URL is pushed for each lookup, so shareable URLs and Back work. Basic lookup also works without JavaScript, as a plain form submission.
+  - **Interactive widgets:** small vanilla JavaScript modules, with no component library:
+    - the autocomplete combobox, following the WAI-ARIA combobox pattern (native `datalist` can't match typed letters against vocalized suggestions);
+    - the on-screen Arabic keyboard;
+    - local history and preferences;
+    - text-token details using the native Popover API.
+  - **Styling:** plain CSS with logical properties for RTL/LTR, light and dark themes from system settings, and no CSS build step. The Arabic web font is self-hosted under an open font license.
+  - **Trade-off accepted:** the accessible combobox and popovers are hand-built rather than taken from a component library. In return there is one language, one deployable, and no frontend build chain. Revisit only if the interactive parts outgrow small modules.
 - **Coverage claim:** The reference site advertises more than 80,000 stems. AraDict must state its own measured coverage. Do not reuse that number unless the selected AraDict corpus supports it.
 - **Shared dictionary boundary:**
   - All user-facing modes use one dictionary application contract for these operations: Arabic lookup, English lookup, autocomplete, Arabizi transliteration, token analysis, related forms, root exploration, Wiktionary enrichment (Milestone 2), and conjugation and declension (Milestone 3).
@@ -337,7 +351,7 @@ Launch as a web application whose home view opens directly on Word lookup, with 
      - tokenization.
      
      Running these many input-to-analysis cases through a browser would be slow and brittle.
-  2. **Browser journeys (UX seam).** Exercise Word (home), Text, and About/Help through browser-visible journeys against a small deterministic, redistribution-safe fixture corpus. The corpus contains ambiguous unvocalized forms, affixed forms, English gloss matches, multiple roots and measures, root alternatives, missing metadata, and unknown tokens.
+  2. **Browser journeys (UX seam).** Exercise Word (home), Text, and About/Help through browser-visible journeys, using Playwright for Python so that both seams share one test toolchain (pytest), against a small deterministic, redistribution-safe fixture corpus. The corpus contains ambiguous unvocalized forms, affixed forms, English gloss matches, multiple roots and measures, root alternatives, missing metadata, and unknown tokens.
   
   No prior test conventions exist in this repository.
 - **Reference behaviour cases (dictionary contract):**
@@ -477,7 +491,7 @@ It rejected SAMA 3.1 and BAMA 2.0 (paid LDC licenses that don't allow redistribu
 **CAMeL spike** — a run of CAMeL Tools against the reference cases (`SPIKE-CAMEL.md`) confirmed the expected readings and showed analysis at about 0.27 ms per word. It also listed what AraDict must add: diacritic filtering, the hamza rule, Persian letters, grouping of readings, gloss wording, and the conjugation rule layer.
 
 **Repository and goal**
-- The repository has no application code as of 7 November 2026. There are no modules, glossary, ADRs, or prior tests to preserve. The core corpus (CAMeL) and the backend language (Python) are now decided. Other architecture choices remain open.
+- The repository has no application code as of 7 November 2026. There are no modules, glossary, ADRs, or prior tests to preserve. The core corpus (CAMeL), the backend (Python, FastAPI), and the frontend (server-rendered pages written in Python with htpy, plus htmx and small vanilla JavaScript modules) are now decided.
 - The product owner's clarified goal is an independent, better-looking and easier-to-use replacement for a dictionary they have used for years. Preserve the reference site's informational value; redesign the interaction and presentation for daily use, especially on mobile.
 
 ### Build readiness
