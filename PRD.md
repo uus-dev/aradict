@@ -275,6 +275,7 @@ Launch as a web application whose home view opens directly on Word lookup, with 
   - **Results:**
     - Show a result list with the segment-distinguished vocalized form, whole-word gloss, full available POS/morphology, root, and measure.
     - Group analyses that share an identical gloss into one result that lists all their vocalized forms.
+    - Analyses that differ only in a case or mood ending, or only in how a proclitic is read (for example وَ as "and" or "while"), are shown as one result. The spike found that otherwise وبكتابهم would show 36 rows for 3 readings.
     - The default order groups by lemma, with the most frequent lemmas first.
     - Sorting must have a defined, stable secondary order and an accessible sort state.
     - Desktop and mobile layouts may present results differently, but no available field is dropped just to fit the screen.
@@ -300,7 +301,8 @@ Launch as a web application whose home view opens directly on Word lookup, with 
   - Generate tables from the lemma using CAMeL Tools' generator over the core database:
     - verbs: perfect; imperfect (indicative, subjunctive, jussive); imperative; active and passive; all persons;
     - nouns and adjectives: case × state × number.
-  - Cells the generator cannot produce are shown empty, never guessed.
+  - A small rule layer completes the generator's output. It adds mood endings (indicative, subjunctive, jussive) to the forms the database leaves unmarked, and builds imperatives from the jussive. The spike found the generator alone leaves most of those cells empty.
+  - Tables are checked against Wiktionary's conjugation tables where Milestone 2 has them. Cells that are still unknown are shown empty, never guessed.
   - The looked-up form is highlighted, and each cell opens its own lookup.
   - On narrow screens, tables are split into sections (for example by tense or by number) so that no sideways scrolling is needed.
 - **URLs:**
@@ -471,6 +473,8 @@ It is GPL v2 Buckwalter 1.0 data plus a 2015 annotation file, and it is no longe
 - English Wiktionary as the Milestone 2 layer.
 
 It rejected SAMA 3.1 and BAMA 2.0 (paid LDC licenses that don't allow redistribution), Qabas (license unclear), and several Arabic-only or license-incompatible analyzers.
+
+**CAMeL spike** — a run of CAMeL Tools against the reference cases (`SPIKE-CAMEL.md`) confirmed the expected readings and showed analysis at about 0.27 ms per word. It also listed what AraDict must add: diacritic filtering, the hamza rule, Persian letters, grouping of readings, gloss wording, and the conjugation rule layer.
 
 **Repository and goal**
 - The repository has no application code as of 7 November 2026. There are no modules, glossary, ADRs, or prior tests to preserve. The core corpus (CAMeL) and the backend language (Python) are now decided. Other architecture choices remain open.
