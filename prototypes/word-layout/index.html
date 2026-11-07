@@ -1,0 +1,331 @@
+<title>AraDict Word Layouts</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<!--
+  PROTOTYPE, throwaway. Issue uus-dev/aradict#14, round 1: "What should the Word results look like?"
+  Three structurally different layouts of the same real data, switchable from the bottom bar, with arrow keys,
+  or via the URL hash (#a-ktb, #b-wbktbhm, ...). The hash replaces the skill's ?variant= because the artifact
+  viewer only passes a plain hash. Data: CAMeL calima-msa-r13, dumped by dump.py; only the glosses are hand-cleaned.
+-->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&family=Noto+Naskh+Arabic:wght@400;600&display=swap">
+<style>
+/* Layout: one centred reading column (max 60rem) under a slim search header; results swap per variant. */
+:root {
+  --bg: #f5f6f8; --surface: #ffffff; --fg: #18202b; --muted: #556070; --line: #dce0e6;
+  --accent: #1d5bb8; --pre: #0b7566; --suf: #9a3a8a; --chip-pre: #e3f3f0; --chip-suf: #f5e6f2; --chip-stem: #e9eef6;
+  --proto-bg: #18202b; --proto-fg: #f5f6f8; --proto-hi: #ffd84d;
+  --f-ui: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --f-ar: "Noto Naskh Arabic", "Geeza Pro", "Arial", serif;
+  --f-mono: "IBM Plex Mono", ui-monospace, Menlo, monospace;
+  --ar-scale: 1.4;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #10141a; --surface: #171e27; --fg: #e5e9ef; --muted: #9ba6b5; --line: #2a3441;
+  --accent: #82b1ff; --pre: #4fcfb9; --suf: #e58ed6; --chip-pre: #143a35; --chip-suf: #3d1f39; --chip-stem: #1f2a38;
+  --proto-bg: #f5f6f8; --proto-fg: #18202b; --proto-hi: #7a5a00; color-scheme: dark } }
+:root[data-theme="dark"] {
+  --bg: #10141a; --surface: #171e27; --fg: #e5e9ef; --muted: #9ba6b5; --line: #2a3441;
+  --accent: #82b1ff; --pre: #4fcfb9; --suf: #e58ed6; --chip-pre: #143a35; --chip-suf: #3d1f39; --chip-stem: #1f2a38;
+  --proto-bg: #f5f6f8; --proto-fg: #18202b; --proto-hi: #7a5a00; color-scheme: dark }
+
+* { box-sizing: border-box }
+body { background: var(--bg); color: var(--fg); font: 15px/1.5 var(--f-ui); padding-bottom: 7rem }
+button { font: inherit; color: inherit }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 3px }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap }
+.wrap { max-width: 60rem; margin: 0 auto; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)) }
+.ar { font-family: var(--f-ar); font-size: calc(1em * var(--ar-scale)); line-height: 1.7; font-weight: 400 }
+.seg-pre { color: var(--pre) } .seg-suf { color: var(--suf) }
+.muted { color: var(--muted) }
+.link { background: none; border: 0; padding: 0; color: var(--accent); cursor: pointer; text-align: inherit; justify-self: start; text-decoration: underline; text-underline-offset: .35em; text-decoration-thickness: 1px }
+
+/* prototype chrome: deliberately not part of the design */
+.proto-band { background: var(--proto-bg); color: var(--proto-fg); font: 12px/1.4 var(--f-mono) }
+.proto-band .wrap { padding-block: 6px; display: flex; gap: 12px; flex-wrap: wrap }
+.proto-band b { color: var(--proto-hi); font-weight: 500 }
+.proto-bar { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(12px + env(safe-area-inset-bottom, 0px)); z-index: 20;
+  display: flex; align-items: center; gap: 4px; background: var(--proto-bg); color: var(--proto-fg); border-radius: 999px; padding: 4px; font: 13px/1 var(--f-mono);
+  box-shadow: 0 6px 24px rgb(0 0 0 / .25); max-width: calc(100vw - 24px) }
+.proto-bar button { background: none; border: 0; color: inherit; padding: 10px 12px; border-radius: 999px; cursor: pointer; min-height: 40px }
+.proto-bar button:hover { background: rgb(127 127 127 / .25) }
+.proto-bar .label { padding: 0 6px; white-space: nowrap }
+.proto-bar .label b { color: var(--proto-hi); font-weight: 500 }
+.proto-state { position: fixed; right: max(12px, env(safe-area-inset-right, 0px)); bottom: calc(68px + env(safe-area-inset-bottom, 0px)); z-index: 19;
+  width: min(26rem, calc(100vw - 24px)); max-height: 60vh; overflow: auto; background: var(--proto-bg); color: var(--proto-fg);
+  font: 12px/1.5 var(--f-mono); padding: 12px 14px; border-radius: 10px; box-shadow: 0 6px 24px rgb(0 0 0 / .25) }
+.proto-state h2 { font-size: 12px; margin: 0 0 6px; color: var(--proto-hi); font-weight: 500 }
+.proto-state ul { margin: 6px 0; padding-left: 16px }
+.proto-state .ar { font-size: 15px; line-height: 1.4 }
+.proto-state label { display: flex; gap: 8px; align-items: center; margin-top: 8px; cursor: pointer }
+.toast { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(72px + env(safe-area-inset-bottom, 0px)); z-index: 21;
+  background: var(--proto-bg); color: var(--proto-fg); font: 13px/1.4 var(--f-mono); padding: 8px 12px; border-radius: 8px; max-width: calc(100vw - 32px) }
+
+/* site shell */
+.site { border-bottom: 1px solid var(--line); background: var(--surface) }
+.site .wrap { display: flex; align-items: baseline; gap: 24px; padding-block: 12px }
+.brand { font-weight: 600; font-size: 18px; letter-spacing: .01em; color: var(--fg); text-decoration: none }
+.brand .ar { font-size: 20px; color: var(--accent); margin-left: 6px }
+.site nav { display: flex; gap: 18px; font-size: 14px }
+.site nav a { color: var(--muted); text-decoration: none } .site nav a[aria-current] { color: var(--fg); font-weight: 500 }
+.search { display: flex; gap: 8px; margin-top: 20px }
+.search input { flex: 1; min-width: 0; font-family: var(--f-ar); font-size: 24px; padding: 6px 14px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); color: var(--fg) }
+.search button { padding: 0 18px; border: 0; border-radius: 8px; background: var(--accent); color: var(--surface); font-weight: 500; cursor: pointer }
+.examples { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 10px 0 0; font-size: 13px; color: var(--muted) }
+.examples button { border: 1px solid var(--line); background: var(--surface); border-radius: 999px; padding: 0 12px; cursor: pointer; font-family: var(--f-ar); font-size: 17px; line-height: 1.8 }
+.examples button[aria-pressed="true"] { border-color: var(--accent); color: var(--accent) }
+.count { margin: 22px 0 10px; font-size: 13px; color: var(--muted); display: flex; gap: 12px; flex-wrap: wrap; align-items: baseline }
+.legend span { margin-right: 10px }
+
+/* ---------- Variant A: table ---------- */
+.va-scroll { overflow-x: auto }
+table.va { width: 100%; border-collapse: collapse; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; font-size: 14px }
+.va th { text-align: left; font-weight: 500; font-size: 12px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); padding: 8px 10px; border-bottom: 1px solid var(--line); white-space: nowrap }
+.va th button { background: none; border: 0; padding: 0; color: inherit; font: inherit; letter-spacing: inherit; text-transform: inherit; cursor: pointer }
+.va th[aria-sort="ascending"] button::after { content: " ▲" } .va th[aria-sort="descending"] button::after { content: " ▼" }
+.va td { padding: 8px 10px; vertical-align: top; border-top: 1px solid var(--line) }
+.va tr.same-lemma td { border-top-color: transparent }
+.va td.f { text-align: right; white-space: nowrap; font-size: 15px }
+.va td.g { min-width: 10rem }
+.va .attached { display: block; font-size: 12px; color: var(--muted) }
+.va .raw { display: block; font: 11px/1.4 var(--f-mono); color: var(--muted) }
+@media (max-width: 720px) {
+  table.va, .va tbody, .va tr, .va td { display: block; width: 100% }
+  .va thead { display: none }
+  .va tr { border-top: 1px solid var(--line); padding: 8px 0 } .va tr:first-child { border-top: 0 }
+  .va tr.same-lemma { border-top-style: dashed }
+  .va td { border: 0; padding: 2px 12px; display: grid; grid-template-columns: 6.5rem 1fr; gap: 8px }
+  .va td::before { content: attr(data-label); font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); padding-top: 3px }
+  .va td.f { text-align: right; white-space: normal; grid-template-columns: 1fr } .va td.f::before { display: none }
+}
+
+/* ---------- Variant B: reading cards ---------- */
+ol.vb { list-style: none; margin: 0; padding: 0; display: grid; gap: 12px }
+.vb li { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 16px 18px; display: grid; gap: 12px }
+.vb .top { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline; gap: 4px 16px }
+.vb .gloss { font-size: 20px; font-weight: 500; min-width: 0; text-wrap: balance }
+.vb .form { font-size: 26px; line-height: 1.5; margin-left: auto }
+.vb .raw { font: 12px/1.4 var(--f-mono); color: var(--muted); flex-basis: 100% }
+.interlinear { display: flex; flex-wrap: wrap; gap: 6px; direction: rtl; justify-content: flex-start }
+.chip { display: grid; justify-items: center; padding: 2px 10px 6px; border-radius: 8px; background: var(--chip-stem); min-width: 3rem }
+.chip.pre { background: var(--chip-pre) } .chip.pre .ar { color: var(--pre) }
+.chip.suf { background: var(--chip-suf) } .chip.suf .ar { color: var(--suf) }
+.chip .ar { font-size: 22px; line-height: 1.6 }
+.chip .lbl { direction: ltr; font-size: 12px; color: var(--muted); text-align: center; max-width: 11rem }
+.vb .meta { display: flex; flex-wrap: wrap; gap: 6px; font-size: 13px }
+.pill { border: 1px solid var(--line); border-radius: 999px; padding: 1px 10px; color: var(--muted) }
+.vb .actions { display: flex; flex-wrap: wrap; gap: 8px 18px; align-items: baseline; font-size: 14px; border-top: 1px solid var(--line); padding-top: 10px }
+.vb .actions .from { margin-left: auto; color: var(--muted); font-size: 13px }
+
+/* ---------- Variant C: grouped by lemma ---------- */
+.vc { display: grid; gap: 0; background: var(--surface); border: 1px solid var(--line); border-radius: 10px }
+.entry { display: grid; grid-template-columns: minmax(11rem, 15rem) 1fr; gap: 8px 28px; padding: 18px 20px; border-top: 1px solid var(--line) }
+.entry:first-child { border-top: 0 }
+.head h3 { margin: 0; font-weight: 400; line-height: 1.2 }
+.head h3 .ar { font-size: 34px; font-weight: 600 }
+.head .pos { font-size: 13px; color: var(--muted); margin: 2px 0 6px }
+.head .lg { margin: 0 0 8px; font-weight: 500 }
+.head dl { margin: 0; display: grid; grid-template-columns: auto 1fr; gap: 2px 10px; font-size: 13px }
+.head dt { color: var(--muted) } .head dd { margin: 0 }
+.forms { list-style: none; margin: 0; padding: 0; display: grid; gap: 0; align-content: start }
+.forms li { display: grid; grid-template-columns: auto 1fr; gap: 2px 16px; padding: 8px 0; border-top: 1px dashed var(--line); align-items: baseline }
+.forms li:first-child { border-top: 0; padding-top: 2px }
+.forms .ar { font-size: 22px; text-align: right; grid-row: span 2 }
+.forms .gl { font-weight: 500 }
+.forms .gr { font-size: 13px; color: var(--muted) }
+.forms .raw { grid-column: 2; font: 11px/1.4 var(--f-mono); color: var(--muted) }
+.vc-label { font-size: 12px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); margin: 0 0 4px }
+@media (max-width: 640px) {
+  .entry { grid-template-columns: 1fr; padding: 14px 14px }
+  .head dl { grid-template-columns: auto 1fr }
+}
+
+/* shared states */
+.empty { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 24px 20px }
+.empty h2 { margin: 0 0 6px; font-size: 18px; font-weight: 500 }
+.empty ul { margin: 8px 0 0; padding-left: 20px; color: var(--muted) }
+@media (prefers-reduced-motion: no-preference) { #results { animation: none } }
+</style>
+
+<div class="proto-band"><div class="wrap">
+  <span><b>PROTOTYPE</b> issue #14 · round 1: Word results layout</span>
+  <span>Real CAMeL calima-msa-r13 output · glosses hand-cleaned</span>
+</div></div>
+
+<header class="site"><div class="wrap">
+  <a class="brand" href="#" onclick="return false">AraDict<span class="ar" lang="ar">قاموس</span></a>
+  <nav aria-label="Main"><a href="#" aria-current="page" onclick="return false">Word</a><a href="#" onclick="return false">Text</a><a href="#" onclick="return false">About</a></nav>
+</div></header>
+
+<main class="wrap">
+  <form class="search" role="search" id="search">
+    <label for="q" class="sr-only">Arabic or English word</label>
+    <input id="q" name="q" dir="rtl" lang="ar" autocomplete="off" spellcheck="false">
+    <button type="submit">Look up</button>
+  </form>
+  <div class="examples" id="examples"><span>Examples:</span></div>
+  <div class="count" id="count"></div>
+  <section id="results" aria-live="polite"></section>
+</main>
+
+<div class="proto-bar" role="toolbar" aria-label="Prototype variant switcher">
+  <button id="prev" aria-label="Previous layout">←</button>
+  <span class="label" id="vlabel"></span>
+  <button id="next" aria-label="Next layout">→</button>
+  <button id="stbtn" aria-expanded="false" aria-controls="state">State</button>
+</div>
+<aside class="proto-state" id="state" hidden></aside>
+<div class="toast" id="toast" role="status" hidden></div>
+
+<script>
+/*DATA*/window.DATA = {"كتب": {"raw_count": 8, "readings": [{"form": "كُتُب", "segments": {"prefix": [], "stem": [{"text": "كُتُب", "tag": "NOUN", "label": null}], "suffix": []}, "lemma": "كِتاب", "pos": "noun", "gloss": "books", "gloss_raw": "books", "stemgloss": "books", "root": "ك.ت.ب", "pattern": "1ُ2ُ3", "measure": null, "freq_top_pct": 3.5, "grammar": ["noun", "masculine", "broken plural"], "feats": {"asp": "na", "vox": "na", "per": "na", "gen": "m", "num": "p", "form_gen": "m", "form_num": "s", "rat": "i", "prc3": "0", "prc1": "0", "prc0": "0", "enc0": "0"}, "prc2_readings": ["0"], "case_forms": ["كُتُب", "كُتُبٌ", "كُتُبٍ", "كُتُبَ", "كُتُبُ", "كُتُبِ"], "raw_count": 6, "related_count": 1, "root_family_count": 32}, {"form": "كَتَبَ", "segments": {"prefix": [], "stem": [{"text": "كَتَب", "tag": "PV", "label": null}], "suffix": [{"text": "َ", "tag": "PVSUFF_SUBJ:3MS", "label": "he/it, subject ending"}]}, "lemma": "كَتَب", "pos": "verb", "gloss": "he wrote", "gloss_raw": "write+he;it_<verb>", "stemgloss": "write", "root": "ك.ت.ب", "pattern": "1َ2َ3َ", "measure": "I", "freq_top_pct": 5.2, "grammar": ["verb", "perfect (past)", "active", "subject: he/it"], "feats": {"asp": "p", "vox": "a", "per": "3", "gen": "m", "num": "s", "form_gen": "m", "form_num": "s", "rat": "n", "prc3": "0", "prc1": "0", "prc0": "0", "enc0": "0"}, "prc2_readings": ["0"], "case_forms": ["كَتَبَ"], "raw_count": 1, "related_count": 3, "root_family_count": 32}, {"form": "كُتِبَ", "segments": {"prefix": [], "stem": [{"text": "كُتِب", "tag": "PV_PASS", "label": null}], "suffix": [{"text": "َ", "tag": "PVSUFF_SUBJ:3MS", "label": "he/it, subject ending"}]}, "lemma": "كَتَب", "pos": "verb", "gloss": "it was written; it was destined", "gloss_raw": "be_written;be_fated;be_destined+he;it_<verb>", "stemgloss": "be_written;be_fated;be_destined", "root": "ك.ت.ب", "pattern": "1ُ2ِ3َ", "measure": "I", "freq_top_pct": 5.2, "grammar": ["verb", "perfect (past)", "passive", "subject: he/it"], "feats": {"asp": "p", "vox": "p", "per": "3", "gen": "m", "num": "s", "form_gen": "m", "form_num": "s", "rat": "n", "prc3": "0", "prc1": "0", "prc0": "0", "enc0": "0"}, "prc2_readings": ["0"], "case_forms": ["كُتِبَ"], "raw_count": 1, "related_count": 3, "root_family_count": 32}]}, "وبكتابهم": {"raw_count": 36, "readings": [{"form": "وَبِكِتابهم", "segments": {"prefix": [{"text": "وَ", "tag": "CONJ", "label": "and"}, {"text": "بِ", "tag": "PREP", "label": "by/with"}], "stem": [{"text": "كِتاب", "tag": "NOUN", "label": null}], "suffix": [{"text": "هم", "tag": "POSS_PRON_3MP", "label": "their"}]}, "lemma": "كِتاب", "pos": "noun", "gloss": "and by/with their book", "gloss_raw": "and_+_by;with+book+their", "stemgloss": "book", "root": "ك.ت.ب", "pattern": "وَبِ1ِ2ا3هم", "measure": null, "freq_top_pct": 3.5, "grammar": ["noun", "masculine", "singular"], "feats": {"asp": "na", "vox": "na", "per": "na", "gen": "m", "num": "s", "form_gen": "m", "form_num": "s", "rat": "i", "prc3": "0", "prc1": "bi_prep", "prc0": "0", "enc0": "3mp_poss"}, "prc2_readings": ["wa_conj", "wa_part", "wa_sub"], "case_forms": ["وَبِكِتابهم", "وَبِكِتابَهُم", "وَبِكِتابُهُم", "وَبِكِتابِهِم"], "raw_count": 12, "related_count": 1, "root_family_count": 32}, {"form": "وَبِكُتّابهم", "segments": {"prefix": [{"text": "وَ", "tag": "CONJ", "label": "and"}, {"text": "بِ", "tag": "PREP", "label": "by/with"}], "stem": [{"text": "كُتّاب", "tag": "NOUN", "label": null}], "suffix": [{"text": "هم", "tag": "POSS_PRON_3MP", "label": "their"}]}, "lemma": "كاتِب", "pos": "noun", "gloss": "and by/with their writers; their authors", "gloss_raw": "and_+_by;with+authors;writers+their", "stemgloss": "authors;writers", "root": "ك.ت.ب", "pattern": "وَبِ1ُ2ّا3هم", "measure": null, "freq_top_pct": 9.2, "grammar": ["noun", "masculine", "broken plural"], "feats": {"asp": "na", "vox": "na", "per": "na", "gen": "m", "num": "p", "form_gen": "m", "form_num": "s", "rat": "r", "prc3": "0", "prc1": "bi_prep", "prc0": "0", "enc0": "3mp_poss"}, "prc2_readings": ["wa_conj", "wa_part", "wa_sub"], "case_forms": ["وَبِكُتّابهم", "وَبِكُتّابَهُم", "وَبِكُتّابُهُم", "وَبِكُتّابِهِم"], "raw_count": 12, "related_count": 2, "root_family_count": 32}, {"form": "وَبِكُتّابهم", "segments": {"prefix": [{"text": "وَ", "tag": "CONJ", "label": "and"}, {"text": "بِ", "tag": "PREP", "label": "by/with"}], "stem": [{"text": "كُتّاب", "tag": "NOUN", "label": null}], "suffix": [{"text": "هم", "tag": "POSS_PRON_3MP", "label": "their"}]}, "lemma": "كُتّاب", "pos": "noun", "gloss": "and by/with their kuttab (Quran school)", "gloss_raw": "and_+_by;with+kuttab_(village_school);Quran_school+their", "stemgloss": "kuttab_(village_school);Quran_school", "root": "ك.ت.ب", "pattern": "وَبِ1ُ2ّا3هم", "measure": null, "freq_top_pct": null, "grammar": ["noun", "masculine", "singular"], "feats": {"asp": "na", "vox": "na", "per": "na", "gen": "m", "num": "s", "form_gen": "m", "form_num": "s", "rat": "i", "prc3": "0", "prc1": "bi_prep", "prc0": "0", "enc0": "3mp_poss"}, "prc2_readings": ["wa_conj", "wa_part", "wa_sub"], "case_forms": ["وَبِكُتّابهم", "وَبِكُتّابَهُم", "وَبِكُتّابُهُم", "وَبِكُتّابِهِم"], "raw_count": 12, "related_count": 1, "root_family_count": 32}]}, "سيكتبون": {"raw_count": 4, "readings": [{"form": "سَيَكْتُبُونَ", "segments": {"prefix": [{"text": "سَ", "tag": "FUT_PART", "label": "will (future)"}, {"text": "يَ", "tag": "IV3MP", "label": "they (m.), subject prefix"}], "stem": [{"text": "كْتُب", "tag": "IV", "label": null}], "suffix": [{"text": "ُونَ", "tag": "IVSUFF_SUBJ:MP_MOOD:I", "label": "plural subject, indicative"}]}, "lemma": "كَتَب", "pos": "verb", "gloss": "they will write", "gloss_raw": "will_+_they_(people)+write+[masc.pl.]", "stemgloss": "write", "root": "ك.ت.ب", "pattern": "سَيَ1ْ2ُ3ُونَ", "measure": "I", "freq_top_pct": 5.2, "grammar": ["verb", "imperfect (present/future)", "active", "subject: they"], "feats": {"asp": "i", "vox": "a", "per": "3", "gen": "m", "num": "p", "form_gen": "m", "form_num": "p", "rat": "n", "prc3": "0", "prc1": "sa_fut", "prc0": "0", "enc0": "0"}, "prc2_readings": ["0"], "case_forms": ["سَيَكْتُبُونَ"], "raw_count": 1, "related_count": 3, "root_family_count": 32}, {"form": "سَيُكْتَبُونَ", "segments": {"prefix": [{"text": "سَ", "tag": "FUT_PART", "label": "will (future)"}, {"text": "يُ", "tag": "IV3MP", "label": "they (m.), subject prefix"}], "stem": [{"text": "كْتَب", "tag": "IV_PASS", "label": null}], "suffix": [{"text": "ُونَ", "tag": "IVSUFF_SUBJ:MP_MOOD:I", "label": "plural subject, indicative"}]}, "lemma": "كَتَب", "pos": "verb", "gloss": "they will be written", "gloss_raw": "will_+_they_(people)+be_written;be_fated;be_destined+[masc.pl.]", "stemgloss": "be_written;be_fated;be_destined", "root": "ك.ت.ب", "pattern": "سَيُ1ْ2َ3ُونَ", "measure": "I", "freq_top_pct": 5.2, "grammar": ["verb", "imperfect (present/future)", "passive", "subject: they"], "feats": {"asp": "i", "vox": "p", "per": "3", "gen": "m", "num": "p", "form_gen": "m", "form_num": "p", "rat": "n", "prc3": "0", "prc1": "sa_fut", "prc0": "0", "enc0": "0"}, "prc2_readings": ["0"], "case_forms": ["سَيُكْتَبُونَ"], "raw_count": 1, "related_count": 3, "root_family_count": 32}, {"form": "سَيُكْتَبُونَ", "segments": {"prefix": [{"text": "سَ", "tag": "FUT_PART", "label": "will (future)"}, {"text": "يُ", "tag": "IV3MP", "label": "they (m.), subject prefix"}], "stem": [{"text": "كْتَب", "tag": "IV_PASS", "label": null}], "suffix": [{"text": "ُونَ", "tag": "IVSUFF_SUBJ:MP_MOOD:I", "label": "plural subject, indicative"}]}, "lemma": "أَكْتَب", "pos": "verb", "gloss": "they will be dictated", "gloss_raw": "will_+_they_(people)+be_dictated+[masc.pl.]", "stemgloss": "be_dictated", "root": "ك.ت.ب", "pattern": "سَيُ1ْ2َ3ُونَ", "measure": "IV", "freq_top_pct": null, "grammar": ["verb", "imperfect (present/future)", "passive", "subject: they"], "feats": {"asp": "i", "vox": "p", "per": "3", "gen": "m", "num": "p", "form_gen": "m", "form_num": "p", "rat": "n", "prc3": "0", "prc1": "sa_fut", "prc0": "0", "enc0": "0"}, "prc2_readings": ["0"], "case_forms": ["سَيُكْتَبُونَ"], "raw_count": 1, "related_count": 2, "root_family_count": 32}, {"form": "سَيُكْتِبُونَ", "segments": {"prefix": [{"text": "سَ", "tag": "FUT_PART", "label": "will (future)"}, {"text": "يُ", "tag": "IV3MP", "label": "they (m.), subject prefix"}], "stem": [{"text": "كْتِب", "tag": "IV", "label": null}], "suffix": [{"text": "ُونَ", "tag": "IVSUFF_SUBJ:MP_MOOD:I", "label": "plural subject, indicative"}]}, "lemma": "أَكْتَب", "pos": "verb", "gloss": "they will dictate; they will make (someone) write", "gloss_raw": "will_+_they_(people)+dictate;make_write+[masc.pl.]", "stemgloss": "dictate;make_write", "root": "ك.ت.ب", "pattern": "سَيُ1ْ2ِ3ُونَ", "measure": "IV", "freq_top_pct": null, "grammar": ["verb", "imperfect (present/future)", "active", "subject: they"], "feats": {"asp": "i", "vox": "a", "per": "3", "gen": "m", "num": "p", "form_gen": "m", "form_num": "p", "rat": "n", "prc3": "0", "prc1": "sa_fut", "prc0": "0", "enc0": "0"}, "prc2_readings": ["0"], "case_forms": ["سَيُكْتِبُونَ"], "raw_count": 1, "related_count": 2, "root_family_count": 32}]}, "استخدم": {"raw_count": 5, "readings": [{"form": "أَسْتَخْدِم", "segments": {"prefix": [{"text": "أَ", "tag": "IV1S", "label": "I, subject prefix"}], "stem": [{"text": "سْتَخْدِم", "tag": "IV", "label": null}], "suffix": []}, "lemma": "ٱِسْتَخْدَم", "pos": "verb", "gloss": "I use; I employ", "gloss_raw": "I+utilize;employ;operate", "stemgloss": "utilize;employ;operate", "root": "خ.د.م", "pattern": "أَسْتَ1ْ2ِ3", "measure": "X", "freq_top_pct": 7.2, "grammar": ["verb", "imperfect (present/future)", "active", "subject: I"], "feats": {"asp": "i", "vox": "a", "per": "1", "gen": "m", "num": "s", "form_gen": "m", "form_num": "s", "rat": "n", "prc3": "0", "prc1": "0", "prc0": "0", "enc0": "0"}, "prc2_readings": ["0"], "case_forms": ["أَسْتَخْدِم"], "raw_count": 1, "related_count": 4, "root_family_count": 16}, {"form": "أُسْتَخْدَم", "segments": {"prefix": [{"text": "أُ", "tag": "IV1S", "label": "I, subject prefix"}], "stem": [{"text": "سْتَخْدَم", "tag": "IV_PASS", "label": null}], "suffix": []}, "lemma": "ٱِسْتَخْدَم", "pos": "verb", "gloss": "I am used; I am employed", "gloss_raw": "I+be_used;be_utilized;be_employed", "stemgloss": "be_used;be_utilized;be_employed", "root": "خ.د.م", "pattern": "أُسْتَ1ْ2َ3", "measure": "X", "freq_top_pct": 7.2, "grammar": ["verb", "imperfect (present/future)", "passive", "subject: I"], "feats": {"asp": "i", "vox": "p", "per": "1", "gen": "m", "num": "s", "form_gen": "m", "form_num": "s", "rat": "n", "prc3": "0", "prc1": "0", "prc0": "0", "enc0": "0"}, "prc2_readings": ["0"], "case_forms": ["أُسْتَخْدَم"], "raw_count": 1, "related_count": 4, "root_family_count": 16}, {"form": "اُسْتُخْدِمَ", "segments": {"prefix": [], "stem": [{"text": "اُسْتُخْدِم", "tag": "PV_PASS", "label": null}], "suffix": [{"text": "َ", "tag": "PVSUFF_SUBJ:3MS", "label": "he/it, subject ending"}]}, "lemma": "ٱِسْتَخْدَم", "pos": "verb", "gloss": "it was used; it was employed", "gloss_raw": "be_used;be_utilized;be_employed+he;it_<verb>", "stemgloss": "be_used;be_utilized;be_employed", "root": "خ.د.م", "pattern": "ٱُسْتُ1ْ2ِ3َ", "measure": "X", "freq_top_pct": 7.2, "grammar": ["verb", "perfect (past)", "passive", "subject: he/it"], "feats": {"asp": "p", "vox": "p", "per": "3", "gen": "m", "num": "s", "form_gen": "m", "form_num": "s", "rat": "n", "prc3": "0", "prc1": "0", "prc0": "0", "enc0": "0"}, "prc2_readings": ["0"], "case_forms": ["اُسْتُخْدِمَ"], "raw_count": 1, "related_count": 4, "root_family_count": 16}, {"form": "اِسْتَخْدَمَ", "segments": {"prefix": [], "stem": [{"text": "اِسْتَخْدَم", "tag": "PV", "label": null}], "suffix": [{"text": "َ", "tag": "PVSUFF_SUBJ:3MS", "label": "he/it, subject ending"}]}, "lemma": "ٱِسْتَخْدَم", "pos": "verb", "gloss": "he used; he employed", "gloss_raw": "utilize;employ;operate+he;it_<verb>", "stemgloss": "utilize;employ;operate", "root": "خ.د.م", "pattern": "ٱِسْتَ1ْ2َ3َ", "measure": "X", "freq_top_pct": 7.2, "grammar": ["verb", "perfect (past)", "active", "subject: he/it"], "feats": {"asp": "p", "vox": "a", "per": "3", "gen": "m", "num": "s", "form_gen": "m", "form_num": "s", "rat": "n", "prc3": "0", "prc1": "0", "prc0": "0", "enc0": "0"}, "prc2_readings": ["0"], "case_forms": ["اِسْتَخْدَمَ"], "raw_count": 1, "related_count": 4, "root_family_count": 16}, {"form": "اِسْتَخْدِمْ", "segments": {"prefix": [], "stem": [{"text": "اِسْتَخْدِم", "tag": "CV", "label": null}], "suffix": [{"text": "ْ", "tag": "CVSUFF_SUBJ:2MS", "label": "you (m.), command ending"}]}, "lemma": "ٱِسْتَخْدَم", "pos": "verb", "gloss": "use! (said to one man)", "gloss_raw": "use+you_<verb>", "stemgloss": "use", "root": "خ.د.م", "pattern": "ٱِسْتَ1ْ2ِ3ْ", "measure": "X", "freq_top_pct": 7.2, "grammar": ["verb", "imperative", "active", "subject: you (m.)"], "feats": {"asp": "c", "vox": "a", "per": "2", "gen": "m", "num": "s", "form_gen": "m", "form_num": "s", "rat": "n", "prc3": "0", "prc1": "0", "prc0": "0", "enc0": "0"}, "prc2_readings": ["0"], "case_forms": ["اِسْتَخْدِمْ"], "raw_count": 1, "related_count": 4, "root_family_count": 16}]}, "مدرستي": {"raw_count": 10, "readings": [{"form": "مَدْرَسَتَيَّ", "segments": {"prefix": [], "stem": [{"text": "مَدْرَس", "tag": "NOUN", "label": null}], "suffix": [{"text": "َتَي", "tag": "NSUFF_FEM_DU_ACC_POSS", "label": "dual ending"}, {"text": "َّ", "tag": "POSS_PRON_1S", "label": "my"}]}, "lemma": "مَدْرَسَة", "pos": "noun", "gloss": "my two schools", "gloss_raw": "school+my_two", "stemgloss": "school", "root": "د.ر.س", "pattern": "مَ1ْ2َ3َتَيَّ", "measure": null, "freq_top_pct": 4.0, "grammar": ["noun", "feminine", "dual"], "feats": {"asp": "na", "vox": "na", "per": "na", "gen": "f", "num": "d", "form_gen": "f", "form_num": "d", "rat": "i", "prc3": "0", "prc1": "0", "prc0": "0", "enc0": "1s_poss"}, "prc2_readings": ["0"], "case_forms": ["مَدْرَسَتَيَّ"], "raw_count": 2, "related_count": 1, "root_family_count": 24}, {"form": "مَدْرَسَتَيْ", "segments": {"prefix": [], "stem": [{"text": "مَدْرَس", "tag": "NOUN", "label": null}], "suffix": [{"text": "َتَيْ", "tag": "NSUFF_FEM_DU_GEN_POSS", "label": "dual ending"}]}, "lemma": "مَدْرَسَة", "pos": "noun", "gloss": "the two schools of", "gloss_raw": "school+two", "stemgloss": "school", "root": "د.ر.س", "pattern": "مَ1ْ2َ3َتَيْ", "measure": null, "freq_top_pct": 4.0, "grammar": ["noun", "feminine", "dual"], "feats": {"asp": "na", "vox": "na", "per": "na", "gen": "f", "num": "d", "form_gen": "f", "form_num": "d", "rat": "i", "prc3": "0", "prc1": "0", "prc0": "0", "enc0": "0"}, "prc2_readings": ["0"], "case_forms": ["مَدْرَسَتَيْ"], "raw_count": 2, "related_count": 1, "root_family_count": 24}, {"form": "مَدْرَسَتِي", "segments": {"prefix": [], "stem": [{"text": "مَدْرَس", "tag": "NOUN", "label": null}], "suffix": [{"text": "َت", "tag": "NSUFF_FEM_SG", "label": "feminine ending"}, {"text": "ِي", "tag": "POSS_PRON_1S", "label": "my"}]}, "lemma": "مَدْرَسَة", "pos": "noun", "gloss": "my school", "gloss_raw": "school+my", "stemgloss": "school", "root": "د.ر.س", "pattern": "مَ1ْ2َ3َتِي", "measure": null, "freq_top_pct": 4.0, "grammar": ["noun", "feminine", "singular"], "feats": {"asp": "na", "vox": "na", "per": "na", "gen": "f", "num": "s", "form_gen": "f", "form_num": "s", "rat": "i", "prc3": "0", "prc1": "0", "prc0": "0", "enc0": "1s_poss"}, "prc2_readings": ["0"], "case_forms": ["مَدْرَسَتِي"], "raw_count": 1, "related_count": 1, "root_family_count": 24}, {"form": "مُدَرِّسَتَيَّ", "segments": {"prefix": [], "stem": [{"text": "مُدَرِّس", "tag": "NOUN", "label": null}], "suffix": [{"text": "َتَي", "tag": "NSUFF_FEM_DU_ACC_POSS", "label": "dual ending"}, {"text": "َّ", "tag": "POSS_PRON_1S", "label": "my"}]}, "lemma": "مُدَرِّس", "pos": "noun", "gloss": "my two teachers (f.)", "gloss_raw": "instructor;teacher+my_two", "stemgloss": "instructor;teacher", "root": "د.ر.س", "pattern": "مُ1َ2ِّ3َتَيَّ", "measure": null, "freq_top_pct": 32.6, "grammar": ["noun", "feminine", "dual"], "feats": {"asp": "na", "vox": "na", "per": "na", "gen": "f", "num": "d", "form_gen": "f", "form_num": "d", "rat": "r", "prc3": "0", "prc1": "0", "prc0": "0", "enc0": "1s_poss"}, "prc2_readings": ["0"], "case_forms": ["مُدَرِّسَتَيَّ"], "raw_count": 2, "related_count": 0, "root_family_count": 24}, {"form": "مُدَرِّسَتَيْ", "segments": {"prefix": [], "stem": [{"text": "مُدَرِّس", "tag": "NOUN", "label": null}], "suffix": [{"text": "َتَيْ", "tag": "NSUFF_FEM_DU_GEN_POSS", "label": "dual ending"}]}, "lemma": "مُدَرِّس", "pos": "noun", "gloss": "the two teachers (f.) of", "gloss_raw": "instructor;teacher+two", "stemgloss": "instructor;teacher", "root": "د.ر.س", "pattern": "مُ1َ2ِّ3َتَيْ", "measure": null, "freq_top_pct": 32.6, "grammar": ["noun", "feminine", "dual"], "feats": {"asp": "na", "vox": "na", "per": "na", "gen": "f", "num": "d", "form_gen": "f", "form_num": "d", "rat": "r", "prc3": "0", "prc1": "0", "prc0": "0", "enc0": "0"}, "prc2_readings": ["0"], "case_forms": ["مُدَرِّسَتَيْ"], "raw_count": 2, "related_count": 0, "root_family_count": 24}, {"form": "مُدَرِّسَتِي", "segments": {"prefix": [], "stem": [{"text": "مُدَرِّس", "tag": "NOUN", "label": null}], "suffix": [{"text": "َت", "tag": "NSUFF_FEM_SG", "label": "feminine ending"}, {"text": "ِي", "tag": "POSS_PRON_1S", "label": "my"}]}, "lemma": "مُدَرِّس", "pos": "noun", "gloss": "my teacher (f.)", "gloss_raw": "instructor;teacher+my", "stemgloss": "instructor;teacher", "root": "د.ر.س", "pattern": "مُ1َ2ِّ3َتِي", "measure": null, "freq_top_pct": 32.6, "grammar": ["noun", "feminine", "singular"], "feats": {"asp": "na", "vox": "na", "per": "na", "gen": "f", "num": "s", "form_gen": "f", "form_num": "s", "rat": "r", "prc3": "0", "prc1": "0", "prc0": "0", "enc0": "1s_poss"}, "prc2_readings": ["0"], "case_forms": ["مُدَرِّسَتِي"], "raw_count": 1, "related_count": 0, "root_family_count": 24}]}, "الى": {"raw_count": 11, "readings": [{"form": "إِلَى", "segments": {"prefix": [], "stem": [{"text": "إِلَى", "tag": "PREP", "label": null}], "suffix": []}, "lemma": "إِلَى", "pos": "prep", "gloss": "to; towards", "gloss_raw": "to;towards", "stemgloss": "to;towards", "root": "#.ل.#", "pattern": "إِ2َى", "measure": null, "freq_top_pct": 0.0, "grammar": ["preposition"], "feats": {"asp": "na", "vox": "na", "per": "na", "gen": "na", "num": "na", "form_gen": "na", "form_num": "na", "rat": "na", "prc3": "0", "prc1": "0", "prc0": "na", "enc0": "0"}, "prc2_readings": ["0"], "case_forms": ["إِلَى"], "raw_count": 1, "related_count": 1, "root_family_count": 48}, {"form": "إِلَيَّ", "segments": {"prefix": [], "stem": [{"text": "إِلَي", "tag": "PREP", "label": null}], "suffix": [{"text": "َّ", "tag": "PRON_1S", "label": "me"}]}, "lemma": "إِلَى", "pos": "prep", "gloss": "to me", "gloss_raw": "to;towards+me", "stemgloss": "to;towards", "root": "#.ل.#", "pattern": "إِ2َيَّ", "measure": null, "freq_top_pct": 0.0, "grammar": ["preposition"], "feats": {"asp": "na", "vox": "na", "per": "na", "gen": "na", "num": "na", "form_gen": "na", "form_num": "na", "rat": "na", "prc3": "0", "prc1": "0", "prc0": "na", "enc0": "1s_pron"}, "prc2_readings": ["0"], "case_forms": ["إِلَيَّ"], "raw_count": 1, "related_count": 1, "root_family_count": 48}, {"form": "أَلِي", "segments": {"prefix": [{"text": "أَ", "tag": "IV1S", "label": "I, subject prefix"}], "stem": [{"text": "لِي", "tag": "IV", "label": null}], "suffix": []}, "lemma": "وَلِي", "pos": "verb", "gloss": "I follow; I come after", "gloss_raw": "I+follow;come_after", "stemgloss": "follow;come_after", "root": "#.ل.#", "pattern": "أَ2ِي", "measure": null, "freq_top_pct": 14.2, "grammar": ["verb", "imperfect (present/future)", "active", "subject: I"], "feats": {"asp": "i", "vox": "a", "per": "1", "gen": "m", "num": "s", "form_gen": "m", "form_num": "s", "rat": "n", "prc3": "0", "prc1": "0", "prc0": "0", "enc0": "0"}, "prc2_readings": ["0"], "case_forms": ["أَلِي"], "raw_count": 1, "related_count": 2, "root_family_count": 48}, {"form": "آلِيّ", "segments": {"prefix": [], "stem": [{"text": "آلِيّ", "tag": "ADJ", "label": null}], "suffix": []}, "lemma": "آلِيّ", "pos": "adj", "gloss": "mechanical; automatic", "gloss_raw": "mechanical;automatic", "stemgloss": "mechanical;automatic", "root": "#.#.ل", "pattern": "آ3ِيّ", "measure": null, "freq_top_pct": 32.6, "grammar": ["adjective", "masculine", "singular"], "feats": {"asp": "na", "vox": "na", "per": "na", "gen": "m", "num": "s", "form_gen": "m", "form_num": "s", "rat": "n", "prc3": "0", "prc1": "0", "prc0": "0", "enc0": "0"}, "prc2_readings": ["0"], "case_forms": ["آلِيّ", "آلِيٌّ", "آلِيٍّ", "آلِيَّ", "آلِيُّ", "آلِيِّ"], "raw_count": 6, "related_count": 0, "root_family_count": 27}, {"form": "آلِي", "segments": {"prefix": [], "stem": [{"text": "آل", "tag": "NOUN", "label": null}], "suffix": [{"text": "ِي", "tag": "POSS_PRON_1S", "label": "my"}]}, "lemma": "آل", "pos": "noun", "gloss": "my family; my clan", "gloss_raw": "family;clan+my", "stemgloss": "family;clan", "root": "#.#.ل", "pattern": "آ3ِي", "measure": null, "freq_top_pct": 48.5, "grammar": ["noun", "masculine", "singular"], "feats": {"asp": "na", "vox": "na", "per": "na", "gen": "m", "num": "s", "form_gen": "m", "form_num": "s", "rat": "i", "prc3": "0", "prc1": "0", "prc0": "0", "enc0": "1s_poss"}, "prc2_readings": ["0"], "case_forms": ["آلِي"], "raw_count": 1, "related_count": 0, "root_family_count": 27}, {"form": "آلَى", "segments": {"prefix": [], "stem": [{"text": "آلَى", "tag": "PV", "label": null}], "suffix": []}, "lemma": "آلَى", "pos": "verb", "gloss": "he promised; he swore an oath", "gloss_raw": "promise;take_an_oath+he;it_<verb>", "stemgloss": "promise;take_an_oath", "root": "#.ل.#", "pattern": "آ2َى", "measure": null, "freq_top_pct": null, "grammar": ["verb", "perfect (past)", "active", "subject: he/it"], "feats": {"asp": "p", "vox": "a", "per": "3", "gen": "m", "num": "s", "form_gen": "m", "form_num": "s", "rat": "n", "prc3": "0", "prc1": "0", "prc0": "0", "enc0": "0"}, "prc2_readings": ["0"], "case_forms": ["آلَى"], "raw_count": 1, "related_count": 7, "root_family_count": 48}]}, "بودكاست": {"raw_count": 0, "readings": []}};/*END*/
+</script>
+<script>
+const WORDS = [['ktb', 'كتب'], ['wbktbhm', 'وبكتابهم'], ['syktbwn', 'سيكتبون'], ['istkhdm', 'استخدم'], ['mdrsty', 'مدرستي'], ['ila', 'الى'], ['podcast', 'بودكاست']];
+const VARIANTS = [['a', 'Table'], ['b', 'Reading cards'], ['c', 'Grouped by lemma']];
+const ROMAN = ['I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX', 'X'];
+const S = { v: 'a', w: 'ktb', typed: null, raw: false, sort: null };
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const ar = (t, cls = '') => `<span class="ar ${cls}" lang="ar" dir="rtl">${esc(t)}</span>`;
+
+// ---- shared formatting (the same in every variant; only the layout differs) ----
+const segs = r => [...r.segments.prefix.map(s => ({ ...s, role: 'pre' })), ...r.segments.stem.map(s => ({ ...s, role: 'stem' })), ...r.segments.suffix.map(s => ({ ...s, role: 'suf' }))];
+const formHTML = r => `<span class="ar" lang="ar" dir="rtl">${segs(r).map(s => s.role === 'stem' ? esc(s.text) : `<span class="seg-${s.role}" title="${esc(s.label)}">${esc(s.text)}</span>`).join('')}</span>`;
+const rootText = root => root ? root.split('.').map(x => x === '#' ? '◌' : x).join(' ') : null;
+const senses = g => g.replace(/_/g, ' ').split(';').map(s => s.trim()).filter(Boolean);
+const lemmaGloss = rs => senses((rs.find(r => r.feats.vox !== 'p') || rs[0]).stemgloss).join('; ');
+const attached = r => segs(r).filter(s => s.role !== 'stem' && /[ء-ي]/.test(s.text) && !/subject|ending/.test(s.label)).map(s => s.label);
+const band = p => p == null ? 'frequency unknown' : p <= 1 ? 'very common' : p <= 10 ? 'common' : p <= 40 ? 'less common' : 'rare';
+const bandLong = p => p == null ? 'frequency unknown' : `${band(p)} · top ${Math.max(1, Math.round(p))}% of words`;
+const measureText = r => r.pos !== 'verb' ? null : (r.measure ? `Measure ${r.measure}` : 'measure unavailable');
+const rawHTML = (r, cls = 'raw') => S.raw ? `<span class="${cls}">CAMeL: ${esc(r.gloss_raw)}</span>` : '';
+const chipText = s => s.role === 'pre' ? s.text + 'ـ' : s.role === 'suf' ? 'ـ' + s.text : s.text;
+const rootBtn = r => r.root ? `<button class="link" data-act="root" data-root="${esc(r.root)}" data-n="${r.root_family_count}" aria-label="Show all words from root ${esc(rootText(r.root))}">${ar(rootText(r.root))}</button>` : '<span class="muted">unavailable</span>';
+const relBtn = (r, label) => r.related_count > 0 ? `<button class="link" data-act="rel" data-lemma="${esc(r.lemma)}" data-n="${r.related_count}" aria-label="Show other forms of ${esc(r.lemma)}">${label}</button>` : '';
+
+// ---- Variant A: dense sortable table, one row per reading ----
+function variantA(rs) {
+  const cols = [['form', 'Arabic'], ['gloss', 'Meaning'], [null, 'Grammar'], ['root', 'Root'], ['measure', 'Measure'], [null, 'Forms']];
+  let rows = rs.map((r, i) => ({ r, i }));
+  if (S.sort) {
+    const k = S.sort.key, d = S.sort.dir === 'ascending' ? 1 : -1;
+    const val = ({ r }) => k === 'measure' ? (r.measure ? ROMAN.indexOf(r.measure) : 99) : (r[k] || '');
+    rows.sort((x, y) => { const a = val(x), b = val(y); const c = typeof a === 'number' ? a - b : a.localeCompare(b, k === 'gloss' ? 'en' : 'ar'); return (c * d) || (x.i - y.i); });
+  }
+  const th = ([k, label]) => k ? `<th scope="col" aria-sort="${S.sort?.key === k ? S.sort.dir : 'none'}"><button data-sort="${k}">${label}</button></th>` : `<th scope="col">${label}</th>`;
+  return `<div class="va-scroll"><table class="va"><caption class="sr-only">Results</caption><thead><tr>${cols.map(th).join('')}</tr></thead><tbody>${rows.map(({ r }, j) => {
+    const same = !S.sort && j > 0 && rows[j - 1].r.lemma === r.lemma;
+    const att = attached(r);
+    return `<tr class="${same ? 'same-lemma' : ''}">
+      <td class="f" data-label="Arabic">${formHTML(r)}</td>
+      <td data-label="Meaning">${esc(r.gloss)}${rawHTML(r)}</td>
+      <td class="g" data-label="Grammar">${esc(r.grammar.join(', '))}${att.length ? `<span class="attached">attached: ${esc(att.join(' + '))}</span>` : ''}</td>
+      <td data-label="Root">${rootBtn(r)}</td>
+      <td data-label="Measure">${r.pos === 'verb' ? (r.measure || '<span class="muted">unavailable</span>') : '<span class="muted" aria-label="not a verb">–</span>'}</td>
+      <td data-label="Forms">${relBtn(r, `${r.related_count} more`) || '<span class="muted">–</span>'}</td></tr>`;
+  }).join('')}</tbody></table></div>`;
+}
+
+// ---- Variant B: one card per reading, word broken into interlinear segment chips ----
+function variantB(rs) {
+  return `<ol class="vb">${rs.map(r => {
+    const chips = segs(r).map(s => `<span class="chip ${s.role}"><span class="ar" lang="ar">${esc(chipText(s))}</span><span class="lbl">${esc(s.role === 'stem' ? senses(r.stemgloss)[0] : s.label)}</span></span>`).join('');
+    const pills = [...r.grammar, measureText(r)].filter(Boolean).map(g => `<span class="pill">${esc(g)}</span>`).join('');
+    return `<li>
+      <div class="top"><div class="gloss">${esc(r.gloss)}</div><div class="form">${formHTML(r)}</div>${rawHTML(r)}</div>
+      <div class="interlinear" aria-label="Word parts, right to left">${chips}</div>
+      <div class="meta">${pills}</div>
+      <div class="actions">${r.root ? `<span>Root ${rootBtn(r)} <span class="muted">· ${r.root_family_count} words</span></span>` : '<span class="muted">Root unavailable</span>'}
+        ${relBtn(r, `${r.related_count} other form${r.related_count > 1 ? 's' : ''}`)}
+        <span class="from">from ${ar(r.lemma)} · ${band(r.freq_top_pct)}</span></div></li>`;
+  }).join('')}</ol>`;
+}
+
+// ---- Variant C: dictionary entries, one per lemma, the typed word's readings listed under each ----
+function variantC(rs) {
+  const groups = [];
+  rs.forEach(r => { const k = r.lemma + '|' + r.pos; let g = groups.find(x => x.k === k); if (!g) groups.push(g = { k, rs: [] }); g.rs.push(r); });
+  return `<div class="vc">${groups.map(({ rs: g }) => {
+    const r0 = g[0];
+    const pos = [r0.grammar[0], measureText(r0)].filter(Boolean).join(' · ');
+    return `<section class="entry" aria-label="Entry ${esc(r0.lemma)}">
+      <div class="head">
+        <h3>${ar(r0.lemma)}</h3>
+        <p class="pos">${esc(pos)}</p>
+        <p class="lg">${esc(lemmaGloss(g))}</p>
+        <dl><dt>Root</dt><dd>${rootBtn(r0)}${r0.root ? ` <span class="muted">· ${r0.root_family_count}</span>` : ''}</dd>
+            <dt>Use</dt><dd>${esc(bandLong(r0.freq_top_pct))}</dd>
+            ${r0.related_count ? `<dt>Forms</dt><dd>${relBtn(r0, `all ${r0.related_count + 1} forms`)}</dd>` : ''}</dl>
+      </div>
+      <div><p class="vc-label">${g.length === 1 ? '1 reading of your word' : `${g.length} readings of your word`}</p><ul class="forms">${g.map(r => {
+        const gr = r.grammar.slice(1).join(', ');
+        const att = attached(r);
+        return `<li>${formHTML(r)}<span class="gl">${esc(r.gloss)}</span><span class="gr">${esc([gr, att.length ? 'attached: ' + att.join(' + ') : ''].filter(Boolean).join(' · ') || r.grammar[0])}</span>${rawHTML(r)}</li>`;
+      }).join('')}</ul></div></section>`;
+  }).join('')}</div>`;
+}
+
+const emptyHTML = w => `<div class="empty"><h2>No entry for ${ar(w)}</h2>
+  <p class="muted">AraDict couldn't find this word in its Modern Standard Arabic dictionary.</p>
+  <ul><li>Check the spelling, or type it without vowel marks.</li><li>Try the word without attached parts such as و or ال.</li><li>Recent loanwords and names are often missing.</li></ul></div>`;
+
+// ---- wiring ----
+function current() { const w = S.typed ?? WORDS.find(x => x[0] === S.w)[1]; return { w, d: DATA[w] }; }
+function render() {
+  const { w, d } = current();
+  const rs = d?.readings || [];
+  $('q').value = w;
+  document.querySelectorAll('#examples button').forEach(b => b.setAttribute('aria-pressed', String(!S.typed && b.dataset.w === S.w)));
+  const vi = VARIANTS.findIndex(x => x[0] === S.v);
+  $('vlabel').innerHTML = `<b>${S.v.toUpperCase()}</b> ${VARIANTS[vi][1]} <span aria-hidden="true">· ${vi + 1}/${VARIANTS.length}</span>`;
+  $('count').innerHTML = rs.length ? `<span>${rs.length} result${rs.length > 1 ? 's' : ''} for ${ar(w)}</span><span class="legend"><span class="seg-pre">■ prefix</span><span>■ stem</span><span class="seg-suf">■ suffix</span></span>${S.v === 'a' && S.sort ? '<button class="link" data-act="unsort">Default order</button>' : ''}` : '';
+  $('results').innerHTML = !rs.length ? emptyHTML(w) : { a: variantA, b: variantB, c: variantC }[S.v](rs);
+  renderState(w, d);
+  try { if (!S.typed) history.replaceState(null, '', `#${S.v}-${S.w}`); } catch (e) {}
+}
+function renderState(w, d) {
+  const vi = VARIANTS.find(x => x[0] === S.v);
+  const fold = r => {
+    const wa = r.prc2_readings.filter(x => x.startsWith('wa_')).map(x => ({ wa_conj: 'and', wa_sub: 'while', wa_part: 'particle' }[x]));
+    return `<li>${ar(r.form)} from ${ar(r.lemma)}: ${r.raw_count} raw analys${r.raw_count > 1 ? 'es' : 'is'}${r.case_forms.length > 1 ? `, ${r.case_forms.length} case-ending forms folded` : ''}${wa.length > 1 ? `, و read as ${wa.join('/')} folded` : ''}</li>`;
+  };
+  $('state').innerHTML = `<h2>State</h2>
+    <div>variant: ${S.v.toUpperCase()} (${vi[1]})</div>
+    <div>word: ${ar(w)} ${d ? `→ ${d.raw_count} raw CAMeL analyses → ${d.readings.length} readings` : '→ not in prototype data'}</div>
+    ${d && d.readings.length ? `<ul>${d.readings.map(fold).join('')}</ul>` : ''}
+    <div>order: ${S.sort ? `sorted by ${S.sort.key}, ${S.sort.dir}` : 'default (most frequent lemma first)'}</div>
+    <div>glosses: hand-cleaned for this prototype (issue #4 must generate them)</div>
+    <div>measure: derived from the lemma; weak/hamza roots shown as unavailable</div>
+    <label><input type="checkbox" id="rawtoggle" ${S.raw ? 'checked' : ''}> show raw CAMeL glosses</label>`;
+}
+let toastT;
+function toast(msg) { const t = $('toast'); t.textContent = msg; t.hidden = false; clearTimeout(toastT); toastT = setTimeout(() => t.hidden = true, 2600); }
+function cycle(step) { const i = VARIANTS.findIndex(x => x[0] === S.v); S.v = VARIANTS[(i + step + VARIANTS.length) % VARIANTS.length][0]; render(); }
+
+$('examples').insertAdjacentHTML('beforeend', WORDS.map(([k, w]) => `<button type="button" data-w="${k}" lang="ar">${w}</button>`).join(''));
+$('examples').addEventListener('click', e => { const b = e.target.closest('button'); if (b) { S.w = b.dataset.w; S.typed = null; S.sort = null; render(); } });
+$('search').addEventListener('submit', e => {
+  e.preventDefault(); const v = $('q').value.trim(); const hit = WORDS.find(x => x[1] === v);
+  S.sort = null; if (hit) { S.w = hit[0]; S.typed = null; } else S.typed = v; render();
+});
+$('prev').onclick = () => cycle(-1); $('next').onclick = () => cycle(1);
+$('stbtn').onclick = () => { const s = $('state'); s.hidden = !s.hidden; $('stbtn').setAttribute('aria-expanded', String(!s.hidden)); };
+$('state').addEventListener('change', e => { if (e.target.id === 'rawtoggle') { S.raw = e.target.checked; render(); } });
+document.addEventListener('keydown', e => {
+  if (e.target.closest('input, textarea, [contenteditable]')) return;
+  if (e.key === 'ArrowLeft') cycle(-1); if (e.key === 'ArrowRight') cycle(1);
+});
+document.addEventListener('click', e => {
+  const s = e.target.closest('[data-sort]');
+  if (s) { const k = s.dataset.sort; S.sort = S.sort?.key !== k ? { key: k, dir: 'ascending' } : S.sort.dir === 'ascending' ? { key: k, dir: 'descending' } : null; render(); return; }
+  const a = e.target.closest('[data-act]'); if (!a) return;
+  if (a.dataset.act === 'unsort') { S.sort = null; render(); }
+  if (a.dataset.act === 'root') toast(`Would open the root view for ${rootText(a.dataset.root)} (${a.dataset.n} words). Round 2.`);
+  if (a.dataset.act === 'rel') toast(`Would show all ${+a.dataset.n + 1} forms of ${a.dataset.lemma}. Round 2.`);
+});
+const h = (location.hash || '').slice(1).split('-');
+if (VARIANTS.some(x => x[0] === h[0])) S.v = h[0];
+if (WORDS.some(x => x[0] === h[1])) S.w = h[1];
+window.addEventListener('hashchange', () => { const p = location.hash.slice(1).split('-'); if (VARIANTS.some(x => x[0] === p[0])) S.v = p[0]; if (WORDS.some(x => x[0] === p[1])) { S.w = p[1]; S.typed = null; } render(); });
+render();
+</script>
