@@ -6,7 +6,7 @@ import re
 from typing import NamedTuple
 from urllib.parse import urlencode
 
-from htpy import Node, a, blockquote, body, br, button, code, dd, div, dl, dt, form, fragment, h1, h2, head, header, html, i, input, label, li, link, main, meta, nav, p, script, section, span, template, title, ul
+from htpy import Node, a, blockquote, body, br, button, code, dd, details, div, dl, dt, form, fragment, h1, h2, head, header, html, i, input, label, li, link, main, meta, nav, ol, p, script, section, span, summary, template, title, ul
 
 from .dictionary import Reading
 
@@ -127,14 +127,31 @@ def word_page(query: str, state: State, filter_diacritics: bool = True) -> Node:
             input(id="q", name="q", value=query, dir="rtl", lang="ar", autocomplete="off", spellcheck="false"),
             a(href="/", class_="clear", hidden=not query)["Clear"],
             button(type="submit")["Look up"],
-            label(class_="option")[input(type="checkbox", name="diacritics", value="off", checked=not filter_diacritics), " Ignore diacritics"],
+            label(class_="option")[input(type="checkbox", name="diacritics", value="off", checked=not filter_diacritics, data_remember=True), " Ignore diacritics"],
         ],
+        _history(),
         p(id="status", class_="status", role="status")[state.status],
         div(id="results")[state.body],
         # Shown by lookup.js when a live lookup fails, including when the server can't be reached.
         template(id="failure", data_status=FAILURE.status)[FAILURE.body],
         script(src="/static/lookup.js", type="module"),
+        script(src="/static/history.js", type="module"),
     ])
+
+
+def _history() -> Node:
+    """Recent lookups. history.js fills the list from this browser's storage and shows the panel,
+    so without JavaScript, where there is no history, it stays hidden. It sits outside the search
+    form, so nothing in it is ever sent with a lookup."""
+    return details(id="history", class_="history", hidden=True)[
+        summary["Recent lookups"],
+        ol,
+        p(class_="none")["Words you look up appear here."],
+        p(class_="tools")[
+            label["Keep ", input(type="number", name="history-size", min="0", value="50", data_remember=True), " lookups"],
+            button(type="button")["Clear history"],
+        ],
+    ]
 
 
 def live_results(state: State) -> Node:

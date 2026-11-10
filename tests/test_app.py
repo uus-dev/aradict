@@ -161,7 +161,7 @@ def test_diacritic_filter_is_on_by_default_and_can_be_switched_off(client):
 
 def test_form_has_a_labelled_diacritics_switch(client):
     page = client.get("/").text
-    assert re.search(r'<label[^>]*>\s*<input type="checkbox" name="diacritics" value="off"\s*>\s*Ignore diacritics', page)
+    assert re.search(r'<label[^>]*>\s*<input type="checkbox" name="diacritics" value="off"[^>]*>\s*Ignore diacritics', page)
 
 
 def test_latin_letters_get_a_hint_towards_english(client):
