@@ -134,9 +134,15 @@ ol.vb { list-style: none; margin: 0; padding: 0; display: grid; gap: 12px }
 .forms .gr { font-size: 13px; color: var(--muted) }
 .forms .raw { grid-column: 2; font: 11px/1.4 var(--f-mono); color: var(--muted) }
 .vc-label { font-size: 12px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); margin: 0 0 4px }
+.forms .parts-btn { grid-column: 2; justify-self: start; font-size: 13px; margin-top: 2px }
+.forms .interlinear { grid-column: 2; justify-content: flex-end; margin-top: 8px }
+.head dl .kv { display: contents }
+.forms .chip .ar { font-size: 20px; grid-row: auto; text-align: center }
 @media (max-width: 640px) {
   .entry { grid-template-columns: 1fr; padding: 14px 14px }
-  .head dl { grid-template-columns: auto 1fr }
+  .head { display: grid; grid-template-columns: auto 1fr; align-items: baseline; column-gap: 12px }
+  .head .pos { margin: 0 } .head .lg, .head dl { grid-column: 1 / -1 }
+  .head dl { display: flex; flex-wrap: wrap; gap: 2px 16px } .head dl .kv { display: flex; gap: 6px }
 }
 
 /* shared states */
@@ -147,7 +153,7 @@ ol.vb { list-style: none; margin: 0; padding: 0; display: grid; gap: 12px }
 </style>
 
 <div class="proto-band"><div class="wrap">
-  <span><b>PROTOTYPE</b> issue #14 · round 1: Word results layout</span>
+  <span><b>PROTOTYPE</b> issue #14 · round 1b: Word results layout, C chosen</span>
   <span>Real CAMeL calima-msa-r13 output · glosses hand-cleaned</span>
 </div></div>
 
@@ -181,7 +187,7 @@ ol.vb { list-style: none; margin: 0; padding: 0; display: grid; gap: 12px }
 </script>
 <script>
 const WORDS = [['ktb', 'كتب'], ['wbktbhm', 'وبكتابهم'], ['syktbwn', 'سيكتبون'], ['istkhdm', 'استخدم'], ['mdrsty', 'مدرستي'], ['ila', 'الى'], ['podcast', 'بودكاست']];
-const VARIANTS = [['a', 'Table'], ['b', 'Reading cards'], ['c', 'Grouped by lemma']];
+const VARIANTS = [['a', 'Table'], ['b', 'Reading cards'], ['c', 'Lemma + parts']];
 const ROMAN = ['I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX', 'X'];
 const S = { v: 'a', w: 'ktb', typed: null, raw: false, sort: null };
 const $ = id => document.getElementById(id);
@@ -200,6 +206,8 @@ const bandLong = p => p == null ? 'frequency unknown' : `${band(p)} · top ${Mat
 const measureText = r => r.pos !== 'verb' ? null : (r.measure ? `Measure ${r.measure}` : 'measure unavailable');
 const rawHTML = (r, cls = 'raw') => S.raw ? `<span class="${cls}">CAMeL: ${esc(r.gloss_raw)}</span>` : '';
 const chipText = s => s.role === 'pre' ? s.text + 'ـ' : s.role === 'suf' ? 'ـ' + s.text : s.text;
+const chipsHTML = r => segs(r).map(s => `<span class="chip ${s.role}"><span class="ar" lang="ar">${esc(chipText(s))}</span><span class="lbl">${esc(s.role === 'stem' ? senses(r.stemgloss)[0] : s.label)}</span></span>`).join('');
+let partsId = 0;
 const rootBtn = r => r.root ? `<button class="link" data-act="root" data-root="${esc(r.root)}" data-n="${r.root_family_count}" aria-label="Show all words from root ${esc(rootText(r.root))}">${ar(rootText(r.root))}</button>` : '<span class="muted">unavailable</span>';
 const relBtn = (r, label) => r.related_count > 0 ? `<button class="link" data-act="rel" data-lemma="${esc(r.lemma)}" data-n="${r.related_count}" aria-label="Show other forms of ${esc(r.lemma)}">${label}</button>` : '';
 
@@ -229,7 +237,7 @@ function variantA(rs) {
 // ---- Variant B: one card per reading, word broken into interlinear segment chips ----
 function variantB(rs) {
   return `<ol class="vb">${rs.map(r => {
-    const chips = segs(r).map(s => `<span class="chip ${s.role}"><span class="ar" lang="ar">${esc(chipText(s))}</span><span class="lbl">${esc(s.role === 'stem' ? senses(r.stemgloss)[0] : s.label)}</span></span>`).join('');
+    const chips = chipsHTML(r);
     const pills = [...r.grammar, measureText(r)].filter(Boolean).map(g => `<span class="pill">${esc(g)}</span>`).join('');
     return `<li>
       <div class="top"><div class="gloss">${esc(r.gloss)}</div><div class="form">${formHTML(r)}</div>${rawHTML(r)}</div>
@@ -252,15 +260,17 @@ function variantC(rs) {
       <div class="head">
         <h3>${ar(r0.lemma)}</h3>
         <p class="pos">${esc(pos)}</p>
-        <p class="lg">${esc(lemmaGloss(g))}</p>
-        <dl><dt>Root</dt><dd>${rootBtn(r0)}${r0.root ? ` <span class="muted">· ${r0.root_family_count}</span>` : ''}</dd>
-            <dt>Use</dt><dd>${esc(bandLong(r0.freq_top_pct))}</dd>
-            ${r0.related_count ? `<dt>Forms</dt><dd>${relBtn(r0, `all ${r0.related_count + 1} forms`)}</dd>` : ''}</dl>
+        ${g.length > 1 ? `<p class="lg">${esc(lemmaGloss(g))}</p>` : ''}
+        <dl><div class="kv"><dt>Root</dt><dd>${rootBtn(r0)}${r0.root ? ` <span class="muted">· ${r0.root_family_count}</span>` : ''}</dd></div>
+            <div class="kv"><dt>Use</dt><dd>${esc(bandLong(r0.freq_top_pct))}</dd></div>
+            ${r0.related_count ? `<div class="kv"><dt>Forms</dt><dd>${relBtn(r0, `all ${r0.related_count + 1} forms`)}</dd></div>` : ''}</dl>
       </div>
       <div><p class="vc-label">${g.length === 1 ? '1 reading of your word' : `${g.length} readings of your word`}</p><ul class="forms">${g.map(r => {
         const gr = r.grammar.slice(1).join(', ');
         const att = attached(r);
-        return `<li>${formHTML(r)}<span class="gl">${esc(r.gloss)}</span><span class="gr">${esc([gr, att.length ? 'attached: ' + att.join(' + ') : ''].filter(Boolean).join(' · ') || r.grammar[0])}</span>${rawHTML(r)}</li>`;
+        const id = `parts-${++partsId}`;
+        const parts = segs(r).length > 1 ? `<button class="link parts-btn" data-act="parts" aria-expanded="false" aria-controls="${id}">Word parts</button><div class="interlinear" id="${id}" aria-label="Word parts, right to left" hidden>${chipsHTML(r)}</div>` : '';
+        return `<li>${formHTML(r)}<span class="gl">${esc(r.gloss)}</span><span class="gr">${esc([gr, att.length ? 'attached: ' + att.join(' + ') : ''].filter(Boolean).join(' · ') || r.grammar[0])}</span>${rawHTML(r)}${parts}</li>`;
       }).join('')}</ul></div></section>`;
   }).join('')}</div>`;
 }
@@ -290,6 +300,7 @@ function renderState(w, d) {
     return `<li>${ar(r.form)} from ${ar(r.lemma)}: ${r.raw_count} raw analys${r.raw_count > 1 ? 'es' : 'is'}${r.case_forms.length > 1 ? `, ${r.case_forms.length} case-ending forms folded` : ''}${wa.length > 1 ? `, و read as ${wa.join('/')} folded` : ''}</li>`;
   };
   $('state').innerHTML = `<h2>State</h2>
+    <div>verdict 2026-11-10: C + word parts on tap; A's table moves to the root view</div>
     <div>variant: ${S.v.toUpperCase()} (${vi[1]})</div>
     <div>word: ${ar(w)} ${d ? `→ ${d.raw_count} raw CAMeL analyses → ${d.readings.length} readings` : '→ not in prototype data'}</div>
     ${d && d.readings.length ? `<ul>${d.readings.map(fold).join('')}</ul>` : ''}
@@ -320,6 +331,7 @@ document.addEventListener('click', e => {
   if (s) { const k = s.dataset.sort; S.sort = S.sort?.key !== k ? { key: k, dir: 'ascending' } : S.sort.dir === 'ascending' ? { key: k, dir: 'descending' } : null; render(); return; }
   const a = e.target.closest('[data-act]'); if (!a) return;
   if (a.dataset.act === 'unsort') { S.sort = null; render(); }
+  if (a.dataset.act === 'parts') { const p = $(a.getAttribute('aria-controls')); p.hidden = !p.hidden; a.setAttribute('aria-expanded', String(!p.hidden)); a.textContent = p.hidden ? 'Word parts' : 'Hide word parts'; }
   if (a.dataset.act === 'root') toast(`Would open the root view for ${rootText(a.dataset.root)} (${a.dataset.n} words). Round 2.`);
   if (a.dataset.act === 'rel') toast(`Would show all ${+a.dataset.n + 1} forms of ${a.dataset.lemma}. Round 2.`);
 });
