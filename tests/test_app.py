@@ -99,3 +99,13 @@ def test_other_pages_and_assets(client):
 
 def test_overlong_query_is_rejected(client):
     assert client.get("/", params={"q": "ك" * 101}).status_code == 422
+
+
+def test_server_does_not_log_looked_up_words(monkeypatch):
+    import aradict.__main__ as entry
+
+    options = {}
+    monkeypatch.setenv("ARADICT_DB_PATH", "unused")
+    monkeypatch.setattr(entry.uvicorn, "run", lambda *args, **kwargs: options.update(kwargs))
+    entry.main()
+    assert options["access_log"] is False
