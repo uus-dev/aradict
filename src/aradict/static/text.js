@@ -4,6 +4,7 @@
 // scroll the word above it.
 const form = document.getElementById("analyse");
 const status = document.getElementById("status");
+const failure = document.getElementById("failure");
 const narrow = matchMedia("(max-width: 640px)");
 let word; // the button that opened the details: a word written twice shares them
 
@@ -11,8 +12,9 @@ form.addEventListener("htmx:beforeRequest", () => {
   status.textContent = "Analysing…";
 });
 const fail = () => {
-  document.getElementById("analysis").replaceChildren(); // an older passage must not read as current
-  status.textContent = form.dataset.failure;
+  // An older passage must not read as current; Retry posts the kept text again.
+  document.getElementById("analysis").replaceChildren(failure.content.cloneNode(true));
+  status.textContent = failure.dataset.status;
 };
 form.addEventListener("htmx:responseError", fail);
 form.addEventListener("htmx:sendError", fail);

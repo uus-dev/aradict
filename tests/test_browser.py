@@ -549,6 +549,27 @@ def test_text_is_analysed_after_a_pause_and_markup_stays_text(base_url, browser)
     assert dialogs == []
 
 
+def test_a_failed_analysis_offers_retry_and_keeps_the_text(base_url, browser, monkeypatch):
+    class Broken:
+        def analyze_text(self, text):
+            raise RuntimeError("database gone")
+
+    page = browser.new_page()
+    page.goto(f"{base_url}/text")
+    box = page.get_by_role("textbox", name="Arabic text")
+    status = page.get_by_role("status")
+
+    monkeypatch.setattr("aradict.app.dictionary", Broken)
+    box.fill("كتب كتاب")
+    expect(status).to_have_text("Analysis failed. Your text is kept, so you can try again.")
+    expect(box).to_have_value("كتب كتاب")
+
+    monkeypatch.undo()
+    page.get_by_role("button", name="Retry").click()
+    expect(status).to_have_text("2 words")
+    expect(page.locator(".passage .tok")).to_have_count(2)
+
+
 def test_text_details_sit_under_the_word_on_a_wide_screen(base_url, browser):
     page = browser.new_page(viewport={"width": 1280, "height": 800})
     page.goto(f"{base_url}/text?q={quote('كتب كتاب')}")

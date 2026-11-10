@@ -404,7 +404,10 @@ def live_analysis(state: State) -> Node:
 
 MAX_QUERY = 100  # characters a Word lookup, and so any URL parameter, may carry
 MAX_TEXT = 2000
-TEXT_FAILURE = State("Analysis failed. Your text is kept, so you can try again.")
+TEXT_FAILURE = State(
+    "Analysis failed. Your text is kept, so you can try again.",
+    p(class_="retry")[button(type="submit", form="analyse")["Retry"]],
+)
 
 
 def _token(t: Token, ids: dict[str, str]) -> Node:
@@ -453,7 +456,7 @@ def text_page(text: str, state: State) -> Node:
         # Posted, so a passage stays out of the page address. Live analysis is the same POST, after a pause
         # in typing and at once on submit; a newer request aborts an older one.
         form(
-            id="analyse", class_="text-in", method="post", action="/text", data_failure=TEXT_FAILURE.status,
+            id="analyse", class_="text-in", method="post", action="/text",
             hx_post="/text", hx_trigger="input delay:500ms, submit", hx_target="#analysis", hx_sync="this:replace",
         )[
             label(for_="text")["Arabic text"],
@@ -467,6 +470,8 @@ def text_page(text: str, state: State) -> Node:
         _keyboard_panel("text"),
         p(id="status", class_="status", role="status")[state.status],
         div(id="analysis")[state.body],
+        # Shown by text.js when live analysis fails, including when the server can't be reached.
+        template(id="failure", data_status=TEXT_FAILURE.status)[TEXT_FAILURE.body],
         script(src="/static/text.js", type="module"),
         script(src="/static/keyboard.js", type="module"),
     ])

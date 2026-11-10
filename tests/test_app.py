@@ -397,6 +397,7 @@ def test_failed_analysis_keeps_the_text_and_never_logs_it(client, monkeypatch, c
     page = client.post("/text", data={"text": "كتب سرّي"})
     assert page.status_code == 500
     assert "Analysis failed" in page.text and ">كتب سرّي</textarea>" in page.text
+    assert 'type="submit" form="analyse">Retry</button>' in page.text  # resubmits the kept text
     assert "RuntimeError" in caplog.text and "سرّي" not in caplog.text
 
 
