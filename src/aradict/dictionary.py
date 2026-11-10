@@ -1,4 +1,4 @@
-"""The dictionary contract: Arabic lookup on the CAMeL calima-msa-r13 morphology database."""
+"""The dictionary contract: Arabic lookup and Arabizi on the CAMeL calima-msa-r13 morphology database."""
 
 from __future__ import annotations
 

@@ -129,6 +129,8 @@ def test_arabizi_vowels_are_marks_or_long_letters_as_the_database_confirms(real)
     # The reference leaves "i" in Latin and always writes "a" as ا.
     assert real.arabizi("kitab") == "كِتاب"
     assert real.arabizi("katab") == "كَتَب"
+    # The typed vowel filters like a vowel mark, as About promises: كِتاب "book", not كُتّاب "writers".
+    assert [r.lemma for r in real.lookup_ar(real.arabizi("kitab"))] == ["كِتاب"]
 
 
 def test_arabizi_digits_stand_for_letters_and_final_vowels_for_letters(real):

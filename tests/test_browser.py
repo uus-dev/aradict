@@ -343,3 +343,40 @@ def test_word_parts_are_marked_without_colour_and_open_without_javascript(base_u
     expect(chips.locator(".chip").nth(1)).to_contain_text("by/with")
     assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
     page.context.close()
+
+
+def test_arabizi_shows_the_arabic_it_looked_up_and_keeps_it_on_reload(base_url, browser, monkeypatch):
+    class Broken:
+        def arabizi(self, text):
+            raise RuntimeError("database gone")
+
+    page = browser.new_context(viewport={"width": 390, "height": 844}).new_page()
+    page.goto(base_url)
+    box = page.get_by_role("textbox", name="Arabic word")
+    status = page.get_by_role("status")
+    looked_up_as = page.locator("#arabizi")
+
+    box.press_sequentially("ktb")
+    expect(status).to_have_text("3 readings for كتب")
+    expect(looked_up_as).to_have_text("Looked up as كتب")
+    expect(page).to_have_url(lookup_url(base_url, "ktb"))
+    assert looked_up_as.locator(".ar").get_attribute("dir") == "rtl"
+    assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
+
+    page.reload()  # the pushed URL reproduces the lookup, chip included
+    expect(box).to_have_value("ktb")
+    expect(looked_up_as).to_have_text("Looked up as كتب")
+    expect(page.locator(".reading")).to_have_count(3)
+
+    box.fill("كاتب")  # Arabic script needs no chip
+    expect(status).to_contain_text("كاتب")
+    expect(looked_up_as).to_be_hidden()
+
+    page.go_back()
+    expect(looked_up_as).to_have_text("Looked up as كتب")
+
+    monkeypatch.setattr("aradict.app.dictionary", Broken)
+    box.fill("kitab")
+    expect(status).to_contain_text("Lookup failed")
+    expect(looked_up_as).to_be_hidden()  # a failed lookup leaves no stale Arabic beside the input
+    page.context.close()

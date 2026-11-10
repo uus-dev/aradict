@@ -15,6 +15,7 @@ form.addEventListener("htmx:beforeRequest", () => {
 const fail = () => {
   results.replaceChildren(failure.content.cloneNode(true));
   status.textContent = failure.dataset.status;
+  document.getElementById("arabizi").hidden = true; // found each time: every live lookup replaces this element
 };
 form.addEventListener("htmx:responseError", fail); // the server answered with an error
 form.addEventListener("htmx:sendError", fail); // the server couldn't be reached
