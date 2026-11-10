@@ -8,6 +8,9 @@ import unicodedata
 from dataclasses import dataclass
 from pathlib import Path
 
+from . import readable
+from .readable import Segment
+
 LOOK_ALIKES = str.maketrans({"ی": "ي", "ک": "ك", "ـ": None})  # Persian/Urdu letters; tatweel
 MARK = re.compile("[\u064b-\u065f\u0670]")  # tanween, short vowels, shadda, sukun, dagger alif
 # The database leaves the fatha before a long ا unwritten (كِتاب): a letter, maybe a shadda, then ا.
@@ -48,7 +51,10 @@ class Reading:
     mood ending or in how a proclitic is read."""
 
     form: str
-    gloss: str
+    gloss: str  # the whole word in English, e.g. "and by/with their book"
+    tags: tuple[str, ...]  # part of speech, voice, agreement, e.g. ("verb", "active", "3rd person masculine singular")
+    grammar: str  # the rest in plain English, e.g. "perfect (past)"; empty when the spelling fixes nothing more
+    segments: tuple[Segment, ...]  # prefixes, the stem, suffixes
     pos: str
     lemma: str
     root: str | None
@@ -65,11 +71,8 @@ def _reading_key(analysis: dict) -> tuple:
 
 
 def _representative(analyses: list[dict]) -> dict:
-    """Prefer the analysis written without a case ending and with وَ read as "and"."""
-    return next(
-        (a for a in analyses if a["cas"] in ("u", "na") and a["prc2"] in ("0", "wa_conj")),
-        analyses[0],
-    )
+    """Prefer وَ read as "and", then the analysis written without a case ending."""
+    return min(analyses, key=lambda a: (a["prc2"] not in ("0", "wa_conj"), a["cas"] not in ("u", "na")))
 
 
 def _letters(word: str) -> list[tuple[str, set[str]]]:
@@ -165,7 +168,10 @@ class Dictionary:
             logprob = float(a.get("lex_logprob", -99))
             readings.append(Reading(
                 form=a["diac"],
-                gloss=a["gloss"].replace("_", " "),  # ponytail: raw CAMeL gloss; readable wording is #4
+                gloss=readable.gloss(a),
+                tags=readable.tags(a),
+                grammar=readable.grammar(analyses),
+                segments=readable.segments(a),
                 pos=a["pos"],
                 lemma=a["lex"],
                 root=a.get("root") or None,
