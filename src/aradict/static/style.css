@@ -65,3 +65,9 @@ a { color: var(--accent) }
 @media (max-width: 640px) {
   .entry { grid-template-columns: 1fr; padding: 14px }
 }
+
+/* Autocomplete suggestions, placed under the field by autocomplete.js */
+.suggestions { position: absolute; z-index: 2; margin: 0; padding: 4px 0; list-style: none; max-height: min(20rem, 50vh); overflow-y: auto; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; box-shadow: 0 6px 16px rgb(0 0 0 / .15) }
+.suggestions [role="option"] { padding: 2px 14px; font: 1.45rem/1.6 var(--f-ar); cursor: pointer }
+.suggestions [role="option"]:hover { background: var(--bg) }
+.suggestions [aria-selected="true"], .suggestions [aria-selected="true"]:hover { background: var(--accent); color: var(--surface) }

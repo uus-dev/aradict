@@ -175,6 +175,15 @@ def test_one_word_has_no_multi_word_notice(client):
     assert "Only the first word" not in client.get("/", params={"q": "كتب"}).text
 
 
+def test_suggestions_come_as_a_list_of_vocalized_forms(client):
+    response = client.get("/suggest", params={"q": "كتا"})
+    assert response.status_code == 200
+    assert response.json()[:2] == ["كِتاب", "كُتّاب"]
+    assert client.get("/suggest", params={"q": "كُتّا"}).json() == ["كُتّاب"]
+    assert "كِتاب" in client.get("/suggest", params={"q": "كُتّا", "diacritics": "off"}).json()  # follows the switch
+    assert client.get("/suggest", params={"q": ""}).json() == []
+
+
 def test_server_does_not_log_looked_up_words(monkeypatch):
     import aradict.__main__ as entry
 

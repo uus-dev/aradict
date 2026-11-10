@@ -134,6 +134,7 @@ def word_page(query: str, state: State, filter_diacritics: bool = True) -> Node:
         # Shown by lookup.js when a live lookup fails, including when the server can't be reached.
         template(id="failure", data_status=FAILURE.status)[FAILURE.body],
         script(src="/static/lookup.js", type="module"),
+        script(src="/static/autocomplete.js", type="module"),
     ])
 
 

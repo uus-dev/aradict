@@ -113,3 +113,42 @@ def test_fixture_database_matches_real_for_its_lemmas(real, fixture_db):
 def test_missing_database_fails_loudly(tmp_path):
     with pytest.raises(RuntimeError, match="No morphology database"):
         Dictionary(tmp_path / "missing.db")
+
+
+def test_suggestions_complete_a_stem_most_frequent_first(real):
+    # كِتاب "book" (-3.5), كُتّاب "writers" from two lemmas (-3.9, shown once), كَتائِب "battalions"
+    # (-4.2), and كِتابَة "writing" (-4.4), whose stem is كِتاب with the feminine ة attached.
+    suggestions = real.suggest("كتا")
+    assert suggestions[:4] == ["كِتاب", "كُتّاب", "كَتائِب", "كِتابَة"]
+    assert len(suggestions) == len(set(suggestions))
+
+
+def test_suggestions_keep_an_attached_prefix(real):
+    suggestions = real.suggest("وكتا")
+    assert suggestions[:2] == ["وَكِتاب", "وَكُتّاب"]
+    assert all(s.startswith("وَ") for s in suggestions)
+    # Completions of the whole typed word come before those that read part of it as a prefix:
+    # الكت completes إِلِكْترُونِيّ "electronic" as well as الكِتاب "the book".
+    suggestions = real.suggest("الكت")
+    assert suggestions.index("إِلِكْترُونِيّ") < suggestions.index("الكِتاب")
+
+
+def test_typed_diacritics_and_hamza_filter_suggestions(real):
+    assert real.suggest("كُتّا") == ["كُتّاب"]  # the damma and shadda leave out كِتاب
+    assert "كِتاب" in real.suggest("كُتّا", filter_diacritics=False)
+    assert real.suggest("وَكُتّا") == ["وَكُتّاب"]  # marks on the prefix count too
+    assert real.suggest("وِكتا") == []
+    assert "إِلَى" in real.suggest("ال")  # a bare ا completes any hamza form
+    assert {s[0] for s in real.suggest("أك")} == {"أ"}  # a typed hamza keeps only its own
+
+
+def test_looking_up_a_suggestion_shows_that_reading(real):
+    for typed in ("كتا", "وكتا", "مدر", "يكت", "الكت", "ك"):
+        for suggestion in real.suggest(typed):
+            assert suggestion in [r.form for r in real.lookup_ar(suggestion)], (typed, suggestion)
+
+
+def test_suggestions_are_capped_and_need_arabic_letters(real):
+    assert len(real.suggest("ك")) == 25
+    for text in ("", "  ", "قخغ", "hello", "123"):
+        assert real.suggest(text) == [], text

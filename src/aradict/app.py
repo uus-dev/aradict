@@ -67,6 +67,12 @@ def word(
     return HTMLResponse(str(page), status_code, headers)
 
 
+@app.get("/suggest")
+def suggest(q: str = "", diacritics: Literal["on", "off"] = "on") -> list[str]:
+    """Autocomplete for the Word field: vocalized forms that complete the typed word."""
+    return dictionary().suggest(q, diacritics == "on")
+
+
 @app.get("/text", response_class=HTMLResponse)
 def text() -> str:
     return str(views.text_page())
