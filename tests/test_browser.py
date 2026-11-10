@@ -194,3 +194,28 @@ def test_the_diacritics_switch_looks_up_again_and_lives_in_the_url(base_url, bro
 
     page.get_by_role("textbox", name="Arabic word").fill("كتب كتاب")  # notices update live too
     expect(page.get_by_text("Only the first word")).to_be_visible()
+
+
+def test_word_parts_are_marked_without_colour_and_open_without_javascript(base_url, browser):
+    page = browser.new_context(java_script_enabled=False, viewport={"width": 390, "height": 844}).new_page()
+    page.goto(f"{base_url}/?q={quote('وبكتابهم')}")
+    reading = page.locator(".reading").first
+
+    def decoration(selector: str) -> str:
+        return reading.locator(selector).first.evaluate(
+            "e => getComputedStyle(e).textDecorationLine + ' ' + getComputedStyle(e).textDecorationStyle"
+        )
+
+    # Prefix, stem and suffix differ in line style as well as colour.
+    assert decoration(".form .prefix") == "underline dotted"
+    assert decoration(".form .suffix") == "underline solid"
+    assert decoration(".form .stem").startswith("none")
+
+    chips = reading.locator(".chips")
+    expect(chips).to_be_hidden()
+    reading.get_by_text("Word parts").click()
+    expect(chips).to_be_visible()
+    expect(chips.locator(".chip")).to_have_count(4)
+    expect(chips.locator(".chip").nth(1)).to_contain_text("by/with")
+    assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
+    page.context.close()

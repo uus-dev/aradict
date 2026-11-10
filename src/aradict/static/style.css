@@ -6,11 +6,13 @@
 :root {
   color-scheme: light dark;
   --bg: #f5f6f8; --surface: #ffffff; --fg: #18202b; --muted: #556070; --line: #dce0e6; --accent: #1d5bb8;
+  --pre: #0b7566; --suf: #9a3a8a; --chip-pre: #e3f3f0; --chip-suf: #f5e6f2; --chip-stem: #e9eef6;
   --f-ui: system-ui, -apple-system, "Segoe UI", sans-serif;
   --f-ar: "Scheherazade New", "Geeza Pro", serif;
 }
 @media (prefers-color-scheme: dark) {
-  :root { --bg: #10141a; --surface: #171e27; --fg: #e5e9ef; --muted: #9ba6b5; --line: #2a3441; --accent: #82b1ff }
+  :root { --bg: #10141a; --surface: #171e27; --fg: #e5e9ef; --muted: #9ba6b5; --line: #2a3441; --accent: #82b1ff;
+    --pre: #4fcfb9; --suf: #e58ed6; --chip-pre: #143a35; --chip-suf: #3d1f39; --chip-stem: #1f2a38 }
 }
 
 * { box-sizing: border-box }
@@ -60,7 +62,24 @@ a { color: var(--accent) }
 .readings { list-style: none; margin: 0; padding: 0 }
 .reading { display: grid; grid-template-columns: auto 1fr; gap: 16px; align-items: baseline; padding-block: 6px }
 .reading + .reading { border-block-start: 1px dashed var(--line) }
-.reading .gloss { font-weight: 500; min-width: 0; overflow-wrap: anywhere }
+.reading p { margin: 0 }
+.sense { min-width: 0; overflow-wrap: anywhere }
+.gloss { font-weight: 500 }
+.grammar { font-size: .85rem; color: var(--muted) }
+.tag { display: inline-block; border: 1px solid var(--line); border-radius: 999px; padding-inline: 8px; margin-inline-end: 4px }
+
+/* Word parts: colour, and a line style that does not rely on colour (prefix dotted, suffix solid). */
+.prefix, .suffix { text-decoration-line: underline; text-underline-offset: .35em; text-decoration-thickness: 1.5px; text-decoration-skip-ink: none }
+.prefix { color: var(--pre); text-decoration-style: dotted }
+.suffix { color: var(--suf); text-decoration-style: solid }
+.legend { font-size: .85rem; color: var(--muted); margin-block: 0 8px }
+.parts summary { width: fit-content; margin-block-start: 2px; color: var(--accent); font-size: .9rem; cursor: pointer }
+.chips { list-style: none; display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0 0; padding: 0 }
+.chip { display: grid; justify-items: center; min-width: 3rem; padding: 0 10px 6px; border: 1px solid transparent; border-radius: 8px; background: var(--chip-stem) }
+.chip.prefix { background: var(--chip-pre); border: 1.5px dotted var(--pre); text-decoration: none }
+.chip.suffix { background: var(--chip-suf); border: 1.5px solid var(--suf); text-decoration: none }
+.chip .label { color: var(--muted); font-size: .8rem; text-align: center; max-width: 11rem }
+.note { font-size: .85rem; color: var(--muted); margin-block-start: 6px }
 
 @media (max-width: 640px) {
   .entry { grid-template-columns: 1fr; padding: 14px }

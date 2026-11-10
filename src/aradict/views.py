@@ -6,9 +6,9 @@ import re
 from typing import NamedTuple
 from urllib.parse import urlencode
 
-from htpy import Node, a, blockquote, body, br, button, code, dd, div, dl, dt, form, fragment, h1, h2, head, header, html, i, input, label, li, link, main, meta, nav, p, script, section, span, template, title, ul
+from htpy import Node, a, blockquote, body, br, button, code, dd, details, div, dl, dt, form, fragment, h1, h2, head, header, html, i, input, label, li, link, main, meta, nav, ol, p, script, section, span, summary, template, title, ul
 
-from .dictionary import Reading
+from .dictionary import Reading, Segment
 
 PAGES = [("word", "/", "Word"), ("text", "/text", "Text"), ("about", "/about", "About")]
 
@@ -48,23 +48,60 @@ def _root(root: str | None) -> Node:
     return ar(" ".join("◌" if letter == "#" else letter for letter in root.split("."))) if root else span(class_="muted")["unavailable"]
 
 
+def _chip_text(s: Segment) -> str:
+    """A part on its own, with a tatweel where it joins the rest of the word."""
+    return {"prefix": f"{s.spelling}ـ", "suffix": f"ـ{s.spelling}"}.get(s.role, s.spelling)
+
+
+def _parts(r: Reading) -> Node:
+    """The reading's parts as labelled chips, behind a native disclosure that needs no script."""
+    shared = [(a, b) for a, b in zip(r.segments, r.segments[1:]) if a.spelling != a.text and b.spelling != b.text]
+    return details(class_="parts")[
+        summary["Word parts"],
+        ol(class_="chips", dir="rtl")[(
+            li(class_=f"chip {s.role}")[
+                span(class_="ar", lang="ar")[_chip_text(s)],
+                span(class_="label")[span(class_="sr-only")[f"{s.role}: "], s.label],
+            ]
+            for s in r.segments
+        )],
+        # Two parts that share one written letter (a shadda or madda) each show their own copy.
+        (p(class_="note")[ar(_chip_text(a)), " + ", ar(_chip_text(b)), " are written ", ar(f"ـ{a.text}{b.text}")] for a, b in shared),
+    ]
+
+
+def _reading(r: Reading) -> Node:
+    return li(class_="reading")[
+        span(class_="ar form", lang="ar", dir="rtl")[(span(class_=s.role)[s.text] for s in r.segments)],
+        div(class_="sense")[
+            p(class_="gloss")[r.gloss],
+            # The part of speech heads the entry; voice, agreement and the rest go with each reading.
+            (r.tags[1:] or r.grammar) and p(class_="grammar")[(span(class_="tag")[t] for t in r.tags[1:]), r.grammar and f" {r.grammar}"],
+            len(r.segments) > 1 and _parts(r),
+        ],
+    ]
+
+
 def _entries(readings: list[Reading]) -> Node:
     """One entry per lemma and part of speech, in the order the readings arrive."""
     groups: dict[tuple[str, str], list[Reading]] = {}
     for reading in readings:
         groups.setdefault((reading.lemma, reading.pos), []).append(reading)
-    return div(class_="entries")[
-        (
-            section(class_="entry")[
-                div(class_="head")[
-                    h2[ar(lemma)],
-                    p(class_="pos")[pos.replace("_", " ")],
-                    dl[dt["Root"], dd[_root(group[0].root)]],
-                ],
-                ul(class_="readings")[(li(class_="reading")[ar(r.form), span(class_="gloss")[r.gloss]] for r in group)],
-            ]
-            for (lemma, pos), group in groups.items()
-        )
+    return [
+        p(class_="legend")["In each form: ", span(class_="prefix")["prefix"], " · stem · ", span(class_="suffix")["suffix"]],
+        div(class_="entries")[
+            (
+                section(class_="entry")[
+                    div(class_="head")[
+                        h2[ar(lemma)],
+                        p(class_="pos")[group[0].tags[0]],
+                        dl[dt["Root"], dd[_root(group[0].root)]],
+                    ],
+                    ul(class_="readings")[(_reading(r) for r in group)],
+                ]
+                for (lemma, pos), group in groups.items()
+            )
+        ],
     ]
 
 
