@@ -1,36 +1,10 @@
 """Browser journeys in Chromium against a real server on the fixture database."""
 
 import re
-import threading
-import time
 import unicodedata
 from urllib.parse import quote
 
-import pytest
-import uvicorn
-from playwright.sync_api import Error as PlaywrightError, expect, sync_playwright
-
-from aradict.app import app
-
-
-@pytest.fixture(scope="module")
-def base_url(fixture_env):
-    server = uvicorn.Server(uvicorn.Config(app, host="127.0.0.1", port=0, log_level="warning"))
-    thread = threading.Thread(target=server.run, daemon=True)
-    thread.start()
-    while not server.started:
-        time.sleep(0.05)
-    yield "http://127.0.0.1:%d" % server.servers[0].sockets[0].getsockname()[1]
-    server.should_exit = True
-    thread.join(5)
-
-
-@pytest.fixture(scope="module")
-def browser():
-    with sync_playwright() as playwright:
-        browser = playwright.chromium.launch()
-        yield browser
-        browser.close()
+from playwright.sync_api import Error as PlaywrightError, expect
 
 
 def lookup_url(base_url: str, query: str) -> re.Pattern:
