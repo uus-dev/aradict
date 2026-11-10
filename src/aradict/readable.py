@@ -247,11 +247,63 @@ def _composite(stemgloss: str) -> bool:
     return "_+_" in stemgloss or "[" in stemgloss
 
 
+# Common irregular English verbs. "lie" is left out: "lay" and "lied" are both right, by sense.
+IRREGULAR_PAST = dict(pair.split(":") for pair in """
+    abide:abode arise:arose awake:awoke bear:bore beat:beat become:became befall:befell beget:begot
+    begin:began behold:beheld bend:bent bet:bet bid:bid bind:bound bite:bit bleed:bled blow:blew
+    break:broke breed:bred bring:brought broadcast:broadcast build:built burst:burst buy:bought
+    cast:cast catch:caught choose:chose cling:clung come:came cost:cost creep:crept cut:cut
+    deal:dealt dig:dug do:did draw:drew drink:drank drive:drove dwell:dwelt eat:ate fall:fell
+    feed:fed feel:felt fight:fought find:found flee:fled fling:flung fly:flew forbid:forbade
+    forecast:forecast foresee:foresaw foretell:foretold forget:forgot forgive:forgave forsake:forsook
+    freeze:froze get:got give:gave go:went grind:ground grow:grew hang:hung have:had hear:heard
+    hide:hid hit:hit hold:held hurt:hurt keep:kept kneel:knelt know:knew lay:laid lead:led
+    leap:leapt leave:left lend:lent let:let light:lit lose:lost make:made mean:meant meet:met
+    mislead:misled mistake:mistook misunderstand:misunderstood outdo:outdid overcome:overcame
+    overhear:overheard override:overrode overrun:overran oversee:oversaw overtake:overtook
+    overthrow:overthrew partake:partook pay:paid put:put quit:quit read:read rebuild:rebuilt
+    redo:redid repay:repaid retell:retold rewrite:rewrote rid:rid ride:rode ring:rang rise:rose
+    run:ran say:said see:saw seek:sought sell:sold send:sent set:set shake:shook shed:shed
+    shine:shone shoot:shot shrink:shrank shut:shut sing:sang sink:sank sit:sat slay:slew sleep:slept
+    slide:slid sling:slung slit:slit smite:smote speak:spoke speed:sped spend:spent spin:spun
+    spit:spat split:split spread:spread spring:sprang stand:stood steal:stole stick:stuck sting:stung
+    stink:stank stride:strode strike:struck string:strung strive:strove swear:swore sweep:swept
+    swim:swam swing:swung take:took teach:taught tear:tore tell:told think:thought throw:threw
+    thrust:thrust tread:trod undergo:underwent understand:understood undertake:undertook undo:undid
+    uphold:upheld upset:upset wake:woke wear:wore weave:wove weep:wept win:won wind:wound
+    withdraw:withdrew withhold:withheld withstand:withstood wring:wrung write:wrote
+""".split())
+# Verbs of more than one syllable that double their last consonant (stress on the last syllable).
+DOUBLE_FINAL = set("""
+    abhor acquit admit allot annul commit compel confer control defer deter dispel emit equip excel
+    expel extol impel incur infer occur omit outwit patrol permit prefer propel rebel recur refer
+    regret remit repel submit transfer transmit
+""".split())
+
+
+def _past(verb: str) -> str:
+    """The English simple past: write → wrote, use → used, try → tried, stop → stopped, add → added."""
+    if verb in IRREGULAR_PAST:
+        return IRREGULAR_PAST[verb]
+    if verb.endswith("e"):
+        return verb + "d"
+    if verb.endswith("y") and verb[-2:-1] not in ("a", "e", "i", "o", "u"):
+        return verb[:-1] + "ied"
+    if verb.endswith("c"):
+        return verb + "ked"  # panic → panicked
+    if verb in DOUBLE_FINAL or re.fullmatch(r"[^aeiou]*[aeiou][^aeiouwxy]", verb):
+        return verb + verb[-1] + "ed"  # one syllable ending in one vowel and one consonant
+    return verb + "ed"
+
+
 def _verb(sense: str, a: dict, future: bool) -> str:
-    """Put the verb in its tense where English needs no lexicon: only "be" (the passive) is
-    conjugated, other verbs keep their base form ("he/it write")."""
-    if sense != "be" and not sense.startswith("be "):
-        return f"will {sense}" if future else sense
+    """Put the verb in its tense: "will" for the future, the English past for the perfect, and
+    "be" (the passive) by person. The imperfect keeps the base form ("they write")."""
+    first, _, rest = sense.partition(" ")
+    if first != "be":
+        if future:
+            return f"will {sense}"
+        return " ".join(filter(None, (_past(first), rest))) if a["asp"] == "p" else sense
     singular = a["per"] + a["num"] in ("1s", "3s")
     if a["asp"] == "p":
         be = "was" if singular else "were"
