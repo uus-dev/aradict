@@ -128,14 +128,19 @@ def _entry(lemma: str, glosses: dict[str, list[Reading]], heading: Element, link
     root opens the root's words, and a lemma with more than one form links to all of them."""
     first = next(iter(glosses.values()))[0]
     forms = links.forms.get((first.lemma, first.pos), 0) if links else 0
+    # A lemma's senses may be stored under different roots (إِجارَة "rent" and "protection"): each is offered.
+    roots = list(dict.fromkeys(r.root for group in glosses.values() for r in group if r.root)) or [None]
     return section(class_="entry")[
         div(class_="head")[
             heading[ar(lemma)],
             p(class_="pos")[_kind(first)],
             dl[
                 dt["Root"],
-                dd[a(href=_url(links.lookup | {"root": first.root}))[span(class_="sr-only")["Words from the root "], _root(first.root)]
-                   if links and first.root else _root(first.root)],
+                dd[([
+                    i > 0 and ", ",
+                    a(href=_url(links.lookup | {"root": root}))[span(class_="sr-only")["Words from the root "], _root(root)]
+                    if links and root else _root(root),
+                ] for i, root in enumerate(roots))],
                 dt["Use"], dd[_use(first.top_percent)],
                 forms > 1 and [dt["Forms"], dd[
                     a(href=_url(links.lookup | {"related": first.lemma, "pos": first.pos}))[f"all {forms} forms", span(class_="sr-only")[" of ", ar(lemma)]],

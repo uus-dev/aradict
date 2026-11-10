@@ -480,6 +480,17 @@ def test_entries_link_to_their_root_and_related_forms_keeping_the_lookup(client)
     assert "all 4 forms of كاتِب" in links(heading(katib))  # writer and clerk, and two plurals
 
 
+def test_an_entry_offers_each_of_its_roots(client):
+    # إِجارَة is stored under two roots, one per sense: "rent" (أ ج ر) and "protection" (ج و ر).
+    ijara, = entries(client.get("/", params={"q": "إجارة"}).text)
+    roots = {name: params for name, params in links(heading(ijara)).items() if name.startswith("Words from the root")}
+    assert roots == {
+        "Words from the root ◌ ج ر": {"q": ["إجارة"], "root": ["#.ج.ر"]},
+        "Words from the root ج ◌ ر": {"q": ["إجارة"], "root": ["ج.#.ر"]},
+    }
+    assert "No forms" not in client.get("/", params={"root": "ج.#.ر"}).text  # each opens its own root view
+
+
 def test_no_root_or_related_forms_means_no_link(client):
     adjective = entries(client.get("/", params={"q": "كاتب"}).text)[-1]
     assert '<p class="pos">adjective</p>' in adjective
