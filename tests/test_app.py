@@ -99,6 +99,8 @@ def test_about_answers_what_a_visitor_needs_before_trusting_a_result(client):
     privacy = about[about.index('id="privacy"'):]
     for fact in ("no accounts", "stay in this browser", "never sent", "not logged"):
         assert fact in privacy, fact
+    # What reaches the Text view through its address: a Word lookup's words, which a link caps.
+    assert "at most 100 characters" in privacy[:privacy.index("</section>")]
     # Support and native apps.
     assert 'href="https://github.com/uus-dev/aradict/issues"' in about
     assert "AraDict has no native apps" in about
@@ -371,6 +373,14 @@ def test_the_word_pages_text_view_link_analyses_all_its_words(client):
     page = client.get(html.unescape(re.search(r'href="(/text\?[^"]*)"', word_page).group(1))).text
     assert ">كتب كتاب</textarea>" in page
     assert passage_of(page).count('class="tok word"') == 2
+
+
+def test_a_text_view_link_carries_no_more_than_a_word_lookup(client, monkeypatch):
+    monkeypatch.setattr("aradict.app.dictionary", Unreachable)
+    passage = "كتب " * 25 + "كتاب"  # 104 characters: a passage, not a lookup's words
+    page = client.get("/text", params={"q": passage}).text
+    assert "A link brings at most 100 characters to the Text view" in page
+    assert passage not in page and 'class="passage"' not in page
 
 
 def test_live_analysis_returns_the_passage_and_its_status(client):

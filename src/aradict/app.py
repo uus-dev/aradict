@@ -56,7 +56,6 @@ app = FastAPI(title="AraDict", lifespan=lifespan)
 app.mount("/static", StaticFiles(directory=Path(__file__).parent / "static"), name="static")
 
 
-MAX_QUERY = 100  # characters in any URL parameter
 # Bytes a Text form may post. MAX_TEXT characters take at most 24,000 URL-encoded; the rest lets
 # a passage somewhat over the limit come back with its length, kept for the user to shorten.
 MAX_BODY = 64_000
@@ -84,8 +83,8 @@ def word(
     q, filter_diacritics, english = q.strip(), diacritics == "on", lang == "en"
     status_code = 200
     try:
-        if any(len(value) > MAX_QUERY for value in (q, root or "", related or "", pos, sort)):
-            state = views.State(f"That's too long. Type at most {MAX_QUERY} characters.")
+        if any(len(value) > views.MAX_QUERY for value in (q, root or "", related or "", pos, sort)):
+            state = views.State(f"That's too long. Type at most {views.MAX_QUERY} characters.")
         elif root is not None:
             state = views.root_view(root, dictionary().root_family(root), lookup, sort)
         elif related is not None:
@@ -149,12 +148,16 @@ async def _body(request: Request) -> bytes | None:
 @app.get("/suggest")
 def suggest(q: str = "", diacritics: Literal["on", "off"] = "on") -> list[str]:
     """Autocomplete for the Word field: vocalized forms that complete the typed word."""
-    return [] if len(q) > MAX_QUERY else dictionary().suggest(q, diacritics == "on")
+    return [] if len(q) > views.MAX_QUERY else dictionary().suggest(q, diacritics == "on")
 
 
 @app.get("/text", response_class=HTMLResponse)
 def text(q: str = "") -> HTMLResponse:
-    """The Text view. q carries the words the Word page hands over; a passage typed here is posted."""
+    """The Text view. q carries the words the Word page hands over, no more than a lookup holds,
+    so a passage never travels in an address; a passage typed here is posted."""
+    if len(q) > views.MAX_QUERY:
+        state = views.State(f"A link brings at most {views.MAX_QUERY} characters to the Text view. Paste longer text into the box.")
+        return _text_view("", state, None)
     return _analyse(q)
 
 

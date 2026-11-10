@@ -402,6 +402,7 @@ def live_analysis(state: State) -> Node:
     return fragment[p(id="status", hx_swap_oob="innerHTML")[state.status], state.body]
 
 
+MAX_QUERY = 100  # characters a Word lookup, and so any URL parameter, may carry
 MAX_TEXT = 2000
 TEXT_FAILURE = State("Analysis failed. Your text is kept, so you can try again.")
 
@@ -565,7 +566,11 @@ def about_page() -> Node:
                 li["AraDict has no accounts, no advertising and no user profiles."],
                 li["Your lookup history and settings stay in this browser, on your device. They are never sent to AraDict, and you can clear them at any time."],
                 li["Lookups run on AraDict's server, so each word you look up is sent there. The word is also part of the page address, so you can bookmark or share a result."],
-                li["Passages you paste into the Text view are sent to the server to be analysed, and are not logged. They never go into the page address."],
+                li[
+                    "Passages you type or paste into the Text view are sent to the server to be analysed, and are not logged. "
+                    "They never go into the page address. Only the link from a Word lookup to the Text view carries words in its "
+                    f"address: the words you looked up, at most {MAX_QUERY} characters."
+                ],
             ],
         ],
         section(id="support")[
