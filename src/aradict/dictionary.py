@@ -6,7 +6,7 @@ import itertools
 import re
 import unicodedata
 from bisect import bisect_left
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -87,6 +87,10 @@ TEMPLATES = [
 WEAK = "اأإءؤئوىي"
 ROOT = re.compile("[\u0621-\u064a#](\\.[\u0621-\u064a#])+")  # letters joined by dots; a few stored roots are junk ("لس", "NTWS")
 VOWELS = re.compile("[\u064b-\u0650\u0652\u0670]")  # everything but shadda
+# The database's categories for the short imperfect stem of hollow, doubled and weak-final verbs,
+# which stands before consonant endings and in the jussive: قُل (يَقُلْنَ, لَمْ يَقُلْ) beside قُول.
+# ponytail: relies on calima-msa-r13's category names; check them when the database changes.
+SHORT_STEM = re.compile("_C(_|$)|0hwnyn")
 
 
 @dataclass(frozen=True)
@@ -166,6 +170,18 @@ def _key(text: str) -> str:
     return MARK.sub("", text).translate(STEM_KEY)
 
 
+def alphabetical(text: str) -> tuple[str, str]:
+    """A sort key for Arabic in alphabetical order: by its letters (hamza forms as ا), then its vowels."""
+    return _key(text), text
+
+
+def family_order(r: Reading) -> tuple:
+    """Related forms and a root's words: verbs by measure (I to X, then the rare XI and XII and
+    the four-letter measures), then the other parts of speech; then by lemma, then by form."""
+    return (r.pos != "verb", list(MEASURES).index(r.measure) if r.measure else len(MEASURES),
+            alphabetical(r.lemma), alphabetical(r.form), r.pos, r.gloss)
+
+
 def _first_word(text: str) -> str:
     """The first word, with look-alike letters read as Arabic, or "" for blank text."""
     words = unicodedata.normalize("NFC", text.translate(LOOK_ALIKES)).split()
@@ -217,11 +233,20 @@ class Dictionary:
         # vowel (آخَذ, يُؤاخِذ); the lemma's imperfect stems tell.
         self._hamza_measures: dict[str, set[str]] = {}
         lemmas: dict[tuple[str, str], float] = {}
-        for entries in self._db.stem_hash.values():
+        # Each lemma's stems, for its related forms: (stem key, stem entry), each stem once.
+        self._lemma_stems: dict[tuple[str, str], dict[tuple, tuple[str, dict]]] = {}
+        for key, entries in self._db.stem_hash.items():
             for _, f in entries:
+                self._lemma_stems.setdefault((f["lex"], f["pos"]), {}).setdefault((f["diac"], f["gloss"], f["asp"], f.get("root")), (key, f))
                 lemmas[f["lex"], f["pos"]] = _logprob(f)
                 if f["pos"] == "verb" and f["lex"].startswith("آ") and f["asp"] == "i":
                     self._hamza_measures.setdefault(f["lex"], set()).add("III" if f["diac"].startswith("ؤا") else "IV")
+        # Each root's stems, for its family.
+        self._root_stems: dict[str, list[tuple[str, dict]]] = {}
+        for stems in self._lemma_stems.values():
+            for key, f in stems.values():
+                if ROOT.fullmatch(f.get("root", "")):
+                    self._root_stems.setdefault(f["root"], []).append((key, f))
         self._frequencies = sorted(logprob for logprob in lemmas.values() if logprob > -99)
 
     def measure(self, lemma: str, root: str) -> str | None:
@@ -305,6 +330,40 @@ class Dictionary:
         for r in readings:
             best[r.lemma, r.pos] = min(best.get((r.lemma, r.pos), rank[r]), rank[r])
         return sorted(readings, key=lambda r: (best[r.lemma, r.pos], r.lemma, r.pos, rank[r]))
+
+    def related(self, lemma: str, pos: str) -> list[Reading]:
+        """The forms of a lemma with this part of speech, such as a noun's singular and plural or
+        a verb's perfect and imperfect, one reading each, in family order."""
+        return self._family(self._lemma_stems.get((lemma, pos), {}).values())
+
+    def root_family(self, root: str) -> list[Reading]:
+        """Every form from a root, such as "ك.ت.ب" or, with an unresolved radical, "ق.#.ل", one
+        reading each, in family order."""
+        return self._family(self._root_stems.get(root, ()))
+
+    def _family(self, stems: Iterable[tuple[str, dict]]) -> list[Reading]:
+        readings = dict.fromkeys(r for key, f in stems if (r := self._citation(key, f)))  # each once, in order
+        return sorted(readings, key=family_order)
+
+    def _citation(self, key: str, f: dict) -> Reading | None:
+        """A stem entry's dictionary form, with no attached words: a verb's "he" form (كَتَبَ,
+        يَكْتُب), a noun or adjective alone or with the ending it needs (كِتابَة, كِتابات), an adverb
+        with its tanween (طَوْعِيّاً). None for a stem that only stands before some endings, such as
+        زَفَف, which زَفّ uses before -تُ, or the short imperfect stem of يَقُل beside يَقُول."""
+        if f["pos"] == "verb":
+            words, agreement = ["ي" + key] if f["asp"] == "i" else [key], ("2" if f["asp"] == "c" else "3", "m", "s")
+        else:
+            words, agreement = [key, key + "ة", key + "ات", key + "ا"], None
+
+        def keep(a: dict) -> bool:
+            return (
+                (a["lex"], a["pos"], a["stem"], a["stemgloss"]) == (f["lex"], f["pos"], f["diac"], f["gloss"])
+                and all(a[clitic] in ("0", "na") for clitic in ("prc3", "prc2", "prc1", "prc0", "enc0"))
+                and ((a["per"], a["gen"], a["num"]) == agreement if agreement else a["num"] != "d")
+                and not (f["asp"] == "i" and SHORT_STEM.search(a["stemcat"]))
+            )
+
+        return next((readings[0] for word in words if (readings := self._readings(word, keep))), None)
 
     def analyze_text(self, text: str) -> list[Token]:
         """Every run of the passage in order, each word with its readings. A word written twice is

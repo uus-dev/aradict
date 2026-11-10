@@ -157,3 +157,23 @@ def test_no_request_carries_history_or_preferences(base_url, browser):
         assert request.method == "GET" and "cookie" not in headers, request.url
         assert set(parse_qs(urlsplit(request.url).query)) <= {"q", "diacritics"}, request.url  # only the lookup itself
     assert device.cookies() == []
+
+
+def test_root_and_related_views_are_listed_apart_from_their_lookup(base_url, browser):
+    page = browser.new_page()
+    page.goto(f"{base_url}/?q={quote('كتاب')}")
+    page.get_by_role("link", name="all 2 forms of كِتاب").click()
+    expect(open_history(page)).to_have_text(["كتاب · forms of كِتاب", "كتاب"])
+    page.go_back()
+    page.get_by_role("link", name="Words from the root ك ت ب").first.click()
+    meaning = page.get_by_role("columnheader", name="Meaning")
+    meaning.get_by_role("link").click()  # sorting is the same view
+    expect(meaning).to_have_attribute("aria-sort", "ascending")
+    entries = open_history(page)
+    expect(entries).to_have_text(["كتاب · root ك ت ب", "كتاب", "كتاب · forms of كِتاب"])
+    expect(entries.first.locator("[lang=ar]")).to_have_count(2)  # the query and the root read as Arabic
+
+    entries.nth(2).click()  # reopens that view
+    expect(page.get_by_role("status")).to_have_text("2 forms of the noun كِتاب")
+    open_history(page).filter(has_text="root").click()  # the root view, as it was sorted
+    expect(meaning).to_have_attribute("aria-sort", "ascending")

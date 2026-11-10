@@ -234,7 +234,7 @@ def test_each_entry_heads_its_readings_with_part_of_speech_measure_root_and_use(
     assert '<h2><span class="ar" lang="ar" dir="rtl">كَتَب</span></h2><p class="pos">verb · Measure I</p>' in katab
     assert '<h2><span class="ar" lang="ar" dir="rtl">أَكْتَب</span></h2><p class="pos">verb · Measure IV</p>' in aktab
     assert katab.count('class="reading"') == aktab.count('class="reading"') == 2
-    assert '<dt>Root</dt><dd><span class="ar" lang="ar" dir="rtl">ك ت ب</span></dd>' in katab
+    assert '<span class="ar" lang="ar" dir="rtl">ك ت ب</span></a></dd>' in katab  # the root, as a link to its words
     assert re.search(r"<dt>Use</dt><dd>(very common|common|less common|rare) · top \d+% of words</dd>", katab)
     assert "<dt>Use</dt><dd>frequency unknown</dd>" in aktab  # the database has no figure for أَكْتَب
     assert '<p class="pos">verb · Measure X</p>' in client.get("/", params={"q": "استخدم"}).text
@@ -242,7 +242,8 @@ def test_each_entry_heads_its_readings_with_part_of_speech_measure_root_and_use(
 
 def test_unresolved_radicals_and_missing_root_or_measure_show_as_such(client):
     qal = entries(client.get("/", params={"q": "قال"}).text)[0]
-    assert '<dt>Root</dt><dd><span class="ar" lang="ar" dir="rtl">ق ◌ ل</span></dd>' in qal
+    assert '<span class="ar" lang="ar" dir="rtl">ق ◌ ل</span></a></dd>' in qal
+    assert links(qal)["Words from the root ق ◌ ل"]["root"] == ["ق.#.ل"]  # and its words are a link away
     assert "#" not in qal
     laysa = entries(client.get("/", params={"q": "ليس"}).text)[0]
     assert '<p class="pos">verb · measure unavailable</p>' in laysa
@@ -376,3 +377,125 @@ def test_several_latin_words_look_up_the_first(client):
     assert page.count('class="reading"') == 3
     assert "Only the first word" in page
     assert "/text?" not in page  # the Text view reads Arabic script only
+
+
+def links(part: str) -> dict[str, dict[str, list[str]]]:
+    """The page links in part of a page, by accessible name, each with its URL parameters."""
+    return {
+        text(name): parse_qs(urlsplit(html.unescape(href)).query) if "?" in href else href
+        for href, name in re.findall(r'<a href="(/(?:\?[^"]*)?)"[^>]*>(.*?)</a>', part)
+    }
+
+
+def text(markup: str) -> str:
+    """What a screen reader reads: the text, without tags or what is hidden from it."""
+    return unicodedata.normalize("NFC", html.unescape(re.sub(r'<span aria-hidden="true">.*?</span>|<[^>]+>', "", markup))).strip()
+
+
+def heading(entry: str) -> str:
+    return entry.split('<ul class="readings">')[0]
+
+
+def test_entries_link_to_their_root_and_related_forms_keeping_the_lookup(client):
+    kitab, katib, kuttab = entries(client.get("/", params={"q": "كتاب", "diacritics": "off"}).text)
+    lookup = {"q": ["كتاب"], "diacritics": ["off"]}
+    assert links(heading(kitab)) == {
+        "Words from the root ك ت ب": lookup | {"root": ["ك.ت.ب"]},
+        "all 2 forms of كِتاب": lookup | {"related": ["كِتاب"], "pos": ["noun"]},
+    }
+    assert '<dt>Root</dt><dd><a href="' in kitab and ">ك ت ب</span></a>" in kitab  # the root itself is the link
+    assert "all 4 forms of كاتِب" in links(heading(katib))  # writer and clerk, and two plurals
+
+
+def test_no_root_or_related_forms_means_no_link(client):
+    adjective = entries(client.get("/", params={"q": "كاتب"}).text)[-1]
+    assert '<p class="pos">adjective</p>' in adjective
+    assert list(links(heading(adjective))) == ["Words from the root ك ت ب"]  # كاتِب "writing" has one form
+    laysa = entries(client.get("/", params={"q": "ليس"}).text)[0]
+    assert links(heading(laysa)) == {}
+    assert "root=" not in client.post("/text", data={"text": "كتاب"}).text  # token details link to Word lookup instead
+
+
+def table(page: str) -> list[list[str]]:
+    """The rows of the page's table, each as the text of its cells."""
+    body = re.search(r"<tbody>(.*?)</tbody>", page, re.S).group(1)
+    return [[text(cell) for cell in re.findall(r"<td[^>]*>(.*?)</td>", row, re.S)] for row in re.findall(r"<tr>(.*?)</tr>", body, re.S)]
+
+
+def context(page: str) -> str:
+    return re.search(r'<p class="context">(.*?)</p>', page, re.S).group(1)
+
+
+def test_related_forms_replace_the_results_and_keep_the_query(client):
+    page = client.get("/", params={"q": "كتاب", "diacritics": "off", "related": "كِتاب", "pos": "noun"}).text
+    assert table(page) == [
+        ["كِتاب", "book", "noun", "masculine singular", "ك ت ب", ""],
+        ["كُتُب", "books", "noun", "masculine plural, broken plural", "ك ت ب", ""],
+    ]
+    assert re.search(r'<p id="status" class="status" role="status">(.*?)</p>', page).group(1).endswith("2 forms of the noun <span class=\"ar\" lang=\"ar\" dir=\"rtl\">كِتاب</span>")
+    assert 'value="كتاب"' in page and 'class="entry"' not in page  # the query stays; its readings make way
+    # The chip says what the list is, and closing it returns to the lookup.
+    assert text(context(page)).startswith("Related: كِتاب")
+    assert links(context(page)) == {"Back to your lookup": {"q": ["كتاب"], "diacritics": ["off"]}}
+
+
+def column(page: str, name: str) -> list[str]:
+    i = [text(h) for h in re.findall(r"<th[^>]*>(.*?)</th>", page)].index(name)
+    return [row[i] for row in table(page)]
+
+
+def headers(page: str) -> dict[str, tuple[str | None, dict]]:
+    """Each column header by name: the sort state it announces, and where its link goes."""
+    return {
+        text(name): (state or None, links(name).get(text(name)))
+        for state, name in re.findall(r'<th scope="col"(?: aria-sort="(\w+)")?>(.*?)</th>', page)
+    }
+
+
+def test_a_root_or_lemma_with_no_forms_says_so(client):
+    page = client.get("/", params={"root": "ق.خ.غ"}).text  # an address typed by hand, with no lookup to go back to
+    assert "No forms from the root" in page and "<table" not in page
+    assert links(context(page)) == {"Close": "/"}
+    assert "No forms of the verb" in client.get("/", params={"q": "كتب", "related": "كِتاب", "pos": "verb"}).text
+
+
+ROOT = {"q": ["كتب"], "root": ["ك.ت.ب"]}
+VERBS = ["كَتَبَ", "كُتِبَ", "يَكْتُب", "يُكْتَب", "أَكْتَبَ", "يُكْتَب", "يُكْتِب"]  # I, then IV, each in form order
+
+
+def test_root_view_lists_verbs_by_measure_then_nouns_and_adjectives(client):
+    page = client.get("/", params=ROOT).text
+    assert column(page, "Form")[:7] == VERBS
+    assert column(page, "Measure") == ["I"] * 4 + ["IV"] * 3 + [""] * 9
+    assert column(page, "Form")[7:] == ["كاتِب", "كاتِب", "كاتِب", "كُتّاب", "كَتَبَة", "كُتّاب", "كَتاتِيب", "كِتاب", "كُتُب"]
+    assert set(column(page, "Root")) == {"ك ت ب"}
+    assert "16 forms from the root" in page and text(context(page)).startswith("Root: ك ت ب")
+    assert links(context(page)) == {"Back to your lookup": {"q": ["كتب"]}}
+    # In family order no column is sorted, and each header sorts by its column.
+    assert headers(page) == {
+        "Form": (None, ROOT | {"sort": ["form"]}), "Meaning": (None, ROOT | {"sort": ["gloss"]}),
+        "Part of speech": (None, ROOT | {"sort": ["pos"]}), "Grammar": (None, None),
+        "Root": (None, ROOT | {"sort": ["root"]}), "Measure": (None, ROOT | {"sort": ["measure"]}),
+    }
+
+
+def test_each_column_sorts_both_ways_keeping_family_order_among_equals(client):
+    ascending = client.get("/", params=ROOT | {"sort": ["measure"]}).text
+    descending = client.get("/", params=ROOT | {"sort": ["-measure"]}).text
+    # Rows with the same measure keep their family order, and rows without one stay last.
+    assert column(ascending, "Form")[:7] == VERBS
+    assert column(descending, "Form")[:7] == VERBS[4:] + VERBS[:4]
+    assert column(descending, "Form")[7:] == column(ascending, "Form")[7:]
+    # The sorted column says so; its link reverses the order, and then returns to family order.
+    assert headers(ascending)["Measure"] == ("ascending", ROOT | {"sort": ["-measure"]})
+    assert headers(descending)["Measure"] == ("descending", ROOT)
+    assert headers(descending)["Form"] == (None, ROOT | {"sort": ["form"]})
+
+    by_pos = client.get("/", params=ROOT | {"sort": ["pos"]}).text
+    assert column(by_pos, "Part of speech") == ["adjective"] + ["noun"] * 8 + ["verb"] * 7
+    assert column(by_pos, "Form")[9:] == VERBS
+    by_meaning = column(client.get("/", params=ROOT | {"sort": ["-gloss"]}).text, "Meaning")
+    assert by_meaning == sorted(by_meaning, key=str.casefold, reverse=True) and by_meaning[0] == "writing"
+    by_form = column(client.get("/", params=ROOT | {"sort": ["form"]}).text, "Form")
+    assert by_form[:4] == ["أَكْتَبَ", "كاتِب", "كاتِب", "كاتِب"] and by_form[-4:] == ["يَكْتُب", "يُكْتَب", "يُكْتَب", "يُكْتِب"]  # by letters, hamza as ا
+    assert column(client.get("/", params=ROOT | {"sort": ["nonsense"]}).text, "Form")[:7] == VERBS
