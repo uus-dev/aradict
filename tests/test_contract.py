@@ -117,6 +117,23 @@ def test_missing_database_fails_loudly(tmp_path):
         Dictionary(tmp_path / "missing.db")
 
 
+def test_text_keeps_every_token_in_order_with_its_kind_and_offset(real):
+    passage = "كتب، 3 BBC\nقخغثص"
+    tokens = real.analyze_text(passage)
+    assert [(t.text, t.kind) for t in tokens] == [
+        ("كتب", "word"), ("،", "punctuation"), (" ", "space"), ("3", "number"), (" ", "space"),
+        ("BBC", "foreign"), ("\n", "space"), ("قخغثص", "unknown"),
+    ]
+    assert all(passage[t.start:t.end] == t.text for t in tokens)
+    assert tokens[0].readings == tuple(real.lookup_ar("كتب")) and tokens[-1].readings == ()
+
+
+def test_text_diacritics_filter_their_own_token(real):
+    vocalized, bare = real.analyze_text("كَتَبَ كتب")[::2]
+    assert [first_sense(r.gloss) for r in vocalized.readings] == ["he/it wrote"]
+    assert len(bare.readings) == 3
+
+
 def test_suggestions_complete_a_stem_most_frequent_first(real):
     # كِتاب "book" (-3.5), كُتّاب "writers" from two lemmas (-3.9, shown once), كَتائِب "battalions"
     # (-4.2), and كِتابَة "writing" (-4.4), whose stem is كِتاب with the feminine ة attached.

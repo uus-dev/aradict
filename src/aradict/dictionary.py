@@ -18,6 +18,13 @@ MARK = re.compile("[\u064b-\u065f\u0670]")  # tanween, short vowels, shadda, suk
 # The database leaves the fatha before a long ا unwritten (كِتاب): a letter, maybe a shadda, then ا.
 # It also leaves out the fatha a dagger alif implies (اللّٰه).
 IMPLIED_FATHA = re.compile("(?<=[\u0621-\u064a])(\u0651?)(?=\u0627)")
+# A passage, cut into runs of: Arabic letters with their marks (tatweel, ی and ک included), digits
+# (Western, Arabic-Indic, Persian), whitespace, other letters, and any other single character.
+TOKEN = re.compile(
+    "(?P<word>[\u0621-\u065f\u0670\u0671\u06a9\u06cc]+)|(?P<number>[0-9\u0660-\u0669\u06f0-\u06f9]+)"
+    "|(?P<space>\\s+)|(?P<foreign>[^\\W\\d_\u0600-\u06ff]+)|(?P<punctuation>.)",
+    re.S,
+)
 # The database keys stems by their bare letters: أ, إ, آ and ٱ as ا, ى as ي, and ة as ه.
 STEM_KEY = str.maketrans("أإآٱىة", "اااايه")
 SUGGESTIONS = 25
@@ -64,6 +71,17 @@ class Reading:
     lemma: str
     root: str | None
     frequency: float | None  # lemma log-probability; None when the database has no figure
+
+
+@dataclass(frozen=True)
+class Token:
+    """One run of a passage, at passage[start:end]. A word with no reading is "unknown"."""
+
+    text: str
+    kind: str  # word, unknown, number, space (line breaks too), foreign (non-Arabic letters) or punctuation
+    start: int
+    end: int
+    readings: tuple[Reading, ...] = ()
 
 
 def _reading_key(analysis: dict) -> tuple:
@@ -218,6 +236,22 @@ class Dictionary:
         return sorted(readings, key=lambda r: (
             last in ("ه", "ة") and MARK.sub("", r.form)[-1:] != last, r.frequency is None, -(r.frequency or 0), r.lemma,
         ))
+
+    def analyze_text(self, text: str) -> list[Token]:
+        """Every run of the passage in order, each word with its readings. A word written twice is
+        looked up once. The passage's diacritics filter their own word's readings."""
+        seen: dict[str, tuple[Reading, ...]] = {}
+        tokens = []
+        for match in TOKEN.finditer(text):
+            kind, word = match.lastgroup, match.group()
+            readings = ()
+            if kind == "word":
+                if word not in seen:
+                    seen[word] = tuple(self.lookup_ar(word))
+                readings = seen[word]
+                kind = "word" if readings else "unknown"
+            tokens.append(Token(word, kind, match.start(), match.end(), readings))
+        return tokens
 
     def suggest(self, text: str, filter_diacritics: bool = True) -> list[str]:
         """Vocalized words that complete the typed word, for autocomplete: at most 25, most
