@@ -154,8 +154,9 @@ def _entry(lemma: str, glosses: dict[str, list[Reading]], heading: Element, link
 LEGEND = p(class_="legend")["In each form: ", span(class_="prefix")["prefix"], " · stem · ", span(class_="suffix")["suffix"]]
 
 
-def _count(readings) -> str:
-    return f"{len(readings)} reading{'s' if len(readings) != 1 else ''}"
+def _n(count: int, noun: str) -> str:
+    """A count and its noun, plural unless one: "1 reading", "3 readings"."""
+    return f"{count} {noun}{'s' if count != 1 else ''}"
 
 
 def _entries(readings: Iterable[Reading], heading: Element = h2, links: Links | None = None) -> Node:
@@ -200,7 +201,7 @@ def looked_up(text: str, found: Lookup, links: Links | None = None) -> State:
     ] if not found.complete else None
     if found.readings:
         arabizi = found.query if found.mode == "arabizi" else None
-        return State([f"{_count(found.readings)} for ", ar(found.query)], [notice, LEGEND, _entries(found.readings, h2, links)], arabizi)
+        return State([f"{_n(len(found.readings), 'reading')} for ", ar(found.query)], [notice, LEGEND, _entries(found.readings, h2, links)], arabizi)
     if latin:
         return State(["No Arabic word for ", _arabizi(words[0])], [notice, div(class_="empty")[
             p["AraDict read this as Arabic in Latin letters (Arabizi), but found no word it could stand for. You could:"],
@@ -240,8 +241,7 @@ def looked_up_en(found: Lookup, links: Links | None = None) -> State:
     their root and related forms with links."""
     query = found.query
     if found.readings:
-        n = len(found.readings)
-        return State(f"{n} Arabic word{'s' if n != 1 else ''} for “{query}”", [COVERAGE, LEGEND, _entries(found.readings, h2, links)])
+        return State(f"{_n(len(found.readings), 'Arabic word')} for “{query}”", [COVERAGE, LEGEND, _entries(found.readings, h2, links)])
     # Arabic typed here is meant the other way round, so switching direction keeps it.
     arabic = bool(ARABIC.search(query))
     back = f"/?{urlencode({'q': query})}" if arabic else "/"
@@ -272,21 +272,28 @@ SORT_KEYS = {  # None for a row with no value, which goes last either way
 }
 
 
-def _sorted(rows: list[Reading], sort: str) -> list[Reading]:
-    """Rows sorted by a column ("gloss"), or in reverse ("-gloss"). Python's sort is stable, so rows
-    that tie keep the family order, whichever the direction."""
-    key = SORT_KEYS.get(sort.removeprefix("-"))
-    if not key:
+def _sort_order(sort: str) -> tuple[str | None, bool]:
+    """The column a sort parameter names, "gloss" or "-gloss" in reverse, and whether it is
+    reversed; no column for anything else."""
+    column = sort.removeprefix("-")
+    return (column, sort.startswith("-")) if column in SORT_KEYS else (None, False)
+
+
+def _sorted(rows: list[Reading], column: str | None, descending: bool) -> list[Reading]:
+    """Rows sorted by a column, or in family order with none. Python's sort is stable, so rows that
+    tie keep the family order, whichever the direction."""
+    if column is None:
         return rows
-    return sorted((r for r in rows if key(r) is not None), key=key, reverse=sort.startswith("-")) + [r for r in rows if key(r) is None]
+    key = SORT_KEYS[column]
+    return sorted((r for r in rows if key(r) is not None), key=key, reverse=descending) + [r for r in rows if key(r) is None]
 
 
 def _family(label: str, name: Node, status: Node, rows: list[Reading], lookup: dict[str, str], view: dict[str, str], sort: str) -> State:
     """A root's words or a lemma's forms in place of the lookup's results. A chip says which, and
     closing it returns to the lookup. Each column header links to the list sorted by it, then in
     reverse, then back in family order; the sorted column says so to assistive technology."""
-    column = sort.removeprefix("-") if sort.removeprefix("-") in SORT_KEYS else None
-    order = column and ("descending" if sort.startswith("-") else "ascending")
+    column, descending = _sort_order(sort)
+    order = column and ("descending" if descending else "ascending")
 
     def header(key: str | None, text: str) -> Node:
         if key is None:
@@ -311,14 +318,14 @@ def _family(label: str, name: Node, status: Node, rows: list[Reading], lookup: d
                     td(data_label="Root")[_root(r.root)],
                     td(data_label="Measure")[r.measure or ("unavailable" if r.pos == "verb" else "")],
                 ]
-                for r in _sorted(rows, sort)
+                for r in _sorted(rows, column, descending)
             )],
         ],
     ])
 
 
 def _forms(rows: list[Reading]) -> str:
-    return f"{len(rows) or 'No'} form{'s' if len(rows) != 1 else ''}"
+    return _n(len(rows), "form") if rows else "No forms"
 
 
 def related_view(lemma: str, pos: str, rows: list[Reading], lookup: dict[str, str], sort: str = "") -> State:
@@ -424,7 +431,7 @@ def _token(t: Token, ids: dict[str, str]) -> Node:
     if t.kind not in ("word", "unknown"):
         return t.text
     return button(type="button", class_=f"tok {t.kind}", popovertarget=ids[t.text])[
-        t.text, span(class_="sr-only", lang="en")[", ", _count(t.readings) if t.readings else "not in the dictionary"],
+        t.text, span(class_="sr-only", lang="en")[", ", _n(len(t.readings), "reading") if t.readings else "not in the dictionary"],
     ]
 
 
@@ -433,7 +440,7 @@ def _details(t: Token, id: str) -> Node:
     return div(id=id, class_="tok-pop", popover=True, role="dialog", aria_labelledby=f"{id}-h")[
         div(class_="tp-head")[
             h2(id=f"{id}-h")[ar(t.text)],
-            p(class_="muted")[_count(t.readings) if t.readings else "not in the dictionary"],
+            p(class_="muted")[_n(len(t.readings), "reading") if t.readings else "not in the dictionary"],
             button(type="button", popovertarget=id, popovertargetaction="hide")["Close"],
         ],
         _entries(t.readings, h3) if t.readings else p(class_="tp-msg")[
@@ -451,7 +458,7 @@ def analysed(tokens: list[Token]) -> State:
             words.setdefault(t.text, t)
     ids = {word: f"w{i}" for i, word in enumerate(words)}
     n, unknown = sum(t.kind in ("word", "unknown") for t in tokens), sum(t.kind == "unknown" for t in tokens)
-    status = f"{n} word{'s' if n != 1 else ''}{f', {unknown} not in the dictionary' if unknown else ''}" if n else "No Arabic words to analyse."
+    status = f"{_n(n, 'word')}{f', {unknown} not in the dictionary' if unknown else ''}" if n else "No Arabic words to analyse."
     return State(status, [
         # The passage keeps its spaces and line breaks (white-space: pre-wrap).
         div(class_="passage", lang="ar", dir="rtl")[(_token(t, ids) for t in tokens)],
