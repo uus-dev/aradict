@@ -55,14 +55,14 @@ def _root(root: str | None) -> Node:
     return ar(" ".join("◌" if letter == "#" else letter for letter in root.split("."))) if root else span(class_="muted")["unavailable"]
 
 
-def _kind(r: Reading) -> str:
+def _pos_and_measure(r: Reading) -> str:
     """The part of speech, and a verb's measure."""
     if r.pos != "verb":
         return r.tags[0]
     return f"{r.tags[0]} · {f'Measure {r.measure}' if r.measure else 'measure unavailable'}"
 
 
-def _use(top_percent: float | None) -> str:
+def _how_common(top_percent: float | None) -> str:
     """How common the lemma is, from its rank among all lemmas with a frequency."""
     if top_percent is None:
         return "frequency unknown"
@@ -78,7 +78,7 @@ def _chip_text(s: Segment) -> str:
 
 def _parts(r: Reading) -> Node:
     """The reading's parts as labelled chips, behind a native disclosure that needs no script."""
-    shared = [(a, b) for a, b in zip(r.segments, r.segments[1:]) if a.spelling != a.text and b.spelling != b.text]
+    shared = [(earlier, later) for earlier, later in zip(r.segments, r.segments[1:]) if earlier.spelling != earlier.text and later.spelling != later.text]
     return details(class_="parts")[
         summary["Word parts"],
         ol(class_="chips", dir="rtl")[(
@@ -89,7 +89,8 @@ def _parts(r: Reading) -> Node:
             for s in r.segments
         )],
         # Two parts that share one written letter (a shadda or madda) each show their own copy.
-        (p(class_="note")[ar(_chip_text(a)), " + ", ar(_chip_text(b)), " are written ", ar(f"ـ{a.text}{b.text}")] for a, b in shared),
+        (p(class_="note")[ar(_chip_text(earlier)), " + ", ar(_chip_text(later)), " are written ", ar(f"ـ{earlier.text}{later.text}")]
+         for earlier, later in shared),
     ]
 
 
@@ -116,7 +117,7 @@ class Links(NamedTuple):
     lemma (with its part of speech) has."""
 
     lookup: dict[str, str]
-    forms: dict[tuple[str, str], int]
+    form_counts: dict[tuple[str, str], int]
 
 
 def _url(params: dict[str, str]) -> str:
@@ -127,13 +128,13 @@ def _entry(lemma: str, glosses: dict[str, list[Reading]], heading: Element, link
     """A lemma's heading, said once, then its readings, one result per gloss. With links, the
     root opens the root's words, and a lemma with more than one form links to all of them."""
     first = next(iter(glosses.values()))[0]
-    forms = links.forms.get((first.lemma, first.pos), 0) if links else 0
+    forms = links.form_counts.get((first.lemma, first.pos), 0) if links else 0
     # A lemma's senses may be stored under different roots (إِجارَة "rent" and "protection"): each is offered.
     roots = list(dict.fromkeys(r.root for group in glosses.values() for r in group if r.root)) or [None]
     return section(class_="entry")[
         div(class_="head")[
             heading[ar(lemma)],
-            p(class_="pos")[_kind(first)],
+            p(class_="pos")[_pos_and_measure(first)],
             dl[
                 dt["Root"],
                 dd[([
@@ -141,7 +142,7 @@ def _entry(lemma: str, glosses: dict[str, list[Reading]], heading: Element, link
                     a(href=_url(links.lookup | {"root": root}))[span(class_="sr-only")["Words from the root "], _root(root)]
                     if links and root else _root(root),
                 ] for i, root in enumerate(roots))],
-                dt["Use"], dd[_use(first.top_percent)],
+                dt["Use"], dd[_how_common(first.top_percent)],
                 forms > 1 and [dt["Forms"], dd[
                     a(href=_url(links.lookup | {"related": first.lemma, "pos": first.pos}))[f"all {forms} forms", span(class_="sr-only")[" of ", ar(lemma)]],
                 ]],
