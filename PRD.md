@@ -80,7 +80,7 @@ Launch as a web application whose home view opens directly on Word lookup, with 
 43. As a learner, I want missing root or measure fields shown as unavailable, so that absence is not rendered as corrupt text or an invented value.
 44. As a user, I want a stable, readable default result order, with analyses grouped by lemma and the most common words first, so that repeated lookups are predictable and the likely reading is near the top.
 45. As a learner, I want analyses that share the same gloss (for example a noun's singular and plural) grouped into one result, so that the list is shorter without hiding any form.
-46. As a user, I want to sort results by visible columns where meaningful, so that I can scan a long result list.
+46. As a user, I want to sort long result lists, such as a root's word family, by visible columns, so that I can scan them.
 47. As a user, I want Arabic and English text displayed with correct direction and alignment, so that mixed-script rows remain legible.
 48. As a user, I want long glosses and morphology labels to wrap cleanly on a narrow screen, so that no result is hidden.
 49. As a user, I want result controls to have descriptive accessible names, so that assistive technology can distinguish actions.
@@ -291,13 +291,16 @@ Launch as a web application whose home view opens directly on Word lookup, with 
     - Group analyses that share an identical gloss into one result that lists all their vocalized forms.
     - Analyses that differ only in a case or mood ending, or only in how a proclitic is read (for example وَ as "and" or "while"), are shown as one result. The spike found that otherwise وبكتابهم would show 36 rows for 3 readings.
     - The default order groups by lemma, with the most frequent lemmas first.
-    - Sorting must have a defined, stable secondary order and an accessible sort state.
+    - Results are laid out as one entry per lemma. Each entry shows the lemma, its part of speech, measure, root, frequency, and the related-forms action once, then lists the readings of the typed word that belong to it. This keeps readings with the same vocalized form but different lemmas (for example سَيُكْتَبُونَ from كَتَب and from أَكْتَب) visibly apart. The layout was chosen with the round 1 prototype in #14.
+    - Each reading's prefix, stem, and suffix, each labelled with its meaning, can be shown on demand by tap, click, or keyboard. They are hidden by default.
+    - Word results keep this grouping and are not column-sortable.
     - Desktop and mobile layouts may present results differently, but no available field is dropped just to fit the screen.
   - **On-screen keyboard:** the standard Arabic (101) layout, with a shift layer for harakat, hamza seats, and lam-alif forms.
 - **Family navigation:**
   - Related-form and root actions replace the result set while keeping the originating query, and display a dismissible context chip or an equivalent control.
   - **Related forms:** entries sharing the result's lemma and part of speech.
   - **Root view:** all entries with that root, ordered by measure, then part of speech (verbs first), then lemma, then form.
+  - Root and related-form lists can be sorted by their visible columns, with a defined, stable secondary order and an accessible sort state.
   - Roots with alternatives offer each alternative.
   - Browser history restores prior states.
   - Suppress actions when the corresponding data is absent.
@@ -378,7 +381,7 @@ Launch as a web application whose home view opens directly on Word lookup, with 
   - Live update while typing, plus Enter.
   - Autocomplete on and off where supported.
   - Arabizi with its visible transliteration.
-  - Clear, stable sorting.
+  - Clear, stable sorting of root and related-form lists.
   - No results with next-step guidance.
   - Request failure.
   - Superseded queries.
