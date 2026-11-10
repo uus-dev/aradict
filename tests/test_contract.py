@@ -17,7 +17,7 @@ def first_sense(gloss: str) -> str:
 
 
 def test_ktb_has_three_readings(real):
-    assert sorted(first_sense(r.gloss) for r in real.lookup_ar("كتب")) == ["books", "he/it was written", "he/it write"]
+    assert sorted(first_sense(r.gloss) for r in real.lookup_ar("كتب")) == ["books", "he/it was written", "he/it wrote"]
 
 
 def test_clitics_and_case_endings_collapse(real):
@@ -37,7 +37,7 @@ def test_unknown_word_has_no_readings(real):
 
 
 def test_typed_diacritics_filter_readings(real):
-    assert [first_sense(r.gloss) for r in real.lookup_ar("كَتَبَ")] == ["he/it write"]
+    assert [first_sense(r.gloss) for r in real.lookup_ar("كَتَبَ")] == ["he/it wrote"]
     assert len(real.lookup_ar("كَتَبَ", filter_diacritics=False)) == 3
 
 

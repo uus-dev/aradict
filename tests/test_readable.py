@@ -6,6 +6,7 @@ from unicodedata import normalize
 import pytest
 
 from aradict.dictionary import Dictionary
+from aradict.readable import IRREGULAR_PAST
 
 
 @pytest.fixture(scope="module")
@@ -34,18 +35,24 @@ def test_verbs_get_their_subject_and_future(real):
     }
 
 
-def test_perfect_verbs_read_as_subject_and_verb(real):
-    # English past tense ("wrote") is out of scope; the grammar line says the verb is perfect.
+def test_perfect_verbs_are_in_the_past_tense(real):
     assert glosses(real, "كتب") == {
-        "he/it write",
+        "he/it wrote",
         "he/it was written; he/it was fated; he/it was destined",
         "books",
     }
 
 
+def test_regular_verbs_take_ed_with_english_spelling_rules(real):
+    assert glosses(real, "أَضافَ") == {"he/it added"}
+    assert glosses(real, "تَوَقَّفَ") == {"he/it stopped; he/it halted; he/it depended on"}
+    assert glosses(real, "اِسْتَعْمَلَ") == {"he/it employed; he/it used"}
+    assert glosses(real, "سَمِعَ") == {"he/it heard; he/it listened"}  # irregular, then regular
+
+
 def test_measure_x_verbs_including_the_imperative(real):
     assert glosses(real, "استخدم") == {
-        "he/it utilize; he/it employ; he/it operate",
+        "he/it utilized; he/it employed; he/it operated",
         "he/it was used; he/it was utilized; he/it was employed",
         "use! (to one man)",
         "I utilize; I employ; I operate",
@@ -59,7 +66,7 @@ def test_pronoun_suffixes_become_objects_or_possessives(real):
         "to me; towards me",
         "my family; my clan",
         "mechanical; automatic",
-        "he/it promise; he/it take an oath",
+        "he/it promised; he/it took an oath",
         "I follow; I come after",
     }
 
@@ -202,6 +209,17 @@ def sample_words(db_path, every: int = 40) -> list[str]:
 def sample(real, real_db):
     """About 9,000 lookups across the database, for checks that must hold for every reading."""
     return [(word, r) for word in sample_words(real_db) for r in real.lookup_ar(word)]
+
+
+def test_no_active_perfect_gloss_keeps_an_irregular_verb_in_its_base_form(sample):
+    after_subject = re.compile(r"\b(?:I|we|you(?: both| \([^)]*\))?|he/it|she/it|they(?: both| \(f\.\))?) (\w+)")
+    bases = {base for base, past in IRREGULAR_PAST.items() if base != past}
+    bare = [
+        (word, r.gloss) for word, r in sample
+        if "active" in r.tags and r.grammar.startswith("perfect")
+        and any(verb in bases for verb in after_subject.findall(r.gloss))
+    ]
+    assert bare == []
 
 
 def test_no_raw_tags_underscores_or_plus_signs_in_any_gloss(sample):
