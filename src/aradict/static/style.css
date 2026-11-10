@@ -29,9 +29,10 @@ a { color: var(--accent) }
 .site nav a { color: var(--muted); text-decoration: none }
 .site nav a[aria-current="page"] { color: var(--fg); font-weight: 500 }
 
-.search { display: flex; gap: 8px; margin-block: 20px 8px }
+.search { display: flex; flex-wrap: wrap; gap: 8px; margin-block: 20px 8px }
 .search input { flex: 1; min-width: 0; font: 1.6rem/1.4 var(--f-ar); padding: 4px 14px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); color: var(--fg) }
 .search button { padding-inline: 18px; border: 0; border-radius: 8px; background: var(--accent); color: var(--surface); font: 500 1rem var(--f-ui); cursor: pointer }
+.search .option { flex-basis: 100%; font-size: .9rem; color: var(--muted) }
 .count { font-size: .9rem; margin-block: 16px 8px }
 
 .entries, .empty { background: var(--surface); border: 1px solid var(--line); border-radius: 10px }
