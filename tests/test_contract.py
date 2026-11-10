@@ -183,6 +183,20 @@ def test_default_order_is_stable_grouped_by_lemma_and_most_frequent_first(real):
     assert [r.lemma for r in real.lookup_ar("سيكتبون")] == ["كَتَب", "كَتَب", "أَكْتَب", "أَكْتَب"]
 
 
+def test_each_reading_has_a_stable_id(real):
+    readings = real.lookup_ar("كتاب", filter_diacritics=False)
+    assert len({r.id for r in readings}) == len(readings)
+    # The same reading has the same id wherever it is found, and on every run.
+    book = next(r for r in readings if r.form == "كِتاب")
+    assert real.related("كِتاب", "noun")[0].id == book.id == "f433e39b956f"  # pinned: a saved id must keep working
+
+
+def test_readings_carry_their_stems_pattern(real):
+    # The stem's vowel template, with the root's letters as numbered slots.
+    assert {(r.form, r.pattern) for r in real.lookup_ar("اِسْتَخْدَمَ")} == {("اِسْتَخْدَمَ", "ٱِسْتَ1ْ2َ3")}
+    assert {r.pattern for r in real.lookup_ar("كتب") if r.lemma == "كِتاب"} == {"1ُ2ُ3"}  # the plural كُتُب
+
+
 def test_readings_place_their_lemma_among_all_lemmas_by_frequency(real):
     # The share of lemmas with a frequency that are at least as frequent as this one.
     top = {r.lemma: r.top_percent for r in real.lookup_ar("سيكتبون")}

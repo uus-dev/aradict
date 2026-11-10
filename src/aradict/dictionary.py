@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import itertools
 import re
 import unicodedata
@@ -98,6 +99,7 @@ class Reading:
     """One way to read the typed word, after merging analyses that differ only in a case or
     mood ending or in how a proclitic is read."""
 
+    id: str  # stable: the same reading has the same id wherever it is found, on every run
     form: str
     gloss: str  # the whole word in English, e.g. "and by/with their book"
     tags: tuple[str, ...]  # part of speech, voice, agreement, e.g. ("verb", "active", "3rd person masculine singular")
@@ -106,6 +108,7 @@ class Reading:
     pos: str
     lemma: str
     root: str | None
+    pattern: str | None  # the stem's vowel template, the root's letters as numbered slots: ٱِسْتَ1ْ2َ3
     frequency: float | None  # lemma log-probability; None when the database has no figure
     top_percent: float | None  # the share of lemmas at least as frequent as this one, among those with a frequency
     measure: str | None  # a verb's measure, "I" to "XII" or "QI" to "QIV"; None for other parts of speech or when it can't be derived
@@ -368,11 +371,13 @@ class Dictionary:
                 continue
             groups.setdefault(_reading_key(analysis), []).append(analysis)
         readings = []
-        for analyses in groups.values():
+        for key, analyses in groups.items():
             a = _representative(analyses)
             logprob = _logprob(a)
             root = a.get("root") if ROOT.fullmatch(a.get("root", "")) else None
+            stem = self._lemma_stems.get((a["lex"], a["pos"]), {}).get((a["stem"], a["stemgloss"], a["asp"], a.get("root")))
             readings.append(Reading(
+                id=hashlib.blake2b("\t".join((a["diac"], *key)).encode(), digest_size=6).hexdigest(),
                 form=a["diac"],
                 gloss=readable.gloss(a),
                 tags=readable.tags(a),
@@ -381,6 +386,7 @@ class Dictionary:
                 pos=a["pos"],
                 lemma=a["lex"],
                 root=root,
+                pattern=stem[1]["pattern"] if stem else None,
                 frequency=None if logprob <= -99 else logprob,
                 top_percent=None if logprob <= -99 else 100 * (1 - bisect_left(self._frequencies, logprob) / len(self._frequencies)),
                 measure=self.measure(a["lex"], root) if a["pos"] == "verb" and root else None,
