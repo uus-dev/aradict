@@ -45,6 +45,7 @@ def test_unknown_word_says_so_and_suggests_next_steps(client):
     assert "No entry for" in page.text
     assert "Check the spelling" in page.text
     assert "without vowel marks" in page.text
+    assert "Latin letters (Arabizi)" in page.text
     assert 'class="reading"' not in page.text
 
 
@@ -86,7 +87,7 @@ def test_about_answers_what_a_visitor_needs_before_trusting_a_result(client):
     assert 'class="placeholder"' in about
     # Typing Arabic: hamza, diacritics, the on-screen keyboard, phone keyboards, Arabizi.
     typing = about[about.index('id="typing"'):]
-    for topic in ("hamza", "vowel marks", "on-screen keyboard", "phone", "Arabizi", "mar7aba"):
+    for topic in ("hamza", "vowel marks", "on-screen keyboard", "phone", "Arabizi", "mar7aba", "kitab"):
         assert topic in typing, topic
     # Privacy: no accounts, history on the device, passages not logged.
     privacy = about[about.index('id="privacy"'):]
@@ -189,11 +190,14 @@ def test_form_has_a_labelled_diacritics_switch(client):
     assert re.search(r'<label[^>]*>\s*<input type="checkbox" name="diacritics" value="off"[^>]*>\s*Ignore diacritics', page)
 
 
-def test_latin_letters_get_a_hint_towards_english(client):
+def test_latin_word_with_no_arabic_match_shows_the_no_results_guidance(client):
     page = client.get("/", params={"q": "hello"}).text
     assert 'class="reading"' not in page
-    assert "English" in page
+    assert "No Arabic word for" in page
+    assert "Check the spelling" in page and "7 for" in page  # the Arabizi digits
+    assert "English" in page  # perhaps it was an English word
     assert "English" not in client.get("/", params={"q": "قخغثص"}).text
+    assert chip(page) == ""
 
 
 def test_one_word_has_no_multi_word_notice(client):
@@ -217,3 +221,41 @@ def test_server_does_not_log_looked_up_words(monkeypatch):
     monkeypatch.setattr(entry.uvicorn, "run", lambda *args, **kwargs: options.update(kwargs))
     entry.main()
     assert options["access_log"] is False
+
+
+def chip(page: str) -> str:
+    """The text of the Arabizi chip next to the input, or "" when it is hidden."""
+    tag = re.search(r'<p id="arabizi"([^>]*)>(.*?)</p>', page)
+    return "" if "hidden" in tag.group(1) else html.unescape(re.sub("<[^>]+>", "", tag.group(2)))
+
+
+def test_arabizi_is_looked_up_as_the_arabic_it_stands_for(client):
+    page = client.get("/", params={"q": "ktb"}).text
+    assert page.count('class="reading"') == 3  # the readings of كتب
+    assert '3 readings for <span class="ar" lang="ar" dir="rtl">كتب</span>' in page
+    assert "كتب" in chip(page)
+    assert 'value="ktb"' in page  # the input keeps what was typed
+
+    page = client.get("/", params={"q": "kitab"}).text
+    assert "كِتاب" in chip(page)  # Arabic script, with the vowel typed
+
+
+def test_arabic_input_shows_no_arabizi_chip(client):
+    assert chip(client.get("/", params={"q": "كتب"}).text) == ""
+    assert chip(client.get("/").text) == ""
+
+
+def test_live_lookup_updates_the_arabizi_chip(client):
+    live = {"HX-Request": "true"}
+    page = client.get("/", params={"q": "ktb"}, headers=live).text
+    assert 'hx-swap-oob="true"' in re.search(r'<p id="arabizi"[^>]*>', page).group(0)
+    assert "كتب" in chip(page)
+    for query in ("كتب", "hello", ""):  # Arabic, no match, and cleared all hide it
+        assert chip(client.get("/", params={"q": query}, headers=live).text) == "", query
+
+
+def test_several_latin_words_look_up_the_first(client):
+    page = client.get("/", params={"q": "ktb kitab"}).text
+    assert page.count('class="reading"') == 3
+    assert "Only the first word" in page
+    assert "/text?" not in page  # the Text view reads Arabic script only

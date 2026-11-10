@@ -53,12 +53,13 @@ def word(
         state = views.State("Type a word: letters, not only numbers or symbols.")
     else:
         try:
-            readings = dictionary().lookup_ar(q, filter_diacritics)
+            arabizi = dictionary().arabizi(q)  # None unless q is Arabizi
+            readings = dictionary().lookup_ar(arabizi or q, filter_diacritics)
         except Exception:
             logger.exception("Lookup failed")  # the query stays out of the log
             state, status_code = views.FAILURE, 500
         else:
-            state = views.looked_up(q, readings)
+            state = views.looked_up(q, readings, arabizi)
     page = views.live_results(state) if hx_request else views.word_page(q, state, filter_diacritics)
     headers = {"Vary": "HX-Request"}
     if hx_request and not q:
