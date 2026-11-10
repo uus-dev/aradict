@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import re
 from typing import NamedTuple
+from urllib.parse import urlencode
 
 from htpy import Node, a, blockquote, body, br, button, code, dd, div, dl, dt, form, fragment, h1, h2, head, header, html, i, input, label, li, link, main, meta, nav, p, script, section, span, template, title, ul
 
@@ -86,15 +88,24 @@ class State(NamedTuple):
 INITIAL = State(body=_intro())
 
 
-def found(query: str, readings: list[Reading]) -> State:
-    return State([f"{len(readings)} reading{'s' if len(readings) != 1 else ''} for ", ar(query)], _entries(readings))
-
-
-def not_found(query: str) -> State:
-    return State(["No entry for ", ar(query)], div(class_="empty")[
+def looked_up(query: str, readings: list[Reading]) -> State:
+    """The outcome of a completed lookup. Of several words only the first is looked up, and a notice says so."""
+    words = query.split()
+    latin = bool(re.search("[A-Za-z]", query)) and not re.search("[\u0600-\u06ff]", query)
+    notice = p(class_="notice")[
+        "Only the first word, ", ar(words[0]), ", was looked up. ",
+        a(href=f"/text?{urlencode({'q': query})}")["Read them all in the Text view"], ".",
+    ] if len(words) > 1 and not latin else None
+    if readings:
+        return State([f"{len(readings)} reading{'s' if len(readings) != 1 else ''} for ", ar(words[0])], [notice, _entries(readings)])
+    if latin:  # ponytail: a hint until Arabizi (#10) and English lookup (#9) ship
+        return State("Type the word in Arabic script", div(class_="empty")[
+            p["Arabic in Latin letters (Arabizi) isn't supported yet. Looking for an English word? English → Arabic lookup is coming soon."],
+        ])
+    return State(["No entry for ", ar(words[0])], [notice, div(class_="empty")[
         p["AraDict couldn't find this word in its Modern Standard Arabic dictionary. You could:"],
         ul[li["Check the spelling."], li["Type it without vowel marks."]],
-    ])
+    ]])
 
 
 FAILURE = State(
@@ -103,7 +114,7 @@ FAILURE = State(
 )
 
 
-def word_page(query: str, state: State) -> Node:
+def word_page(query: str, state: State, filter_diacritics: bool = True) -> Node:
     return _page("Word", "word", [
         h1(class_="sr-only")["Word lookup"],
         # Live lookup: the same GET as the plain form, debounced while typing and immediate on Enter.
@@ -116,6 +127,7 @@ def word_page(query: str, state: State) -> Node:
             input(id="q", name="q", value=query, dir="rtl", lang="ar", autocomplete="off", spellcheck="false"),
             a(href="/", class_="clear", hidden=not query)["Clear"],
             button(type="submit")["Look up"],
+            label(class_="option")[input(type="checkbox", name="diacritics", value="off", checked=not filter_diacritics), " Ignore diacritics"],
         ],
         p(id="status", class_="status", role="status")[state.status],
         div(id="results")[state.body],

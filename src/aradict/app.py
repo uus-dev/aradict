@@ -6,7 +6,7 @@ import logging
 from contextlib import asynccontextmanager
 from functools import lru_cache
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, Literal
 
 from fastapi import FastAPI, Header
 from fastapi.responses import HTMLResponse
@@ -38,8 +38,12 @@ MAX_QUERY = 100
 
 
 @app.get("/", response_class=HTMLResponse)
-def word(q: str = "", hx_request: Annotated[str | None, Header()] = None) -> HTMLResponse:
-    q = q.strip()
+def word(
+    q: str = "",
+    diacritics: Literal["on", "off"] = "on",
+    hx_request: Annotated[str | None, Header()] = None,
+) -> HTMLResponse:
+    q, filter_diacritics = q.strip(), diacritics == "on"
     status_code = 200
     if not q:
         state = views.INITIAL
@@ -49,16 +53,17 @@ def word(q: str = "", hx_request: Annotated[str | None, Header()] = None) -> HTM
         state = views.State("Type a word: letters, not only numbers or symbols.")
     else:
         try:
-            readings = dictionary().lookup_ar(q)
+            readings = dictionary().lookup_ar(q, filter_diacritics)
         except Exception:
             logger.exception("Lookup failed")  # the query stays out of the log
             state, status_code = views.FAILURE, 500
         else:
-            state = views.found(q, readings) if readings else views.not_found(q)
-    page = views.live_results(state) if hx_request else views.word_page(q, state)
+            state = views.looked_up(q, readings)
+    page = views.live_results(state) if hx_request else views.word_page(q, state, filter_diacritics)
     headers = {"Vary": "HX-Request"}
     if hx_request and not q:
-        headers["HX-Push-Url"] = "/"  # a cleared live lookup returns to "/", not "/?q="
+        # A cleared live lookup returns to "/", not "/?q=", keeping the diacritics switch.
+        headers["HX-Push-Url"] = "/" if filter_diacritics else "/?diacritics=off"
     return HTMLResponse(str(page), status_code, headers)
 
 

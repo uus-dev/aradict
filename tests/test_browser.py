@@ -172,3 +172,25 @@ def test_home_intro_sits_below_the_search_box_on_a_phone(base_url, browser):
     assert search["y"] + search["height"] <= intro["y"]  # the explanation never sits in front of the search box
     assert intro["y"] + intro["height"] <= 844  # and is short enough to read on the first screen
     assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
+
+
+def test_the_diacritics_switch_looks_up_again_and_lives_in_the_url(base_url, browser):
+    page = browser.new_page()
+    page.goto(f"{base_url}/?q={quote('كَتَبَ')}")
+    switch = page.get_by_role("checkbox", name="Ignore diacritics")
+    expect(page.locator(".reading")).to_have_count(1)
+
+    switch.check()
+    expect(page.locator(".reading")).to_have_count(3)
+    expect(page).to_have_url(re.compile(re.escape(f"{base_url}/?q={quote('كَتَبَ')}&diacritics=off") + "$"))
+
+    page.reload()
+    expect(switch).to_be_checked()
+    expect(page.locator(".reading")).to_have_count(3)
+
+    page.go_back()
+    expect(switch).not_to_be_checked()
+    expect(page.locator(".reading")).to_have_count(1)
+
+    page.get_by_role("textbox", name="Arabic word").fill("كتب كتاب")  # notices update live too
+    expect(page.get_by_text("Only the first word")).to_be_visible()

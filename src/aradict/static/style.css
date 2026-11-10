@@ -30,10 +30,11 @@ a { color: var(--accent) }
 .site nav a[aria-current="page"] { color: var(--fg); font-weight: 500 }
 
 /* The search stays in view while results scroll, so the query is always visible. */
-.search { position: sticky; inset-block-start: 0; z-index: 1; display: flex; gap: 8px; margin-block-start: 12px; padding-block: 8px; background: var(--bg) }
+.search { position: sticky; inset-block-start: 0; z-index: 1; display: flex; flex-wrap: wrap; gap: 8px; margin-block-start: 12px; padding-block: 8px; background: var(--bg) }
 .search input { flex: 1; min-width: 0; font: 1.6rem/1.4 var(--f-ar); padding: 4px 14px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); color: var(--fg) }
 .search button, .retry button { padding-inline: 18px; border: 0; border-radius: 8px; background: var(--accent); color: var(--surface); font: 500 1rem var(--f-ui); cursor: pointer }
 .search .clear { align-self: center; padding: 8px 4px }
+.search .option { flex-basis: 100%; font-size: .9rem; color: var(--muted) }
 .status { color: var(--muted); font-size: .9rem; margin-block: 8px; min-height: 1.5em }
 .retry button { min-height: 44px }
 /* While a lookup runs, the previous results fade so they don't read as current. The delay keeps fast lookups from flickering. */

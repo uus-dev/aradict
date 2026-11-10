@@ -2,8 +2,15 @@
 
 from __future__ import annotations
 
+import re
+import unicodedata
 from dataclasses import dataclass
 from pathlib import Path
+
+LOOK_ALIKES = str.maketrans({"ی": "ي", "ک": "ك", "ـ": None})  # Persian/Urdu letters; tatweel
+MARK = re.compile("[\u064b-\u065f\u0670]")  # tanween, short vowels, shadda, sukun, dagger alif
+# The database leaves the fatha before a long ا unwritten (كِتاب): a letter, maybe a shadda, then ا.
+IMPLIED_FATHA = re.compile("(?<=[\u0621-\u064a])(\u0651?)(?=\u0627)")
 
 
 @dataclass(frozen=True)
@@ -36,6 +43,27 @@ def _representative(analyses: list[dict]) -> dict:
     )
 
 
+def _letters(word: str) -> list[tuple[str, set[str]]]:
+    """Each letter with the marks written on it."""
+    letters: list[tuple[str, set[str]]] = []
+    for char in word:
+        if MARK.match(char) and letters:
+            letters[-1][1].add(char)
+        else:
+            letters.append((char, set()))
+    return letters
+
+
+def _agrees(typed: list[tuple[str, set[str]]], form: str, check_marks: bool) -> bool:
+    """A hamza the user typed is the analysis's hamza (bare ا matches any), and, when
+    check_marks is on, every mark the user typed is on the same letter of the analysis."""
+    letters = _letters(IMPLIED_FATHA.sub("\u064e\\1", form))
+    return len(letters) == len(typed) and all(
+        (letter not in "أإآ" or letter == other) and (not check_marks or marks <= other_marks)
+        for (letter, marks), (other, other_marks) in zip(typed, letters)
+    )
+
+
 class Dictionary:
     def __init__(self, db_path: Path):
         if not db_path.is_file():
@@ -47,10 +75,22 @@ class Dictionary:
 
         self._analyzer = Analyzer(MorphologyDB(str(db_path), "a"), backoff="NONE")
 
-    def lookup_ar(self, word: str) -> list[Reading]:
-        """Readings for an Arabic word, most frequent lemma first. Unknown words give []."""
+    def lookup_ar(self, word: str, filter_diacritics: bool = True) -> list[Reading]:
+        """Readings for an Arabic word (the first, if several), most frequent lemma first.
+        Unknown words give [].
+
+        A typed hamza must match the analysis's. Each typed diacritic must agree too, unless
+        filter_diacritics is off."""
+        words = unicodedata.normalize("NFC", word.translate(LOOK_ALIKES)).split()
+        if not words:
+            return []
+        word = words[0]  # several words: only the first is looked up; the page says so
+        typed = _letters(word.replace("\u064b\u0627", "\u0627\u064b"))  # the database puts tanween fath on the ا
         groups: dict[tuple, list[dict]] = {}
-        for analysis in self._analyzer.analyze(word.strip()):
+        for analysis in self._analyzer.analyze(word):
+            # The analyzer makes up one analysis for a digit, punctuation or non-Arabic token.
+            if analysis["source"] in ("digit", "punc", "foreign") or not _agrees(typed, analysis["diac"], filter_diacritics):
+                continue
             groups.setdefault(_reading_key(analysis), []).append(analysis)
         readings = []
         for analyses in groups.values():
@@ -64,5 +104,10 @@ class Dictionary:
                 root=a.get("root") or None,
                 frequency=None if logprob <= -99 else logprob,
             ))
-        # Python's sort is stable, so equal keys keep the analyzer's order.
-        return sorted(readings, key=lambda r: (r.frequency is None, -(r.frequency or 0), r.lemma))
+        # A word-final ه also finds ة and vice versa; readings ending as typed (مدرسه, not مدرسة)
+        # come first. Then the most frequent lemma; Python's sort is stable, so equal keys keep
+        # the analyzer's order.
+        last = MARK.sub("", word)[-1:]
+        return sorted(readings, key=lambda r: (
+            last in ("ه", "ة") and MARK.sub("", r.form)[-1:] != last, r.frequency is None, -(r.frequency or 0), r.lemma,
+        ))
