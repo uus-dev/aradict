@@ -50,6 +50,27 @@ def test_regular_verbs_take_ed_with_english_spelling_rules(real):
     assert glosses(real, "سَمِعَ") == {"he/it heard; he/it listened"}  # irregular, then regular
 
 
+def test_a_stem_glossed_in_the_past_already_is_not_inflected_again(real):
+    # CAMeL glosses the perfect stem of قال as "said".
+    assert "he/it said" in glosses(real, "قال")
+
+
+def test_third_person_singular_present_takes_s(real):
+    assert "he/it utilizes; he/it employs; he/it operates" in glosses(real, "يستخدم")
+    assert "he/it passes; he/it goes through" in glosses(real, "يمر")  # -es
+    assert "he/it carries; he/it bears; he/it transports" in glosses(real, "يحمل")  # -ies
+    assert "he/it says" in glosses(real, "يقول")
+    assert "she/it writes" in glosses(real, "تكتب")
+    assert "you (m.) write" in glosses(real, "تكتب")  # only the third person singular changes
+    assert "he/it will write" in glosses(real, "سيكتب")
+
+
+def test_stems_of_one_lemma_with_different_senses_stay_apart(real):
+    # كاتِب is stored twice as a noun: "clerk" and "writer;author". Readings group only
+    # analyses that share a gloss, so each keeps its own.
+    assert {"clerk", "writer; author"} <= glosses(real, "كاتب")
+
+
 def test_measure_x_verbs_including_the_imperative(real):
     assert glosses(real, "استخدم") == {
         "he/it utilized; he/it employed; he/it operated",

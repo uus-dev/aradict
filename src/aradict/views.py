@@ -66,7 +66,8 @@ def _use(top_percent: float | None) -> str:
     if top_percent is None:
         return "frequency unknown"
     band = "very common" if top_percent <= 1 else "common" if top_percent <= 10 else "less common" if top_percent <= 40 else "rare"
-    return f"{band} · top {max(1, round(top_percent))}% of words"
+    # The least frequent lemmas share the lowest figure, so they are all "top 100%", which says nothing.
+    return band if round(top_percent) >= 100 else f"{band} · top {max(1, round(top_percent))}% of words"
 
 
 def _chip_text(s: Segment) -> str:
@@ -202,7 +203,7 @@ def looked_up(query: str, readings: list[Reading], arabizi: str | None = None, l
                     ar("خ"), ", 7 for ", ar("ح"), " and 9 for ", ar("ق"), ". ", a(href="/about#typing")["More about Arabizi"],
                 ],
                 li["Type it in Arabic script."],
-                li["Looking for an English word? English → Arabic lookup is coming soon."],
+                li["Looking for an English word? ", a(href=f"/?{urlencode({'q': query, 'lang': 'en'})}")["Look it up in English → Arabic"]],
             ],
         ]])
     return State(["No entry for ", ar(words[0])], [notice, div(class_="empty")[
@@ -211,6 +212,36 @@ def looked_up(query: str, readings: list[Reading], arabizi: str | None = None, l
             li["Check the spelling."],
             li["Type it without vowel marks."],
             li["Type it in Latin letters (Arabizi), such as ", _arabizi("kitab"), " or ", _arabizi("3arabi"), "."],
+            li["Looking for an English word? ", a(href="/?lang=en")["Switch to English → Arabic"]],
+        ],
+    ]])
+
+
+COVERAGE = p(class_="notice coverage")[
+    "English → Arabic is limited: it matches the dictionary's short English glosses, a whole word or phrase at a time. "
+    "A word it doesn't find may still have an Arabic translation, listed under a synonym."
+]
+
+INITIAL_EN = State(body=[
+    p(class_="intro")["Type an English word or phrase, such as “book” or “piece of writing”, to find the Arabic words it translates."],
+    COVERAGE,
+])
+
+
+def looked_up_en(query: str, readings: list[Reading], links: Links | None = None) -> State:
+    """The outcome of a completed English → Arabic lookup, with the coverage note. Entries link to
+    their root and related forms with links."""
+    if readings:
+        n = len(readings)
+        return State(f"{n} Arabic word{'s' if n != 1 else ''} for “{query}”", [COVERAGE, LEGEND, _entries(readings, h2, links)])
+    # Arabic typed here is meant the other way round, so switching direction keeps it.
+    back = f"/?{urlencode({'q': query})}" if re.search("[\u0600-\u06ff]", query) else "/"
+    return State(f"No Arabic word for “{query}”", [COVERAGE, div(class_="empty")[
+        p["AraDict found no Arabic word with this English meaning. You could:"],
+        ul[
+            li["Check the spelling."],
+            li["Try a synonym, or one word rather than a phrase."],
+            li["Looking for an Arabic word? ", a(href=back)["Switch to Arabic → English"]],
         ],
     ]])
 
@@ -311,7 +342,7 @@ def _arabizi_chip(arabic: str | None, **attributes) -> Node:
     return p(id="arabizi", class_="arabizi", hidden=not arabic, **attributes)[arabic and ["Looked up as ", ar(arabic)]]
 
 
-def word_page(query: str, state: State, filter_diacritics: bool = True) -> Node:
+def word_page(query: str, state: State, filter_diacritics: bool = True, english: bool = False) -> Node:
     return _page("Word", "word", [
         h1(class_="sr-only")["Word lookup"],
         # Live lookup: the same GET as the plain form, debounced while typing and immediate on Enter.
@@ -320,12 +351,15 @@ def word_page(query: str, state: State, filter_diacritics: bool = True) -> Node:
             id="search", class_="search", method="get", action="/", role="search",
             hx_get="/", hx_trigger="input delay:150ms, submit", hx_target="#results", hx_push_url="true", hx_sync="this:replace",
         )[
-            label(for_="q", class_="sr-only")["Arabic word"],
-            input(id="q", name="q", value=query, dir="rtl", lang="ar", autocomplete="off", spellcheck="false"),
+            # lookup.js sets the label and the field's language when the direction switches. Arabic reads in the
+            # direction of what is typed: right to left, or left to right for Arabizi.
+            label(for_="q", class_="sr-only")["English word" if english else "Arabic word"],
+            input(id="q", name="q", value=query, dir="ltr" if english else "auto", lang="en" if english else "ar", autocomplete="off", spellcheck="false"),
             _keyboard_toggle("q"),
-            a(href="/", class_="clear", hidden=not query)["Clear"],
+            a(href="/?lang=en" if english else "/", class_="clear", hidden=not query)["Clear"],
             button(type="submit")["Look up"],
             _arabizi_chip(state.arabizi),
+            label(class_="option")[input(type="checkbox", name="lang", value="en", checked=english, data_remember=True), " English → Arabic"],
             label(class_="option")[input(type="checkbox", name="diacritics", value="off", checked=not filter_diacritics, data_remember=True), " Ignore diacritics"],
             # Shown by autocomplete.js and remembered by history.js. form="" leaves it out of the lookup and its URL.
             label(class_="option", hidden=True)[input(type="checkbox", name="autocomplete", form="", checked=True, data_remember=True), " Show suggestions"],
