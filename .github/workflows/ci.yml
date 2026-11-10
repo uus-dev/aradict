@@ -1,0 +1,25 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+      - run: uv sync --locked
+      - name: Cache the CAMeL database
+        uses: actions/cache@v4
+        with:
+          path: data/calima-msa-r13
+          key: calima-msa-r13-0.4.0-195bc25a
+      - name: Download and verify the database
+        run: uv run python -m aradict.data
+      - run: uv run playwright install --with-deps chromium
+      - run: uv run pytest

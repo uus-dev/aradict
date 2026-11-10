@@ -1,0 +1,45 @@
+[project]
+name = "aradict"
+version = "0.1.0"
+description = "A modern Arabic–English dictionary for Modern Standard Arabic"
+readme = "README.md"
+requires-python = ">=3.13"
+license = "GPL-2.0-or-later"
+dependencies = [
+    "camel-tools==1.6.0",
+    "fastapi>=0.162.3",
+    "htpy>=26.5.1",
+    "uvicorn>=0.54.0",
+]
+
+[project.scripts]
+aradict = "aradict.__main__:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/aradict"]
+
+[tool.uv]
+# camel-tools also ships neural models that pull in torch, transformers, kenlm and scikit-learn.
+# AraDict only uses the morphology analyzer and generator, which need none of them.
+override-dependencies = [
+  "torch; sys_platform == 'never'",
+  "transformers; sys_platform == 'never'",
+  "camel-kenlm; sys_platform == 'never'",
+  "scikit-learn; sys_platform == 'never'",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+# docopt, a camel-tools dependency, has invalid escape sequences in its source.
+filterwarnings = ["ignore:invalid escape sequence:SyntaxWarning"]
+
+[dependency-groups]
+dev = [
+    "httpx2>=2.16.0",
+    "playwright>=1.65.0",
+    "pytest>=9.2.0",
+]
