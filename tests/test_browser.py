@@ -62,13 +62,13 @@ def test_the_query_stays_in_view_while_reading_results(base_url, browser):
     page.goto(f"{base_url}/?q={quote('كتب')}")
     page.locator(".reading").last.scroll_into_view_if_needed()
     assert page.evaluate("scrollY") > 150
-    expect(page.get_by_role("textbox", name="Arabic word")).to_be_in_viewport(ratio=1)
+    expect(page.get_by_label("Arabic word")).to_be_in_viewport(ratio=1)
 
 
 def test_clear_and_deleting_the_query_return_to_the_empty_start(base_url, browser):
     page = browser.new_page()
     page.goto(f"{base_url}/?q={quote('كتب')}")
-    box = page.get_by_role("textbox", name="Arabic word")
+    box = page.get_by_label("Arabic word")
     clear = page.get_by_role("link", name="Clear")
     expect(page.locator(".reading")).to_have_count(3)
 
@@ -91,7 +91,7 @@ def test_clear_and_deleting_the_query_return_to_the_empty_start(base_url, browse
 def test_live_lookup_while_typing_and_on_enter_with_history(base_url, browser):
     page = browser.new_page()
     page.goto(base_url)
-    box = page.get_by_role("textbox", name="Arabic word")
+    box = page.get_by_label("Arabic word")
     status = page.get_by_role("status")
 
     box.press_sequentially("كتب")  # no button pressed
@@ -123,7 +123,7 @@ def test_live_lookup_while_typing_and_on_enter_with_history(base_url, browser):
 def test_a_slow_earlier_response_never_replaces_a_newer_one(base_url, browser):
     page = browser.new_page()
     page.goto(base_url)
-    box = page.get_by_role("textbox", name="Arabic word")
+    box = page.get_by_label("Arabic word")
     status = page.get_by_role("status")
     held = []
     page.route(lambda url: url.endswith(f"?q={quote('ك')}"), lambda route: held.append(route))
@@ -150,7 +150,7 @@ def test_a_failed_lookup_offers_retry_and_keeps_the_input(base_url, browser, mon
 
     page = browser.new_page()
     page.goto(base_url)
-    box = page.get_by_role("textbox", name="Arabic word")
+    box = page.get_by_label("Arabic word")
     status = page.get_by_role("status")
 
     monkeypatch.setattr("aradict.app.dictionary", Broken)
@@ -168,7 +168,7 @@ def test_home_intro_sits_below_the_search_box_on_a_phone(base_url, browser):
     page = browser.new_context(viewport={"width": 390, "height": 844}).new_page()
 
     page.goto(base_url)
-    search = page.get_by_role("textbox", name="Arabic word").bounding_box()
+    search = page.get_by_label("Arabic word").bounding_box()
     intro = page.locator(".intro").bounding_box()
     assert search["y"] + search["height"] <= intro["y"]  # the explanation never sits in front of the search box
     assert intro["y"] + intro["height"] <= 844  # and is short enough to read on the first screen
@@ -193,8 +193,164 @@ def test_the_diacritics_switch_looks_up_again_and_lives_in_the_url(base_url, bro
     expect(switch).not_to_be_checked()
     expect(page.locator(".reading")).to_have_count(1)
 
-    page.get_by_role("textbox", name="Arabic word").fill("كتب كتاب")  # notices update live too
+    page.get_by_label("Arabic word").fill("كتب كتاب")  # notices update live too
     expect(page.get_by_text("Only the first word")).to_be_visible()
+
+
+def test_choose_a_suggestion_with_the_keyboard_alone(base_url, browser):
+    page = browser.new_page()
+    page.goto(base_url)
+    box = page.get_by_role("combobox", name="Arabic word")
+    suggestions = page.get_by_role("listbox", name="Suggestions")
+    expect(box).to_have_attribute("aria-expanded", "false")
+
+    box.press_sequentially("كتا")
+    expect(suggestions.get_by_role("option")).to_have_text(["كِتاب", "كُتّاب", "كَتاتِيب"])
+    expect(page.get_by_role("status")).to_contain_text("كتا")  # the typed word is looked up meanwhile
+    expect(box).to_have_attribute("aria-controls", suggestions.evaluate("e => e.id"))
+    box.press("ArrowDown")
+    box.press("ArrowDown")
+    box.press("ArrowUp")
+    # The active option is the selected one, and the field points to it while keeping focus.
+    expect(page.locator("form")).to_match_aria_snapshot("""
+        - combobox "Arabic word" [expanded]: كتا
+        - listbox "Suggestions":
+          - option "كِتاب" [selected]
+          - option "كُتّاب"
+          - option "كَتاتِيب"
+    """)
+    first = suggestions.get_by_role("option", name="كِتاب")
+    expect(box).to_have_attribute("aria-activedescendant", first.evaluate("e => e.id"))
+    expect(box).to_be_focused()
+
+    page.evaluate("window.samePage = true")
+    box.press("Enter")
+    expect(box).to_have_value("كِتاب")
+    expect(box).to_have_attribute("aria-expanded", "false")
+    expect(suggestions).to_be_hidden()
+    expect(page.get_by_role("status")).to_have_text("1 reading for كِتاب")  # that exact reading
+    expect(page).to_have_url(lookup_url(base_url, "كِتاب"))
+    assert page.evaluate("window.samePage")  # chosen through the live lookup, not a page load
+
+    page.go_back()  # the typed word's own lookup is in the history before it
+    expect(box).to_have_value("كتا")
+
+
+def test_escape_closes_the_suggestions_and_keeps_the_typed_lookup(base_url, browser):
+    page = browser.new_page()
+    page.goto(base_url)
+    box = page.get_by_role("combobox", name="Arabic word")
+    suggestions = page.get_by_role("listbox", name="Suggestions")
+
+    box.press_sequentially("كتب")
+    expect(suggestions).to_be_visible()
+    box.press("ArrowDown")
+    box.press("Escape")
+    expect(suggestions).to_be_hidden()
+    expect(box).to_have_attribute("aria-expanded", "false")
+    expect(box).not_to_have_attribute("aria-activedescendant", re.compile(".*"))
+    expect(box).to_have_value("كتب")
+    expect(page.get_by_role("status")).to_have_text("3 readings for كتب")
+    expect(page).to_have_url(lookup_url(base_url, "كتب"))
+
+    held = []
+    page.route(lambda url: "/suggest?" in url, lambda route: held.append(route))
+    box.press("Backspace")
+    page.wait_for_timeout(100)
+    box.press("Escape")  # before the suggestions arrive: they never open
+    for route in held:
+        try:
+            route.continue_()
+        except PlaywrightError:
+            pass  # the browser already gave up on that request
+    page.wait_for_timeout(300)
+    expect(suggestions).to_be_hidden()
+
+
+def test_a_suggestion_can_be_chosen_by_pointer(base_url, browser):
+    page = browser.new_page()
+    page.goto(base_url)
+    page.get_by_label("Arabic word").press_sequentially("وكتا")
+    page.get_by_role("option", name="وَكُتّاب").click()
+    expect(page.get_by_label("Arabic word")).to_have_value("وَكُتّاب")
+    expect(page).to_have_url(lookup_url(base_url, "وَكُتّاب"))
+
+
+def test_turning_suggestions_off_stops_them_at_once(base_url, browser):
+    page = browser.new_page()
+    page.goto(base_url)
+    box = page.get_by_label("Arabic word")
+    suggestions = page.get_by_role("listbox", name="Suggestions")
+    switch = page.get_by_role("checkbox", name="Show suggestions")
+    expect(switch).to_be_checked()
+
+    box.press_sequentially("كتا")
+    expect(suggestions).to_be_visible()
+    expect(page.get_by_role("status")).to_contain_text("كتا")
+    history = page.evaluate("history.length")
+    held = []
+    is_suggest = lambda url: "/suggest?" in url
+    page.route(is_suggest, lambda route: held.append(route))
+    box.press_sequentially("ب")  # its suggestions are on their way when the switch goes off
+    page.wait_for_timeout(100)
+
+    # The open list covers the switch, so reach it from the keyboard.
+    switch.focus()
+    page.keyboard.press("Space")
+    expect(switch).not_to_be_checked()
+    expect(suggestions).to_be_hidden()
+    expect(page.get_by_role("combobox")).to_have_count(0)  # a plain text field again
+    for route in held:
+        try:
+            route.continue_()
+        except PlaywrightError:
+            pass  # the browser already gave up on that request
+    page.wait_for_timeout(300)
+    expect(suggestions).to_be_hidden()
+    expect(page.get_by_role("status")).to_have_text("3 readings for كتاب")  # lookup goes on
+    assert page.evaluate("history.length") == history + 1  # only the lookup of كتاب; the switch adds no entry
+
+    page.unroute(is_suggest)
+    asked = []
+    page.on("request", lambda request: is_suggest(request.url) and asked.append(request.url))
+    box.focus()
+    box.evaluate("e => e.setSelectionRange(e.value.length, e.value.length)")
+    page.keyboard.type("ي")
+    expect(page.get_by_role("status")).to_contain_text("كتابي")
+    page.wait_for_timeout(300)
+    expect(suggestions).to_be_hidden()
+    assert asked == []  # no suggestions are even asked for
+    assert page.evaluate("new URLSearchParams(location.search).size") == 1  # the switch is not part of the URL
+
+
+def test_the_suggestions_switch_is_remembered_on_this_device(base_url, browser):
+    page = browser.new_page()
+    page.goto(base_url)
+    page.get_by_role("checkbox", name="Show suggestions").uncheck()
+
+    for url in (base_url, f"{base_url}/?q={quote('كتب')}"):  # a URL with a query keeps it too: it isn't part of the view
+        page.goto(url)
+        expect(page.get_by_role("checkbox", name="Show suggestions")).not_to_be_checked()
+        expect(page.get_by_role("combobox")).to_have_count(0)
+
+
+def test_suggestions_while_typing_on_the_on_screen_keyboard(base_url, browser):
+    page = browser.new_page()
+    page.goto(base_url)
+    page.get_by_role("button", name="Arabic keyboard").click()
+
+    on_screen(page, "kaf", "teh", "alef")
+    suggestions = page.get_by_role("listbox", name="Suggestions")
+    expect(suggestions.get_by_role("option")).to_have_count(3)
+    # The list opens below the keys, never over them, so typing can go on.
+    keyboard = page.get_by_role("group", name="Arabic keyboard").bounding_box()
+    assert suggestions.bounding_box()["y"] >= keyboard["y"] + keyboard["height"]
+    on_screen(page, "beh")
+    expect(page.get_by_label("Arabic word")).to_have_value("كتاب")
+
+    suggestions.get_by_role("option", name="كِتاب").click()
+    expect(page.get_by_label("Arabic word")).to_have_value("كِتاب")
+    expect(page).to_have_url(lookup_url(base_url, "كِتاب"))
 
 
 def on_screen(page, *keys):
@@ -214,7 +370,7 @@ def test_typing_a_voweled_word_on_the_on_screen_keyboard(base_url, browser):
 
     on_screen(page, "kaf", "fatha", "teh", "fatha", "beh", "fatha")  # each vowel mark drops back to the letters
 
-    expect(page.get_by_role("textbox", name="Arabic word")).to_have_value("كَتَبَ")
+    expect(page.get_by_label("Arabic word")).to_have_value("كَتَبَ")
     expect(page.get_by_role("status")).to_have_text("1 reading for كَتَبَ")  # live lookup, no button pressed
     expect(page.locator(".reading")).to_have_count(1)
     expect(page).to_have_url(lookup_url(base_url, "كَتَبَ"))
@@ -233,13 +389,13 @@ def test_every_letter_haraka_and_hamza_form_has_a_named_key(base_url, browser):
     on_screen(page, *(unicodedata.name(ch).removeprefix("ARABIC ").removeprefix("LETTER ").lower() for ch in typed))
     on_screen(page, "lam alef", "lam alef with hamza above", "lam alef with hamza below", "lam alef with madda above")
 
-    expect(page.get_by_role("textbox", name="Arabic word")).to_have_value(typed + "لالألإلآ")
+    expect(page.get_by_label("Arabic word")).to_have_value(typed + "لالألإلآ")
 
 
 def test_on_screen_keys_type_at_the_caret_and_leave_focus_in_the_field(base_url, browser):
     page = browser.new_page()
     page.goto(f"{base_url}/?q={quote('كتب')}")
-    box = page.get_by_role("textbox", name="Arabic word")
+    box = page.get_by_label("Arabic word")
     status = page.get_by_role("status")
     page.get_by_role("button", name="Arabic keyboard").click()
 
@@ -263,7 +419,7 @@ def test_on_screen_keys_type_at_the_caret_and_leave_focus_in_the_field(base_url,
 def test_the_on_screen_keyboard_works_without_a_pointer(base_url, browser):
     page = browser.new_page()
     page.goto(base_url)
-    box = page.get_by_role("textbox", name="Arabic word")
+    box = page.get_by_label("Arabic word")
     toggle = page.get_by_role("button", name="Arabic keyboard")
     keyboard = page.get_by_role("group", name="Arabic keyboard")
 
@@ -352,7 +508,7 @@ def test_arabizi_shows_the_arabic_it_looked_up_and_keeps_it_on_reload(base_url, 
 
     page = browser.new_context(viewport={"width": 390, "height": 844}).new_page()
     page.goto(base_url)
-    box = page.get_by_role("textbox", name="Arabic word")
+    box = page.get_by_label("Arabic word")
     status = page.get_by_role("status")
     looked_up_as = page.locator("#arabizi")
 

@@ -206,6 +206,8 @@ def word_page(query: str, state: State, filter_diacritics: bool = True) -> Node:
             button(type="submit")["Look up"],
             _arabizi_chip(state.arabizi),
             label(class_="option")[input(type="checkbox", name="diacritics", value="off", checked=not filter_diacritics, data_remember=True), " Ignore diacritics"],
+            # Shown by autocomplete.js and remembered by history.js. form="" leaves it out of the lookup and its URL.
+            label(class_="option", hidden=True)[input(type="checkbox", name="autocomplete", form="", checked=True, data_remember=True), " Show suggestions"],
         ],
         _keyboard_panel("q"),
         _history(),
@@ -216,6 +218,7 @@ def word_page(query: str, state: State, filter_diacritics: bool = True) -> Node:
         script(src="/static/lookup.js", type="module"),
         script(src="/static/keyboard.js", type="module"),
         script(src="/static/history.js", type="module"),
+        script(src="/static/autocomplete.js", type="module"),  # after history.js, which restores its switch
     ])
 
 
