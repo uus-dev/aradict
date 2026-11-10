@@ -222,7 +222,6 @@ def _by_frequency(r: Reading) -> tuple:
 
 # English → Arabic: an index from each English sense of a stem's gloss to the stems with it.
 BRACKETED = re.compile(r"\([^)]*\)|\[[^\]]*\]|<[^>]*>")  # (Egyptian)_cheese, write_[fem.sg.], <verb>
-THIRD_PERSON = {"be": "is", "have": "has", "do": "does", "go": "goes"}
 
 
 def _citation(form: str, lemma: str, pos: str, stem: str | None = None, gloss: str | None = None):
@@ -250,9 +249,9 @@ def _english_keys(gloss: str, pos: str) -> set[str]:
         keys.add(sense := _english_key(sense))
         first, _, rest = sense.partition(" ")
         if pos == "noun":
-            keys.add(readable._plural(sense))  # ponytail: inflects the last word, so "pieces of writing" isn't found
+            keys.add(readable.plural(sense))  # ponytail: inflects the last word, so "pieces of writing" isn't found
         elif pos == "verb" and first != "be":
-            for inflected in (readable._past(first), THIRD_PERSON.get(first) or readable._plural(first)):
+            for inflected in (readable.past(first), readable.third_person(first)):
                 keys.add(f"{inflected} {rest}".strip())
     return keys - {""}
 

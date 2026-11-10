@@ -364,6 +364,12 @@ def test_english_inflected_forms_find_their_base_form(real):
     assert "كَتَب" in lemmas(real.lookup_en("writes"))
 
 
+def test_english_inflects_as_the_glosses_do(real):
+    # The third person of "focus" is "focuses", as the glosses write it ("he/it focuses").
+    verbs = [r for r in real.lookup_en("focus") if r.pos == "verb"]
+    assert verbs and real.lookup_en("focuses") == verbs
+
+
 def test_english_finds_each_word_once_and_verbs_in_citation_form(real):
     found = real.lookup_en("eat")
     assert len({(r.form, r.gloss) for r in found}) == len(found)

@@ -287,7 +287,16 @@ def _inflected(verb: str) -> bool:
     return verb == "said" or verb.endswith("ed") and not verb.endswith("eed") and verb not in ("shed", "shred")
 
 
-def _past(verb: str) -> str:
+def _s(word: str) -> str:
+    """A word with the English -s ending: write → writes, pass → passes, carry → carries."""
+    if word.endswith("y") and word[-2:-1] not in ("a", "e", "i", "o", "u"):
+        return word[:-1] + "ies"
+    if word.endswith(("s", "x", "z", "ch", "sh")):
+        return word + "es"
+    return word + "s"
+
+
+def past(verb: str) -> str:
     """The English simple past: write → wrote, use → used, try → tried, stop → stopped, add → added."""
     if _inflected(verb):
         return verb
@@ -304,17 +313,11 @@ def _past(verb: str) -> str:
     return verb + "ed"
 
 
-def _third_person(verb: str) -> str:
-    """The English present for he, she or it: write → writes, pass → passes, carry → carries."""
+def third_person(verb: str) -> str:
+    """The English present for he, she or it: write → writes, focus → focuses, carry → carries."""
     if _inflected(verb):
         return verb
-    if verb in ("have", "do", "go"):
-        return {"have": "has", "do": "does", "go": "goes"}[verb]
-    if verb.endswith("y") and verb[-2:-1] not in ("a", "e", "i", "o", "u"):
-        return verb[:-1] + "ies"
-    if verb.endswith(("s", "x", "z", "ch", "sh")):
-        return verb + "es"
-    return verb + "s"
+    return {"be": "is", "have": "has", "do": "does", "go": "goes"}.get(verb) or _s(verb)
 
 
 def _verb(sense: str, a: dict, future: bool) -> str:
@@ -325,9 +328,9 @@ def _verb(sense: str, a: dict, future: bool) -> str:
         if future:
             return f"will {sense}"
         if a["asp"] == "p":
-            first = _past(first)
+            first = past(first)
         elif a["per"] + a["num"] == "3s":
-            first = _third_person(first)
+            first = third_person(first)
         return " ".join(filter(None, (first, rest)))
     singular = a["per"] + a["num"] in ("1s", "3s")
     if a["asp"] == "p":
@@ -339,29 +342,23 @@ def _verb(sense: str, a: dict, future: bool) -> str:
     return be + sense[2:]
 
 
-def _plural(sense: str) -> str:
+def plural(sense: str) -> str:
     """English plural of a noun sense, inflecting the word before any bracketed note."""
     head, paren, note = sense.partition(" (")
     *rest, word = head.split(" ")
     if word in IRREGULAR_PLURALS:
         word = IRREGULAR_PLURALS[word]
-    elif word.endswith("y") and word[-2:-1] not in ("a", "e", "i", "o", "u"):
-        word = word[:-1] + "ies"
-    elif word.endswith(("ss", "x", "z", "ch", "sh")):
-        word += "es"
-    elif word.endswith("s"):
-        pass  # CAMeL often glosses a singular stem with a plural sense ("law;statutes")
-    else:
-        word += "s"  # ponytail: regular rules plus a few irregulars; extend IRREGULAR_PLURALS as glosses need
+    elif not word.endswith("s") or word.endswith("ss"):  # CAMeL often glosses a singular stem with a plural sense ("law;statutes")
+        word = _s(word)  # ponytail: regular rules plus a few irregulars; extend IRREGULAR_PLURALS as glosses need
     return " ".join(rest + [word]) + paren + note
 
 
 def _noun(sense: str, a: dict, suffixes: list[str]) -> str:
     """Number and gender that English shows on the noun itself: "two schools", "teacher (f.)"."""
     if a["num"] == "d":
-        sense = "two " + _plural(sense)
+        sense = "two " + plural(sense)
     elif a["num"] == "p" and a["form_num"] == "p":  # sound plural; a broken plural's stem gloss is already plural
-        sense = _plural(sense)
+        sense = plural(sense)
     feminine_ending = any(tag.startswith("NSUFF_FEM") for tag in suffixes)
     if feminine_ending and not _letters(a["lex"]).endswith("ت"):
         sense += " (f.)"  # a woman, from a masculine headword: مُدَرِّسَة from مُدَرِّس
