@@ -7,8 +7,9 @@ from contextlib import asynccontextmanager
 from functools import lru_cache
 from pathlib import Path
 from typing import Annotated, Literal
+from urllib.parse import parse_qs
 
-from fastapi import FastAPI, Header
+from fastapi import FastAPI, Header, Request
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 
@@ -67,9 +68,34 @@ def word(
     return HTMLResponse(str(page), status_code, headers)
 
 
+def _analyse(text: str, hx_request: str | None = None) -> HTMLResponse:
+    text = text.replace("\r\n", "\n").strip()  # a form posts line breaks as CR LF
+    status_code = 200
+    if not text:
+        state = views.State()
+    elif len(text) > views.MAX_TEXT:
+        state = views.State(f"Your text has {len(text):,} characters. Analyse at most {views.MAX_TEXT:,} at a time: shorten it and try again.")
+    else:
+        try:
+            state = views.analysed(dictionary().analyze_text(text))
+        except Exception:
+            logger.exception("Text analysis failed")  # the passage stays out of the log
+            state, status_code = views.TEXT_FAILURE, 500
+    page = views.live_results(state) if hx_request else views.text_page(text, state)
+    return HTMLResponse(str(page), status_code, {"Vary": "HX-Request"})
+
+
 @app.get("/text", response_class=HTMLResponse)
-def text() -> str:
-    return str(views.text_page())
+def text(q: str = "") -> HTMLResponse:
+    """The Text view. q carries the words the Word page hands over; a passage typed here is posted."""
+    return _analyse(q)
+
+
+@app.post("/text", response_class=HTMLResponse)
+async def analyse(request: Request, hx_request: Annotated[str | None, Header()] = None) -> HTMLResponse:
+    # ponytail: parsed by hand; FastAPI's Form() would add python-multipart for this one field.
+    form = parse_qs((await request.body()).decode(errors="replace"))
+    return _analyse(form.get("text", [""])[0], hx_request)
 
 
 @app.get("/about", response_class=HTMLResponse)

@@ -113,3 +113,20 @@ def test_fixture_database_matches_real_for_its_lemmas(real, fixture_db):
 def test_missing_database_fails_loudly(tmp_path):
     with pytest.raises(RuntimeError, match="No morphology database"):
         Dictionary(tmp_path / "missing.db")
+
+
+def test_text_keeps_every_token_in_order_with_its_kind_and_offset(real):
+    passage = "كتب، 3 BBC\nقخغثص"
+    tokens = real.analyze_text(passage)
+    assert [(t.text, t.kind) for t in tokens] == [
+        ("كتب", "word"), ("،", "punctuation"), (" ", "space"), ("3", "number"), (" ", "space"),
+        ("BBC", "foreign"), ("\n", "space"), ("قخغثص", "unknown"),
+    ]
+    assert all(passage[t.start:t.end] == t.text for t in tokens)
+    assert tokens[0].readings == tuple(real.lookup_ar("كتب")) and tokens[-1].readings == ()
+
+
+def test_text_diacritics_filter_their_own_token(real):
+    vocalized, bare = real.analyze_text("كَتَبَ كتب")[::2]
+    assert [first_sense(r.gloss) for r in vocalized.readings] == ["he/it write"]
+    assert len(bare.readings) == 3

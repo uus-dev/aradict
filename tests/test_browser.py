@@ -219,3 +219,92 @@ def test_word_parts_are_marked_without_colour_and_open_without_javascript(base_u
     expect(chips.locator(".chip").nth(1)).to_contain_text("by/with")
     assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
     page.context.close()
+
+
+def test_text_details_open_by_tap_and_by_keyboard_and_fit_a_phone(base_url, browser):
+    context = browser.new_context(viewport={"width": 390, "height": 844}, has_touch=True, is_mobile=True)
+    page = context.new_page()
+    page.goto(f"{base_url}/text")
+    page.get_by_role("textbox", name="Arabic text").fill("كتب كتاب قخغثص كتب")
+    page.get_by_role("button", name="Analyse").click()
+
+    word = page.get_by_role("button", name=re.compile(r"^كتب\s*, 3 readings$"))
+    expect(word).to_have_count(2)
+    expect(page.get_by_role("button", name=re.compile(r"^قخغثص\s*, not in the dictionary$"))).to_be_visible()
+    details = page.get_by_role("dialog", name="كتب")
+
+    word.last.tap()
+    expect(details).to_be_visible()
+    expect(details.locator(".reading")).to_have_count(3)
+    box = details.bounding_box()
+    assert box["x"] >= 0 and box["x"] + box["width"] <= 390 and box["y"] + box["height"] <= 844
+    assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
+    word_box = word.last.bounding_box()
+    assert word_box["y"] + word_box["height"] <= box["y"]  # the tapped word stays in view above the panel
+    details.get_by_role("button", name="Close").tap()
+    expect(details).to_be_hidden()
+
+    word.first.focus()
+    page.keyboard.press("Enter")
+    expect(details).to_be_visible()
+    page.keyboard.press("Escape")
+    expect(details).to_be_hidden()
+    context.close()
+
+
+def test_text_without_javascript_keeps_the_layout_and_opens_word_lookup(base_url, browser):
+    page = browser.new_context(java_script_enabled=False).new_page()
+    page.goto(f"{base_url}/text")
+    page.get_by_role("textbox", name="Arabic text").fill("كتب، 3 BBC\nكتاب")
+    page.get_by_role("button", name="Analyse").click()
+
+    expect(page).to_have_url(f"{base_url}/text")  # posted: the passage stays out of the address
+    passage = page.locator(".passage")
+    expect(passage).to_contain_text("، 3 BBC")
+    first, second = (tok.bounding_box() for tok in page.locator(".tok").all())
+    assert second["y"] >= first["y"] + first["height"]  # the line break is kept
+    box = passage.bounding_box()
+    assert first["x"] > box["x"] + box["width"] / 2  # right to left: كتب starts the first line, on the right
+
+    page.locator(".tok").first.click()
+    details = page.get_by_role("dialog", name="كتب")
+    expect(details).to_be_visible()
+    details.get_by_role("link", name="Open in Word lookup").click()
+    expect(page).to_have_url(lookup_url(base_url, "كتب"))
+    expect(page.locator(".reading")).to_have_count(3)
+    page.context.close()
+
+
+def test_text_is_analysed_after_a_pause_and_markup_stays_text(base_url, browser):
+    page = browser.new_page()
+    dialogs = []
+    page.on("dialog", lambda dialog: (dialogs.append(dialog.message), dialog.dismiss()))
+    page.goto(f"{base_url}/text")
+    box = page.get_by_role("textbox", name="Arabic text")
+    status = page.get_by_role("status")
+
+    box.fill("<script>alert(1)</script> كتب")  # no button pressed
+    expect(status).to_have_text("1 word")
+    expect(page.locator(".passage")).to_contain_text("<script>alert(1)</script> كتب")
+    expect(page).to_have_url(f"{base_url}/text")
+
+    box.fill("كتب " * 500 + "كتاب")
+    expect(status).to_have_text("Your text has 2,004 characters. Analyse at most 2,000 at a time: shorten it and try again.")
+    expect(page.locator(".passage")).to_have_count(0)
+    expect(box).to_have_value("كتب " * 500 + "كتاب")
+    assert dialogs == []
+
+
+def test_text_details_sit_under_the_word_on_a_wide_screen(base_url, browser):
+    page = browser.new_page(viewport={"width": 1280, "height": 800})
+    page.goto(f"{base_url}/text?q={quote('كتب كتاب')}")
+    word = page.locator(".tok").last
+    word.click()
+    details = page.get_by_role("dialog", name="كتاب")
+    expect(details).to_be_visible()
+    expect(word).to_have_class(re.compile(r"\bon\b"))
+    w, d = word.bounding_box(), details.bounding_box()
+    assert w["y"] + w["height"] <= d["y"] <= w["y"] + w["height"] + 12
+    assert d["x"] <= w["x"] and w["x"] + w["width"] <= d["x"] + d["width"]
+    page.keyboard.press("Escape")
+    expect(word).not_to_have_class(re.compile(r"\bon\b"))

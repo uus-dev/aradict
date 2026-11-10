@@ -3,12 +3,13 @@
 from __future__ import annotations
 
 import re
+from collections.abc import Iterable
 from typing import NamedTuple
 from urllib.parse import urlencode
 
-from htpy import Node, a, blockquote, body, br, button, code, dd, details, div, dl, dt, form, fragment, h1, h2, head, header, html, i, input, label, li, link, main, meta, nav, ol, p, script, section, span, summary, template, title, ul
+from htpy import Element, Node, a, blockquote, body, br, button, code, dd, details, div, dl, dt, form, fragment, h1, h2, h3, head, header, html, i, input, label, li, link, main, meta, nav, ol, p, script, section, span, summary, template, textarea, title, ul
 
-from .dictionary import Reading, Segment
+from .dictionary import Reading, Segment, Token
 
 PAGES = [("word", "/", "Word"), ("text", "/text", "Text"), ("about", "/about", "About")]
 
@@ -82,26 +83,30 @@ def _reading(r: Reading) -> Node:
     ]
 
 
-def _entries(readings: list[Reading]) -> Node:
+LEGEND = p(class_="legend")["In each form: ", span(class_="prefix")["prefix"], " · stem · ", span(class_="suffix")["suffix"]]
+
+
+def _count(readings) -> str:
+    return f"{len(readings)} reading{'s' if len(readings) != 1 else ''}"
+
+
+def _entries(readings: Iterable[Reading], heading: Element = h2) -> Node:
     """One entry per lemma and part of speech, in the order the readings arrive."""
     groups: dict[tuple[str, str], list[Reading]] = {}
     for reading in readings:
         groups.setdefault((reading.lemma, reading.pos), []).append(reading)
-    return [
-        p(class_="legend")["In each form: ", span(class_="prefix")["prefix"], " · stem · ", span(class_="suffix")["suffix"]],
-        div(class_="entries")[
-            (
-                section(class_="entry")[
-                    div(class_="head")[
-                        h2[ar(lemma)],
-                        p(class_="pos")[group[0].tags[0]],
-                        dl[dt["Root"], dd[_root(group[0].root)]],
-                    ],
-                    ul(class_="readings")[(_reading(r) for r in group)],
-                ]
-                for (lemma, pos), group in groups.items()
-            )
-        ],
+    return div(class_="entries")[
+        (
+            section(class_="entry")[
+                div(class_="head")[
+                    heading[ar(lemma)],
+                    p(class_="pos")[group[0].tags[0]],
+                    dl[dt["Root"], dd[_root(group[0].root)]],
+                ],
+                ul(class_="readings")[(_reading(r) for r in group)],
+            ]
+            for (lemma, pos), group in groups.items()
+        )
     ]
 
 
@@ -134,7 +139,7 @@ def looked_up(query: str, readings: list[Reading]) -> State:
         a(href=f"/text?{urlencode({'q': query})}")["Read them all in the Text view"], ".",
     ] if len(words) > 1 and not latin else None
     if readings:
-        return State([f"{len(readings)} reading{'s' if len(readings) != 1 else ''} for ", ar(words[0])], [notice, _entries(readings)])
+        return State([f"{_count(readings)} for ", ar(words[0])], [notice, LEGEND, _entries(readings)])
     if latin:  # ponytail: a hint until Arabizi (#10) and English lookup (#9) ship
         return State("Type the word in Arabic script", div(class_="empty")[
             p["Arabic in Latin letters (Arabizi) isn't supported yet. Looking for an English word? English → Arabic lookup is coming soon."],
@@ -179,8 +184,71 @@ def live_results(state: State) -> Node:
     return fragment[p(id="status", hx_swap_oob="innerHTML")[state.status], state.body]
 
 
-def text_page() -> Node:
-    return _page("Text", "text", [h1["Text"], p["Passage analysis is coming soon. For now, look up one word at a time on the Word page."]])
+MAX_TEXT = 2000
+TEXT_FAILURE = State("Analysis failed. Your text is kept, so you can try again.")
+
+
+def _token(t: Token, ids: dict[str, str]) -> Node:
+    """A word as a button that opens its details; anything else as it was typed."""
+    if t.kind not in ("word", "unknown"):
+        return t.text
+    return button(type="button", class_=f"tok {t.kind}", popovertarget=ids[t.text])[
+        t.text, span(class_="sr-only", lang="en")[", ", _count(t.readings) if t.readings else "not in the dictionary"],
+    ]
+
+
+def _details(t: Token, id: str) -> Node:
+    """A word's readings, grouped by lemma as on the Word page, in a native popover."""
+    return div(id=id, class_="tok-pop", popover=True, role="dialog", aria_labelledby=f"{id}-h")[
+        div(class_="tp-head")[
+            h2(id=f"{id}-h")[ar(t.text)],
+            p(class_="muted")[_count(t.readings) if t.readings else "not in the dictionary"],
+            button(type="button", popovertarget=id, popovertargetaction="hide")["Close"],
+        ],
+        _entries(t.readings, h3) if t.readings else p(class_="tp-msg")[
+            "AraDict couldn't find this word in its Modern Standard Arabic dictionary."
+        ],
+        p(class_="tp-foot")[a(href=f"/?{urlencode({'q': t.text})}")["Open in Word lookup"]],
+    ]
+
+
+def analysed(tokens: list[Token]) -> State:
+    """The passage as typed, each word opening its details. A word written twice opens the same details."""
+    words: dict[str, Token] = {}  # each word once, in order
+    for t in tokens:
+        if t.kind in ("word", "unknown"):
+            words.setdefault(t.text, t)
+    ids = {word: f"w{i}" for i, word in enumerate(words)}
+    n, unknown = sum(t.kind in ("word", "unknown") for t in tokens), sum(t.kind == "unknown" for t in tokens)
+    status = f"{n} word{'s' if n != 1 else ''}{f', {unknown} not in the dictionary' if unknown else ''}" if n else "No Arabic words to analyse."
+    return State(status, [
+        # The passage keeps its spaces and line breaks (white-space: pre-wrap).
+        div(class_="passage", lang="ar", dir="rtl")[(_token(t, ids) for t in tokens)],
+        (_details(t, ids[word]) for word, t in words.items()),
+    ])
+
+
+def text_page(text: str, state: State) -> Node:
+    return _page("Text", "text", [
+        h1(class_="sr-only")["Text"],
+        # Posted, so a passage stays out of the page address. Live analysis is the same POST, after a pause
+        # in typing and at once on submit; a newer request aborts an older one.
+        form(
+            id="analyse", class_="text-in", method="post", action="/text", data_failure=TEXT_FAILURE.status,
+            hx_post="/text", hx_trigger="input delay:500ms, submit", hx_target="#analysis", hx_sync="this:replace",
+        )[
+            label(for_="text")["Arabic text"],
+            textarea(
+                id="text", name="text", rows="4", dir="rtl", lang="ar", spellcheck="false",
+                placeholder="Paste or type Arabic text", aria_describedby="text-hint",
+            )[text],
+            p(id="text-hint", class_="hint")[f"Analyse at most {MAX_TEXT:,} characters at a time."],
+            button(type="submit")["Analyse"],
+        ],
+        p(id="status", class_="status", role="status")[state.status],
+        div(id="analysis")[state.body],
+        script(src="/static/text.js", type="module"),
+    ])
 
 
 REPO = "https://github.com/uus-dev/aradict"
