@@ -307,11 +307,13 @@ def text_page(text: str, state: State) -> Node:
                 placeholder="Paste or type Arabic text", aria_describedby="text-hint",
             )[text],
             p(id="text-hint", class_="hint")[f"Analyse at most {MAX_TEXT:,} characters at a time."],
-            button(type="submit")["Analyse"],
+            div(class_="actions")[button(type="submit")["Analyse"], _keyboard_toggle("text")],
         ],
+        _keyboard_panel("text"),
         p(id="status", class_="status", role="status")[state.status],
         div(id="analysis")[state.body],
         script(src="/static/text.js", type="module"),
+        script(src="/static/keyboard.js", type="module"),
     ])
 
 

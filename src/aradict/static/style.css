@@ -100,7 +100,8 @@ a { color: var(--accent) }
 .text-in label, .text-in .hint { color: var(--muted); font-size: .9rem }
 .text-in .hint { margin: 0 }
 .text-in textarea { width: 100%; font: 1.4rem/1.8 var(--f-ar); padding: 8px 14px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); color: var(--fg); resize: vertical }
-.text-in button { justify-self: start; min-height: 44px }
+.text-in .actions { display: flex; gap: 8px }
+.text-in button { min-height: 44px }
 .passage { white-space: pre-wrap; overflow-wrap: anywhere; margin: 0; padding: 20px; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; font: 1.8rem/2.3 var(--f-ar) }
 .tok { font: inherit; line-height: 1.5; color: inherit; background: none; border: 0; margin: 0; padding: 0 .12em; border-radius: 3px; cursor: pointer;
   text-decoration: underline dotted var(--muted) 1px; text-underline-offset: .55em; text-decoration-skip-ink: none }
@@ -130,8 +131,8 @@ a { color: var(--accent) }
 }
 
 /* On-screen keyboard: the Arabic (101) layout in physical key order, so it keeps left to right. */
-.search [data-keyboard] { padding-inline: 10px; border: 1px solid var(--line); background: var(--surface); color: var(--fg) }
-.search [data-keyboard][aria-expanded="true"] { border-color: var(--accent); color: var(--accent) }
+:is(.search, .text-in) [data-keyboard] { padding-inline: 10px; border: 1px solid var(--line); background: var(--surface); color: var(--fg) }
+:is(.search, .text-in) [data-keyboard][aria-expanded="true"] { border-color: var(--accent); color: var(--accent) }
 .osk { max-width: 46rem; padding: 6px; background: var(--line); border-radius: 10px; direction: ltr; user-select: none; -webkit-user-select: none; touch-action: manipulation }
 .osk .row { display: grid; grid-template-columns: repeat(26, minmax(0, 1fr)); gap: 5px }
 .osk .row + .row { margin-block-start: 5px }

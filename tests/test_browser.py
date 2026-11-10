@@ -469,3 +469,14 @@ def test_arabizi_shows_the_arabic_it_looked_up_and_keeps_it_on_reload(base_url, 
     expect(status).to_contain_text("Lookup failed")
     expect(looked_up_as).to_be_hidden()  # a failed lookup leaves no stale Arabic beside the input
     page.context.close()
+
+
+def test_the_on_screen_keyboard_types_into_the_passage(base_url, browser):
+    page = browser.new_page()
+    page.goto(f"{base_url}/text")
+    page.get_by_role("button", name="Arabic keyboard").click()
+
+    on_screen(page, "kaf", "teh", "beh", "Space", "kaf", "teh", "alef", "beh")
+
+    expect(page.get_by_role("textbox", name="Arabic text")).to_have_value("كتب كتاب")
+    expect(page.get_by_role("status")).to_have_text("2 words")  # live analysis, no button pressed
