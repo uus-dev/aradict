@@ -16,7 +16,8 @@ def test_word_page_lists_readings_grouped_by_lemma(client):
 
 def test_reading_shows_marked_parts_gloss_grammar_and_word_parts(client):
     page = client.get("/", params={"q": "وبكتابهم"}).text
-    reading = page[page.index('<li class="reading">'):page.index("</details>")]
+    start = page.index('<li class="reading">')
+    reading = page[start:page.index("</details>", start)]
     # The form, with each part marked by its role.
     assert ('<span class="ar form" lang="ar" dir="rtl"><span class="prefix">وَ</span><span class="prefix">بِ</span>'
             '<span class="stem">كِتاب</span><span class="suffix">هم</span></span>') in reading
@@ -44,6 +45,7 @@ def test_unknown_word_says_so_and_suggests_next_steps(client):
     assert "No entry for" in page.text
     assert "Check the spelling" in page.text
     assert "without vowel marks" in page.text
+    assert "Latin letters (Arabizi)" in page.text
     assert 'class="reading"' not in page.text
 
 
@@ -85,7 +87,7 @@ def test_about_answers_what_a_visitor_needs_before_trusting_a_result(client):
     assert 'class="placeholder"' in about
     # Typing Arabic: hamza, diacritics, the on-screen keyboard, phone keyboards, Arabizi.
     typing = about[about.index('id="typing"'):]
-    for topic in ("hamza", "vowel marks", "on-screen keyboard", "phone", "Arabizi", "mar7aba"):
+    for topic in ("hamza", "vowel marks", "on-screen keyboard", "phone", "Arabizi", "mar7aba", "kitab"):
         assert topic in typing, topic
     # Privacy: no accounts, history on the device, passages not logged.
     privacy = about[about.index('id="privacy"'):]
@@ -185,14 +187,17 @@ def test_diacritic_filter_is_on_by_default_and_can_be_switched_off(client):
 
 def test_form_has_a_labelled_diacritics_switch(client):
     page = client.get("/").text
-    assert re.search(r'<label[^>]*>\s*<input type="checkbox" name="diacritics" value="off"\s*>\s*Ignore diacritics', page)
+    assert re.search(r'<label[^>]*>\s*<input type="checkbox" name="diacritics" value="off"[^>]*>\s*Ignore diacritics', page)
 
 
-def test_latin_letters_get_a_hint_towards_english(client):
+def test_latin_word_with_no_arabic_match_shows_the_no_results_guidance(client):
     page = client.get("/", params={"q": "hello"}).text
     assert 'class="reading"' not in page
-    assert "English" in page
+    assert "No Arabic word for" in page
+    assert "Check the spelling" in page and "7 for" in page  # the Arabizi digits
+    assert "English" in page  # perhaps it was an English word
     assert "English" not in client.get("/", params={"q": "قخغثص"}).text
+    assert chip(page) == ""
 
 
 def test_one_word_has_no_multi_word_notice(client):
@@ -240,7 +245,7 @@ def test_word_details_show_its_readings_and_open_in_word_lookup(client):
     # The same entries as the Word page: one per lemma, with its part of speech and root, then its readings.
     assert vocalized[:vocalized.index('id="w1"')].count('class="reading"') == 1  # only the vocalized reading
     assert bare[:bare.index('id="w2"')].count('class="entry"') == 2 and bare[:bare.index('id="w2"')].count('class="reading"') == 3
-    assert '<p class="gloss">he/it write</p>' in vocalized and "<dt>Root</dt>" in vocalized
+    assert '<p class="gloss">he/it wrote</p>' in vocalized and "<dt>Root</dt>" in vocalized
     assert "not in the dictionary" in unknown and 'class="reading"' not in unknown
     hrefs = [html.unescape(h) for h in re.findall(r'<a href="([^"]*)">Open in Word lookup</a>', page)]
     assert [parse_qs(urlsplit(h).query) for h in hrefs] == [{"q": ["كَتَبَ"]}, {"q": ["كتب"]}, {"q": ["قخغثص"]}]
@@ -272,6 +277,7 @@ def test_the_word_pages_text_view_link_analyses_all_its_words(client):
 def test_live_analysis_returns_the_passage_and_its_status(client):
     page = client.post("/text", data={"text": "كتب قخغثص كتب"}, headers={"HX-Request": "true"})
     assert "<html" not in page.text and "<textarea" not in page.text
+    assert 'id="arabizi"' not in page.text  # the Word page's Arabizi chip has no place to land here
     assert '<p id="status" hx-swap-oob="innerHTML">3 words, 1 not in the dictionary</p>' in page.text
     assert passage_of(page.text).count('class="tok ') == 3
     assert page.headers["Vary"] == "HX-Request"
@@ -287,3 +293,41 @@ def test_failed_analysis_keeps_the_text_and_never_logs_it(client, monkeypatch, c
     assert page.status_code == 500
     assert "Analysis failed" in page.text and ">كتب سرّي</textarea>" in page.text
     assert "database gone" in caplog.text and "سرّي" not in caplog.text
+
+
+def chip(page: str) -> str:
+    """The text of the Arabizi chip next to the input, or "" when it is hidden."""
+    tag = re.search(r'<p id="arabizi"([^>]*)>(.*?)</p>', page)
+    return "" if "hidden" in tag.group(1) else html.unescape(re.sub("<[^>]+>", "", tag.group(2)))
+
+
+def test_arabizi_is_looked_up_as_the_arabic_it_stands_for(client):
+    page = client.get("/", params={"q": "ktb"}).text
+    assert page.count('class="reading"') == 3  # the readings of كتب
+    assert '3 readings for <span class="ar" lang="ar" dir="rtl">كتب</span>' in page
+    assert "كتب" in chip(page)
+    assert 'value="ktb"' in page  # the input keeps what was typed
+
+    page = client.get("/", params={"q": "kitab"}).text
+    assert "كِتاب" in chip(page)  # Arabic script, with the vowel typed
+
+
+def test_arabic_input_shows_no_arabizi_chip(client):
+    assert chip(client.get("/", params={"q": "كتب"}).text) == ""
+    assert chip(client.get("/").text) == ""
+
+
+def test_live_lookup_updates_the_arabizi_chip(client):
+    live = {"HX-Request": "true"}
+    page = client.get("/", params={"q": "ktb"}, headers=live).text
+    assert 'hx-swap-oob="true"' in re.search(r'<p id="arabizi"[^>]*>', page).group(0)
+    assert "كتب" in chip(page)
+    for query in ("كتب", "hello", ""):  # Arabic, no match, and cleared all hide it
+        assert chip(client.get("/", params={"q": query}, headers=live).text) == "", query
+
+
+def test_several_latin_words_look_up_the_first(client):
+    page = client.get("/", params={"q": "ktb kitab"}).text
+    assert page.count('class="reading"') == 3
+    assert "Only the first word" in page
+    assert "/text?" not in page  # the Text view reads Arabic script only
