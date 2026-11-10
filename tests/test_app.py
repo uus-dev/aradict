@@ -1,6 +1,7 @@
 """Pages, served by the app over the fixture database."""
 
 import html
+import unicodedata
 import re
 from urllib.parse import parse_qs, urlsplit
 
@@ -207,3 +208,38 @@ def test_server_does_not_log_looked_up_words(monkeypatch):
     monkeypatch.setattr(entry.uvicorn, "run", lambda *args, **kwargs: options.update(kwargs))
     entry.main()
     assert options["access_log"] is False
+
+
+def entries(page: str) -> list[str]:
+    return page.split('<section class="entry">')[1:]
+
+
+def test_each_entry_heads_its_readings_with_part_of_speech_measure_root_and_use(client):
+    # سيكتبون: two lemmas, each with an active and a passive reading.
+    katab, aktab = entries(client.get("/", params={"q": "سيكتبون"}).text)
+    assert '<h2><span class="ar" lang="ar" dir="rtl">كَتَب</span></h2><p class="pos">verb · Measure I</p>' in katab
+    assert '<h2><span class="ar" lang="ar" dir="rtl">أَكْتَب</span></h2><p class="pos">verb · Measure IV</p>' in aktab
+    assert katab.count('class="reading"') == aktab.count('class="reading"') == 2
+    assert '<dt>Root</dt><dd><span class="ar" lang="ar" dir="rtl">ك ت ب</span></dd>' in katab
+    assert re.search(r"<dt>Use</dt><dd>(very common|common|less common|rare) · top \d+% of words</dd>", katab)
+    assert "<dt>Use</dt><dd>frequency unknown</dd>" in aktab  # the database has no figure for أَكْتَب
+    assert '<p class="pos">verb · Measure X</p>' in client.get("/", params={"q": "استخدم"}).text
+
+
+def test_unresolved_radicals_and_missing_root_or_measure_show_as_such(client):
+    qal = entries(client.get("/", params={"q": "قال"}).text)[0]
+    assert '<dt>Root</dt><dd><span class="ar" lang="ar" dir="rtl">ق ◌ ل</span></dd>' in qal
+    assert "#" not in qal
+    laysa = entries(client.get("/", params={"q": "ليس"}).text)[0]
+    assert '<p class="pos">verb · measure unavailable</p>' in laysa
+    assert '<dt>Root</dt><dd><span class="muted">unavailable</span></dd>' in laysa
+
+
+def test_readings_that_share_a_gloss_are_one_result_listing_every_form(client):
+    page = client.get("/", params={"q": "سابقي"}).text
+    result = next(r for r in page.split('<li class="reading">')[1:] if "my former" in r)
+    forms = [unicodedata.normalize("NFC", re.sub("<[^>]+>", "", f)) for f in re.findall(
+        r'<span class="ar form" lang="ar" dir="rtl">(?:<span class="\w+">[^<]*</span>)+</span>', result)]
+    assert sorted(forms) == sorted(["سابِقِي", "سابِقَيَّ", "سابِقِيَّ"])  # singular, dual and plural
+    assert result.count('class="gloss"') == 1
+    assert result.count('class="grammar"') == 3  # each form keeps its own grammar

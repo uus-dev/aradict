@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 import unicodedata
+from bisect import bisect_left
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -14,6 +15,38 @@ LOOK_ALIKES = str.maketrans({"ی": "ي", "ک": "ك", "ـ": None})  # Persian/Urd
 MARK = re.compile("[\u064b-\u065f\u0670]")  # tanween, short vowels, shadda, sukun, dagger alif
 # The database leaves the fatha before a long ا unwritten (كِتاب): a letter, maybe a shadda, then ا.
 IMPLIED_FATHA = re.compile("(?<=[\u0621-\u064a])(\u0651?)(?=\u0627)")
+
+# Verb measures as the consonants of the lemma (the perfect "he" form), vowels left out and
+# shadda kept. Digits stand for the root's letters in order (1 2 3 are ف ع ل), so a template
+# matches only where the root's letters stand; an unresolved radical (# in the root) can be any
+# weak or hamza letter. Variants cover doubled roots (12ّ: رَدّ), Form VIII's assimilated ت
+# (اتّ23: اِتَّخَذ, ا1ّ23: اِطَّلَع, ا1ط23: اِصْطَدَم) and verbs that add a fourth letter to three
+# root letters and conjugate as quadriliterals (م123: مَرْكَز, 1ي23: سَيْطَر).
+MEASURES = {
+    "I": ("123", "12ّ"),
+    "II": ("12ّ3",),
+    "III": ("1ا23", "1ا2ّ"),
+    "IV": ("أ123", "أ12ّ"),
+    "V": ("ت12ّ3",),
+    "VI": ("ت1ا23", "ت1ا2ّ"),
+    "VII": ("ان123", "ان12ّ"),
+    "VIII": ("ا1ت23", "ا1ت2ّ", "اتّ23", "ا1ّ23", "ا1[طد]23", "ا1[طد]2ّ"),
+    "IX": ("ا123ّ",),
+    "X": ("است123", "است12ّ"),
+    "XI": ("ا12ا3ّ",),
+    "XII": ("ا12و23",),
+    "QI": ("1234", "م123", "1[وي]23", "12[وي]3", "123ن", "1233"),
+    "QII": ("ت1234", "تم123", "ت1[وي]23", "ت12[وي]3", "ت123ن", "ت1233"),
+    "QIII": ("ا12ن34",),
+    "QIV": ("ا1234ّ",),
+}
+TEMPLATES = [
+    (name, re.compile(re.sub("[1-4]", "(.)", t)), [int(d) for d in re.findall("[1-4]", t)])
+    for name, templates in MEASURES.items() for t in templates
+]
+WEAK = "اأإءؤئوىي"
+ROOT = re.compile("[\u0621-\u064a#](\\.[\u0621-\u064a#])+")  # letters joined by dots; a few stored roots are junk ("لس", "NTWS")
+VOWELS = re.compile("[\u064b-\u0650\u0652\u0670]")  # everything but shadda
 
 
 @dataclass(frozen=True)
@@ -30,6 +63,8 @@ class Reading:
     lemma: str
     root: str | None
     frequency: float | None  # lemma log-probability; None when the database has no figure
+    top_percent: float | None  # the share of lemmas at least as frequent as this one, among those with a frequency
+    measure: str | None  # a verb's measure, "I" to "XII" or "QI" to "QIV"; None for other parts of speech or when it can't be derived
 
 
 def _reading_key(analysis: dict) -> tuple:
@@ -76,7 +111,37 @@ class Dictionary:
         from camel_tools.morphology.analyzer import Analyzer
         from camel_tools.morphology.database import MorphologyDB
 
-        self._analyzer = Analyzer(MorphologyDB(str(db_path), "a"), backoff="NONE")
+        db = MorphologyDB(str(db_path), "a")
+        self._analyzer = Analyzer(db, backoff="NONE")
+        # آ hides whether its ا is a root letter (IV آمَن, imperfect يُؤْمِن) or Form III's long
+        # vowel (آخَذ, يُؤاخِذ); the lemma's imperfect stems tell.
+        self._hamza_measures: dict[str, set[str]] = {}
+        lemmas: dict[tuple[str, str], float] = {}
+        for entries in db.stem_hash.values():
+            for _, f in entries:
+                lemmas[f["lex"], f["pos"]] = float(f.get("lex_logprob", -99))
+                if f["pos"] == "verb" and f["lex"].startswith("آ") and f["asp"] == "i":
+                    self._hamza_measures.setdefault(f["lex"], set()).add("III" if f["diac"].startswith("ؤا") else "IV")
+        self._frequencies = sorted(logprob for logprob in lemmas.values() if logprob > -99)
+
+    def measure(self, lemma: str, root: str) -> str | None:
+        """A verb's measure: the one template the lemma fits with the root's letters in its
+        slots. Three-letter measures go before the quadriliteral ones. None when no template
+        fits or the lemma fits two."""
+        radicals = root.split(".")
+        word = VOWELS.sub("", lemma).replace("ٱ", "ا").replace("آ", "أا")
+        found = list(dict.fromkeys(
+            name for name, template, slots in TEMPLATES
+            if (m := template.fullmatch(word)) and all(
+                d <= len(radicals) and (letter == radicals[d - 1] or letter in WEAK and radicals[d - 1] in WEAK + "#")
+                for d, letter in zip(slots, m.groups())
+            )
+        ))
+        if any(not name.startswith("Q") for name in found):
+            found = [name for name in found if not name.startswith("Q")]
+        if len(found) > 1:
+            found = [name for name in found if name in self._hamza_measures.get(lemma, ())]
+        return found[0] if len(found) == 1 else None
 
     def lookup_ar(self, word: str, filter_diacritics: bool = True) -> list[Reading]:
         """Readings for an Arabic word (the first, if several), most frequent lemma first.
@@ -99,6 +164,7 @@ class Dictionary:
         for analyses in groups.values():
             a = _representative(analyses)
             logprob = float(a.get("lex_logprob", -99))
+            root = a.get("root") if ROOT.fullmatch(a.get("root", "")) else None
             readings.append(Reading(
                 form=a["diac"],
                 gloss=readable.gloss(a),
@@ -107,13 +173,18 @@ class Dictionary:
                 segments=readable.segments(a),
                 pos=a["pos"],
                 lemma=a["lex"],
-                root=a.get("root") or None,
+                root=root,
                 frequency=None if logprob <= -99 else logprob,
+                top_percent=None if logprob <= -99 else 100 * (1 - bisect_left(self._frequencies, logprob) / len(self._frequencies)),
+                measure=self.measure(a["lex"], root) if a["pos"] == "verb" and root else None,
             ))
         # A word-final ه also finds ة and vice versa; readings ending as typed (مدرسه, not مدرسة)
-        # come first. Then the most frequent lemma; Python's sort is stable, so equal keys keep
-        # the analyzer's order.
+        # come first. Then the most frequent lemma. Each lemma's readings stay together, ranked
+        # by its best one: the database can store two lemmas spelled alike, one without a
+        # frequency. Python's sort is stable, so equal keys keep the analyzer's order.
         last = MARK.sub("", word)[-1:]
-        return sorted(readings, key=lambda r: (
-            last in ("ه", "ة") and MARK.sub("", r.form)[-1:] != last, r.frequency is None, -(r.frequency or 0), r.lemma,
-        ))
+        rank = {r: (last in ("ه", "ة") and MARK.sub("", r.form)[-1:] != last, r.frequency is None, -(r.frequency or 0)) for r in readings}
+        best = {}
+        for r in readings:
+            best[r.lemma, r.pos] = min(best.get((r.lemma, r.pos), rank[r]), rank[r])
+        return sorted(readings, key=lambda r: (best[r.lemma, r.pos], r.lemma, r.pos, rank[r]))
