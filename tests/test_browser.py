@@ -681,10 +681,10 @@ def test_root_view_sorts_and_returns_without_javascript_on_a_phone(base_url, bro
     meaning.get_by_role("link").click()
     expect(meaning).to_have_attribute("aria-sort", "ascending")
     first = page.get_by_role("cell").nth(1)  # the first row's meaning
-    expect(first).to_have_text("authors (f.); writers (f.)")
+    expect(first).to_have_text("authors; writers")
     page.reload()  # the sort is in the URL
     expect(meaning).to_have_attribute("aria-sort", "ascending")
-    expect(first).to_have_text("authors (f.); writers (f.)")
+    expect(first).to_have_text("authors; writers")
     meaning.get_by_role("link").click()
     expect(meaning).to_have_attribute("aria-sort", "descending")
     expect(first).to_have_text("writing")

@@ -359,9 +359,11 @@ def _noun(sense: str, a: dict, suffixes: list[str]) -> str:
         sense = "two " + plural(sense)
     elif a["num"] == "p" and a["form_num"] == "p":  # sound plural; a broken plural's stem gloss is already plural
         sense = plural(sense)
+    # A woman, from a masculine headword: مُدَرِّسَة from مُدَرِّس. A broken plural spelled with the
+    # feminine ending (كَتَبَة "writers") is not feminine in meaning.
     feminine_ending = any(tag.startswith("NSUFF_FEM") for tag in suffixes)
-    if feminine_ending and not _letters(a["lex"]).endswith("ت"):
-        sense += " (f.)"  # a woman, from a masculine headword: مُدَرِّسَة from مُدَرِّس
+    if feminine_ending and a["gen"] == "f" and not _letters(a["lex"]).endswith("ت"):
+        sense += " (f.)"
     return sense
 
 
