@@ -636,3 +636,77 @@ def test_the_on_screen_keyboard_types_into_the_passage(base_url, browser):
 
     expect(page.get_by_role("textbox", name="Arabic text")).to_have_value("كتب كتاب")
     expect(page.get_by_role("status")).to_have_text("2 words")  # live analysis, no button pressed
+
+
+def test_related_forms_and_back_to_the_lookup_with_back_forward_and_reload(base_url, browser):
+    page = browser.new_page()
+    page.goto(f"{base_url}/?q={quote('كتاب')}")
+    box = page.get_by_label("Arabic word")
+    status = page.get_by_role("status")
+    forms = page.get_by_role("table").locator("tbody td:first-child")
+
+    page.get_by_role("link", name="all 2 forms of كِتاب").click()
+    expect(forms).to_have_text(["كِتاب", "كُتُب"])  # singular and plural
+    expect(status).to_have_text("2 forms of the noun كِتاب")
+    expect(page.locator(".context")).to_contain_text("Related: كِتاب")
+    expect(box).to_have_value("كتاب")  # the query stays
+    related = page.url
+
+    page.get_by_role("link", name="Back to your lookup").click()
+    expect(page).to_have_url(lookup_url(base_url, "كتاب"))
+    expect(status).to_have_text("3 readings for كتاب")
+    expect(page.locator(".context")).to_have_count(0)
+
+    page.go_back()
+    expect(page).to_have_url(related)
+    expect(forms).to_have_text(["كِتاب", "كُتُب"])
+    page.go_back()
+    expect(status).to_have_text("3 readings for كتاب")
+    page.go_forward()
+    page.reload()
+    expect(forms).to_have_text(["كِتاب", "كُتُب"])
+
+    box.fill("كاتب")  # a new lookup leaves the related forms
+    expect(status).to_contain_text("readings for كاتب")
+    expect(page).to_have_url(lookup_url(base_url, "كاتب"))
+    expect(page.locator(".context")).to_have_count(0)
+    expect(page.get_by_role("table")).to_have_count(0)
+
+
+def test_root_view_sorts_and_returns_without_javascript_on_a_phone(base_url, browser):
+    page = browser.new_context(java_script_enabled=False, viewport={"width": 390, "height": 844}).new_page()
+    page.goto(f"{base_url}/?q={quote('كتب')}")
+    page.get_by_role("link", name="Words from the root ك ت ب").first.click()
+    status = page.get_by_role("status")
+    expect(status).to_have_text("16 forms from the root ك ت ب")
+    assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")  # rows stack, nothing scrolls sideways
+
+    meaning = page.get_by_role("columnheader", name="Meaning")
+    expect(meaning).not_to_have_attribute("aria-sort", re.compile(".*"))
+    meaning.get_by_role("link").click()
+    expect(meaning).to_have_attribute("aria-sort", "ascending")
+    first = page.get_by_role("cell").nth(1)  # the first row's meaning
+    expect(first).to_have_text("authors (f.); writers (f.)")
+    page.reload()  # the sort is in the URL
+    expect(meaning).to_have_attribute("aria-sort", "ascending")
+    expect(first).to_have_text("authors (f.); writers (f.)")
+    meaning.get_by_role("link").click()
+    expect(meaning).to_have_attribute("aria-sort", "descending")
+    expect(first).to_have_text("writing")
+
+    page.get_by_role("link", name="Back to your lookup").click()
+    expect(page).to_have_url(lookup_url(base_url, "كتب"))
+    expect(page.locator(".reading")).to_have_count(3)
+
+
+def test_entry_links_and_the_chip_are_easy_to_reach_on_a_phone(base_url, browser):
+    page = browser.new_page(viewport={"width": 390, "height": 844})
+    page.goto(f"{base_url}/?q={quote('كتاب')}&related={quote('كِتاب')}&pos=noun")
+    box = page.get_by_role("link", name="Back to your lookup").bounding_box()
+    assert box["width"] >= 24 and box["height"] >= 24  # WCAG 2.2 target size
+    for _ in range(30):  # reachable by keyboard
+        page.keyboard.press("Tab")
+        if page.evaluate("document.activeElement.matches('.dismiss')"):
+            break
+    page.keyboard.press("Enter")
+    expect(page).to_have_url(lookup_url(base_url, "كتاب"))

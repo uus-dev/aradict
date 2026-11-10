@@ -39,9 +39,9 @@ const panel = document.getElementById("history");
 const list = panel.querySelector("ol");
 const size = panel.querySelector("[name=history-size]");
 
-// An entry is the URL of a view on this site, which encodes the query, its options and (with
-// #11) any root or related view, so opening it shows exactly what was shown. Anything else,
-// such as a blank query, is not an entry.
+// An entry is the URL of a view on this site, which encodes the query, its options and any root
+// or related-forms view, so opening it shows exactly what was shown. Anything else, such as a
+// blank query, is not an entry.
 const entry = (url) => {
   const view = URL.parse(url, location.href);
   return view?.origin === location.origin && view.searchParams.get("q")?.trim()
@@ -56,23 +56,33 @@ let entries = (Array.isArray(stored) ? stored : []).map(entry).filter(Boolean);
 const params = (url) => new URL(url, location.href).searchParams;
 const query = (url) => params(url).get("q").trim();
 
-// What an entry says: the query, that it was English (book is also Arabizi), and that diacritics
-// were ignored where that changes the result, which is only when the query has vowel marks (the
-// same marks as dictionary.py's MARK). The root and related views (#11) belong here too, so that
-// they read differently from the word itself.
-const note = (url) => params(url).get("lang") === "en" ? " · English"
-  : params(url).get("diacritics") === "off" && /[\u064b-\u065f\u0670]/.test(query(url)) ? " · diacritics ignored" : "";
-const title = (url) => query(url) + note(url);
+// Text in its own language: Arabic script is marked as Arabic (an Arabizi or English query is not).
+const span = (text) => {
+  const node = document.createElement("span");
+  node.textContent = text;
+  if (/[\u0600-\u06ff]/.test(text)) Object.assign(node, { className: "ar", lang: "ar", dir: "rtl" });
+  return node;
+};
 
+// What an entry says: the query; that it was English (book is also Arabizi), or else that
+// diacritics were ignored where that changes the result, which is only when the query has vowel
+// marks (the same marks as dictionary.py's MARK); and the root's words or the lemma's forms shown
+// in place of its results, so that they read differently from the lookup itself. Entries that say
+// the same are one view, so a sorted root view is too.
 const label = (url) => {
-  const text = document.createElement("span");
-  text.textContent = query(url);
-  if (/[\u0600-\u06ff]/.test(text.textContent)) Object.assign(text, { className: "ar", lang: "ar", dir: "rtl" });
+  const view = params(url);
+  const root = view.get("root");
+  const related = view.get("related");
   const link = document.createElement("a");
   link.href = url;
-  link.append(text, note(url));
+  link.append(span(query(url)));
+  if (view.get("lang") === "en") link.append(" · English");
+  else if (view.get("diacritics") === "off" && /[\u064b-\u065f\u0670]/.test(query(url))) link.append(" · diacritics ignored");
+  if (root) link.append(" · root ", span(root.split(".").map((letter) => (letter === "#" ? "◌" : letter)).join(" ")));
+  else if (related) link.append(" · forms of ", span(related));
   return link;
 };
+const title = (url) => label(url).textContent;
 
 const render = () => {
   list.replaceChildren(...entries.map((url) => {

@@ -7,9 +7,10 @@ from collections.abc import Iterable
 from typing import NamedTuple
 from urllib.parse import urlencode
 
-from htpy import Element, Node, a, blockquote, body, br, button, code, dd, details, div, dl, dt, form, fragment, h1, h2, h3, head, header, html, i, input, label, li, link, main, meta, nav, ol, p, path, rect, script, section, span, summary, svg, template, textarea, title, ul
+from htpy import Element, Node, a, blockquote, body, br, button, caption, code, dd, details, div, dl, dt, form, fragment, h1, h2, h3, head, header, html, i, input, label, li, link, main, meta, nav, ol, p, path, rect, script, section, span, summary, svg, table, tbody, td, template, textarea, th, thead, title, tr, ul
 
-from .dictionary import Reading, Segment, Token
+from .dictionary import MEASURES, Reading, Segment, Token, alphabetical
+from .readable import POS
 
 PAGES = [("word", "/", "Word"), ("text", "/text", "Text"), ("about", "/about", "About")]
 
@@ -108,14 +109,37 @@ def _reading(group: list[Reading]) -> Node:
     )]
 
 
-def _entry(lemma: str, glosses: dict[str, list[Reading]], heading: Element) -> Node:
-    """A lemma's heading, said once, then its readings, one result per gloss."""
+class Links(NamedTuple):
+    """What a Word entry links its root and related forms with: the lookup's own URL parameters,
+    which every link keeps so that its view can return to the lookup, and how many forms each
+    lemma (with its part of speech) has."""
+
+    lookup: dict[str, str]
+    forms: dict[tuple[str, str], int]
+
+
+def _url(params: dict[str, str]) -> str:
+    return f"/?{urlencode(params)}" if params else "/"
+
+
+def _entry(lemma: str, glosses: dict[str, list[Reading]], heading: Element, links: Links | None) -> Node:
+    """A lemma's heading, said once, then its readings, one result per gloss. With links, the
+    root opens the root's words, and a lemma with more than one form links to all of them."""
     first = next(iter(glosses.values()))[0]
+    forms = links.forms.get((first.lemma, first.pos), 0) if links else 0
     return section(class_="entry")[
         div(class_="head")[
             heading[ar(lemma)],
             p(class_="pos")[_kind(first)],
-            dl[dt["Root"], dd[_root(first.root)], dt["Use"], dd[_use(first.top_percent)]],
+            dl[
+                dt["Root"],
+                dd[a(href=_url(links.lookup | {"root": first.root}))[span(class_="sr-only")["Words from the root "], _root(first.root)]
+                   if links and first.root else _root(first.root)],
+                dt["Use"], dd[_use(first.top_percent)],
+                forms > 1 and [dt["Forms"], dd[
+                    a(href=_url(links.lookup | {"related": first.lemma, "pos": first.pos}))[f"all {forms} forms", span(class_="sr-only")[" of ", ar(lemma)]],
+                ]],
+            ],
         ],
         ul(class_="readings")[(_reading(group) for group in glosses.values())],
     ]
@@ -128,12 +152,12 @@ def _count(readings) -> str:
     return f"{len(readings)} reading{'s' if len(readings) != 1 else ''}"
 
 
-def _entries(readings: Iterable[Reading], heading: Element = h2) -> Node:
+def _entries(readings: Iterable[Reading], heading: Element = h2, links: Links | None = None) -> Node:
     """One entry per lemma and part of speech, in the order the readings arrive."""
     groups: dict[tuple[str, str], dict[str, list[Reading]]] = {}
     for reading in readings:
         groups.setdefault((reading.lemma, reading.pos), {}).setdefault(reading.gloss, []).append(reading)
-    return div(class_="entries")[(_entry(lemma, glosses, heading) for (lemma, _), glosses in groups.items())]
+    return div(class_="entries")[(_entry(lemma, glosses, heading, links) for (lemma, _), glosses in groups.items())]
 
 
 def _intro() -> Node:
@@ -157,9 +181,10 @@ class State(NamedTuple):
 INITIAL = State(body=_intro())
 
 
-def looked_up(query: str, readings: list[Reading], arabizi: str | None = None) -> State:
+def looked_up(query: str, readings: list[Reading], arabizi: str | None = None, links: Links | None = None) -> State:
     """The outcome of a completed lookup. Of several words only the first is looked up, and a notice says so.
-    An Arabizi query is looked up as the Arabic it was read as, given in arabizi."""
+    An Arabizi query is looked up as the Arabic it was read as, given in arabizi. Entries link to
+    their root and related forms with links."""
     words = query.split()
     latin = bool(re.search("[A-Za-z]", query)) and not re.search("[\u0600-\u06ff]", query)
     notice = p(class_="notice")[
@@ -168,7 +193,7 @@ def looked_up(query: str, readings: list[Reading], arabizi: str | None = None) -
         not latin and [" ", a(href=f"/text?{urlencode({'q': query})}")["Read them all in the Text view"], "."],
     ] if len(words) > 1 else None
     if readings:
-        return State([f"{_count(readings)} for ", ar(arabizi or words[0])], [notice, LEGEND, _entries(readings)], arabizi)
+        return State([f"{_count(readings)} for ", ar(arabizi or words[0])], [notice, LEGEND, _entries(readings, h2, links)], arabizi)
     if latin:
         return State(["No Arabic word for ", _arabizi(words[0])], [notice, div(class_="empty")[
             p["AraDict read this as Arabic in Latin letters (Arabizi), but found no word it could stand for. You could:"],
@@ -203,11 +228,12 @@ INITIAL_EN = State(body=[
 ])
 
 
-def looked_up_en(query: str, readings: list[Reading]) -> State:
-    """The outcome of a completed English → Arabic lookup, with the coverage note."""
+def looked_up_en(query: str, readings: list[Reading], links: Links | None = None) -> State:
+    """The outcome of a completed English → Arabic lookup, with the coverage note. Entries link to
+    their root and related forms with links."""
     if readings:
         n = len(readings)
-        return State(f"{n} Arabic word{'s' if n != 1 else ''} for “{query}”", [COVERAGE, LEGEND, _entries(readings)])
+        return State(f"{n} Arabic word{'s' if n != 1 else ''} for “{query}”", [COVERAGE, LEGEND, _entries(readings, h2, links)])
     # Arabic typed here is meant the other way round, so switching direction keeps it.
     back = f"/?{urlencode({'q': query})}" if re.search("[\u0600-\u06ff]", query) else "/"
     return State(f"No Arabic word for “{query}”", [COVERAGE, div(class_="empty")[
@@ -224,6 +250,77 @@ FAILURE = State(
     "Lookup failed. Your word is kept, so you can try again.",
     p(class_="retry")[button(type="submit", form="search")["Retry"]],
 )
+
+
+# A root's words and a lemma's forms are a table, sortable by the columns with a key.
+COLUMNS = (("form", "Form"), ("gloss", "Meaning"), ("pos", "Part of speech"), (None, "Grammar"), ("root", "Root"), ("measure", "Measure"))
+SORT_KEYS = {  # None for a row with no value, which goes last either way
+    "form": lambda r: alphabetical(r.form),
+    "gloss": lambda r: r.gloss.casefold(),
+    "pos": lambda r: r.tags[0],
+    "root": lambda r: r.root and alphabetical(r.root),
+    "measure": lambda r: r.measure and list(MEASURES).index(r.measure),
+}
+
+
+def _sorted(rows: list[Reading], sort: str) -> list[Reading]:
+    """Rows sorted by a column ("gloss"), or in reverse ("-gloss"). Python's sort is stable, so rows
+    that tie keep the family order, whichever the direction."""
+    key = SORT_KEYS.get(sort.removeprefix("-"))
+    if not key:
+        return rows
+    return sorted((r for r in rows if key(r) is not None), key=key, reverse=sort.startswith("-")) + [r for r in rows if key(r) is None]
+
+
+def _family(label: str, name: Node, status: Node, rows: list[Reading], lookup: dict[str, str], view: dict[str, str], sort: str) -> State:
+    """A root's words or a lemma's forms in place of the lookup's results. A chip says which, and
+    closing it returns to the lookup. Each column header links to the list sorted by it, then in
+    reverse, then back in family order; the sorted column says so to assistive technology."""
+    column = sort.removeprefix("-") if sort.removeprefix("-") in SORT_KEYS else None
+    order = column and ("descending" if sort.startswith("-") else "ascending")
+
+    def header(key: str | None, text: str) -> Node:
+        if key is None:
+            return th(scope="col")[text]
+        following = {"ascending": f"-{key}", "descending": None}.get(order) if key == column else key
+        return th(scope="col", aria_sort=order if key == column else None)[a(href=_url(lookup | view | ({"sort": following} if following else {})))[text]]
+
+    return State(status, [
+        p(class_="context")[
+            label, ": ", name,
+            a(href=_url(lookup), class_="dismiss")[span(aria_hidden="true")["×"], span(class_="sr-only")["Back to your lookup" if lookup.get("q") else "Close"]],
+        ],
+        rows and table(class_="family")[
+            caption(class_="sr-only")[status],
+            thead[tr[(header(key, name) for key, name in COLUMNS)]],
+            tbody[(
+                tr[
+                    td(data_label="Form")[ar(r.form)],
+                    td(data_label="Meaning")[r.gloss],
+                    td(data_label="Part of speech")[r.tags[0]],
+                    td(data_label="Grammar")[", ".join(r.tags[1:] + ((r.grammar,) if r.grammar else ()))],
+                    td(data_label="Root")[_root(r.root)],
+                    td(data_label="Measure")[r.measure or ("unavailable" if r.pos == "verb" else "")],
+                ]
+                for r in _sorted(rows, sort)
+            )],
+        ],
+    ])
+
+
+def _forms(rows: list[Reading]) -> str:
+    return f"{len(rows) or 'No'} form{'s' if len(rows) != 1 else ''}"
+
+
+def related_view(lemma: str, pos: str, rows: list[Reading], lookup: dict[str, str], sort: str = "") -> State:
+    """A lemma's forms, such as a noun's singular and plural."""
+    status = [f"{_forms(rows)} of the {POS.get(pos, pos)} ", ar(lemma)]
+    return _family("Related", ar(lemma), status, rows, lookup, {"related": lemma, "pos": pos}, sort)
+
+
+def root_view(root: str, rows: list[Reading], lookup: dict[str, str], sort: str = "") -> State:
+    """Every form from a root, verbs by measure first."""
+    return _family("Root", _root(root), [f"{_forms(rows)} from the root ", _root(root)], rows, lookup, {"root": root}, sort)
 
 
 def _keyboard_toggle(field: str) -> Node:

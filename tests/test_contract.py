@@ -301,6 +301,42 @@ def test_arabizi_answers_quickly_however_long_the_word(real):
     assert time.perf_counter() - start < 2
 
 
+def forms(readings) -> list[tuple[str, str]]:
+    return [(unicodedata.normalize("NFC", r.form), r.gloss) for r in readings]
+
+
+def test_related_forms_share_the_lemma_and_part_of_speech(real):
+    # A noun's singular and plural, each in its dictionary form with its own meaning.
+    assert forms(real.related("كِتاب", "noun")) == [("كِتاب", "book"), ("كُتُب", "books")]
+    # A verb's perfect and imperfect, active and passive, each in its "he" form.
+    verb = real.related("كَتَب", "verb")
+    assert [r.form for r in verb] == ["كَتَبَ", "كُتِبَ", "يَكْتُب", "يُكْتَب"]
+    assert {(r.lemma, r.pos, r.root, r.measure) for r in verb} == {("كَتَب", "verb", "ك.ت.ب", "I")}
+    # A hollow verb's imperfect is يَقُول; the short stem of لَمْ يَقُلْ is not a form of its own.
+    assert [r.form for r in real.related("قال", "verb")] == ["قالَ", "قُلْ", "قِيلَ", "يُقال", "يَقُول"]
+    # A noun stored without its feminine ending is listed with it, and with its plural ending.
+    assert ("كِتابات", "writings; essays") in forms(real.related("كِتابَة", "noun"))
+    assert real.related("كِتاب", "verb") == [] and real.related("قخغثص", "noun") == []
+
+
+def test_root_family_lists_verbs_by_measure_then_nouns_and_adjectives(real):
+    family = real.root_family("ك.ت.ب")
+    assert {r.root for r in family} == {"ك.ت.ب"}
+    verbs = [r for r in family if r.pos == "verb"]
+    assert family[:len(verbs)] == verbs  # verbs first
+    assert list(dict.fromkeys(r.measure for r in verbs)) == ["I", "III", "IV", "VI", "VII", "VIII", "X"]
+    assert {r.pos for r in family[len(verbs):]} == {"noun", "adj", "noun_prop"}
+    # Then each lemma's forms together, the lemmas in alphabetical order by their letters.
+    lemmas = list(dict.fromkeys(r.lemma for r in family[len(verbs):]))
+    assert lemmas[:3] == ["ٱِسْتِكْتاب", "ٱِكْتِتاب", "كاتِب"] and lemmas[-2:] == ["مُكْتَتِب", "مَكْتُوب"]
+    assert forms(r for r in family if r.lemma == "كِتاب") == [("كِتاب", "book"), ("كُتُب", "books")]
+    assert ("مَكْتَبَة", "library; bookstore") in forms(family)
+    assert len({(r.lemma, r.pos) for r in family}) == 32
+    # A root with an unresolved radical is a root like any other.
+    assert {r.lemma for r in real.root_family("ق.#.ل")} >= {"قال", "قَوْل", "مَقال"}
+    assert real.root_family("NTWS") == [] and real.root_family("ق.خ.غ") == []
+
+
 # --- English → Arabic -----------------------------------------------------------------------
 
 def lemmas(readings) -> list[str]:

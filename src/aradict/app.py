@@ -38,31 +38,46 @@ app.mount("/static", StaticFiles(directory=Path(__file__).parent / "static"), na
 MAX_QUERY = 100
 
 
+FAMILY = ("root", "related", "pos", "sort")  # the URL parameters of a root or related-forms view
+
+
 @app.get("/", response_class=HTMLResponse)
 def word(
+    request: Request,
     q: str = "",
     diacritics: Literal["on", "off"] = "on",
     lang: Literal["ar", "en"] = "ar",  # the language typed: Arabic → English, or English → Arabic
+    root: str | None = None,
+    related: str | None = None,
+    pos: str = "",
+    sort: str = "",
     hx_request: Annotated[str | None, Header()] = None,
 ) -> HTMLResponse:
+    """A lookup, or with root or related (and pos) a root's words or a lemma's forms in its place,
+    sorted by sort. The lookup's own URL parameters go with every root and related-forms link, so
+    their view can return to it."""
+    lookup = {key: value for key, value in request.query_params.items() if key not in FAMILY}
     q, filter_diacritics, english = q.strip(), diacritics == "on", lang == "en"
     status_code = 200
-    if not q:
-        state = views.INITIAL_EN if english else views.INITIAL
-    elif len(q) > MAX_QUERY:
-        state = views.State(f"That's too long. Type at most {MAX_QUERY} characters.")
-    elif not any(c.isalpha() for c in q):
-        state = views.State("Type a word: letters, not only numbers or symbols.")
-    else:
-        try:
-            if english:
-                state = views.looked_up_en(q, dictionary().lookup_en(q))
-            else:
-                arabizi = dictionary().arabizi(q)  # None unless q is Arabizi
-                state = views.looked_up(q, dictionary().lookup_ar(arabizi or q, filter_diacritics), arabizi)
-        except Exception:
-            logger.exception("Lookup failed")  # the query stays out of the log
-            state, status_code = views.FAILURE, 500
+    try:
+        if root is not None:
+            state = views.root_view(root, dictionary().root_family(root), lookup, sort)
+        elif related is not None:
+            state = views.related_view(related, pos, dictionary().related(related, pos), lookup, sort)
+        elif not q:
+            state = views.INITIAL_EN if english else views.INITIAL
+        elif len(q) > MAX_QUERY:
+            state = views.State(f"That's too long. Type at most {MAX_QUERY} characters.")
+        elif not any(c.isalpha() for c in q):
+            state = views.State("Type a word: letters, not only numbers or symbols.")
+        else:
+            arabizi = None if english else dictionary().arabizi(q)  # None unless q is Arabizi
+            readings = dictionary().lookup_en(q) if english else dictionary().lookup_ar(arabizi or q, filter_diacritics)
+            links = views.Links(lookup, {lemma: len(dictionary().related(*lemma)) for lemma in {(r.lemma, r.pos) for r in readings}})
+            state = views.looked_up_en(q, readings, links) if english else views.looked_up(q, readings, arabizi, links)
+    except Exception:
+        logger.exception("Lookup failed")  # the query stays out of the log
+        state, status_code = views.FAILURE, 500
     page = views.live_results(state) if hx_request else views.word_page(q, state, filter_diacritics, english)
     headers = {"Vary": "HX-Request"}
     if hx_request and not q:
