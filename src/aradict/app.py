@@ -7,7 +7,7 @@ from contextlib import asynccontextmanager
 from functools import lru_cache
 from pathlib import Path
 from typing import Annotated, Literal
-from urllib.parse import parse_qs
+from urllib.parse import parse_qs, urlencode
 
 from fastapi import FastAPI, Header, Request
 from fastapi.responses import HTMLResponse
@@ -42,30 +42,35 @@ MAX_QUERY = 100
 def word(
     q: str = "",
     diacritics: Literal["on", "off"] = "on",
+    lang: Literal["ar", "en"] = "ar",  # the language typed: Arabic → English, or English → Arabic
     hx_request: Annotated[str | None, Header()] = None,
 ) -> HTMLResponse:
-    q, filter_diacritics = q.strip(), diacritics == "on"
+    q, filter_diacritics, english = q.strip(), diacritics == "on", lang == "en"
     status_code = 200
     if not q:
-        state = views.INITIAL
+        state = views.INITIAL_EN if english else views.INITIAL
     elif len(q) > MAX_QUERY:
         state = views.State(f"That's too long. Type at most {MAX_QUERY} characters.")
     elif not any(c.isalpha() for c in q):
         state = views.State("Type a word: letters, not only numbers or symbols.")
     else:
         try:
-            arabizi = dictionary().arabizi(q)  # None unless q is Arabizi
-            readings = dictionary().lookup_ar(arabizi or q, filter_diacritics)
+            if english:
+                state = views.looked_up_en(q, dictionary().lookup_en(q))
+            else:
+                arabizi = dictionary().arabizi(q)  # None unless q is Arabizi
+                state = views.looked_up(q, dictionary().lookup_ar(arabizi or q, filter_diacritics), arabizi)
         except Exception:
             logger.exception("Lookup failed")  # the query stays out of the log
             state, status_code = views.FAILURE, 500
-        else:
-            state = views.looked_up(q, readings, arabizi)
-    page = views.live_results(state) if hx_request else views.word_page(q, state, filter_diacritics)
+    page = views.live_results(state) if hx_request else views.word_page(q, state, filter_diacritics, english)
     headers = {"Vary": "HX-Request"}
     if hx_request and not q:
-        # A cleared live lookup returns to "/", not "/?q=", keeping the diacritics switch.
-        headers["HX-Push-Url"] = "/" if filter_diacritics else "/?diacritics=off"
+        # A cleared live lookup returns to "/", not "/?q=", keeping the diacritics switch and the direction.
+        options = {"diacritics": "off"} if not filter_diacritics else {}
+        if english:
+            options["lang"] = "en"
+        headers["HX-Push-Url"] = f"/?{urlencode(options)}" if options else "/"
     return HTMLResponse(str(page), status_code, headers)
 
 

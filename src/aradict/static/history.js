@@ -56,10 +56,12 @@ let entries = (Array.isArray(stored) ? stored : []).map(entry).filter(Boolean);
 const params = (url) => new URL(url, location.href).searchParams;
 const query = (url) => params(url).get("q").trim();
 
-// What an entry says: the query, and that diacritics were ignored where that changes the result,
-// which is only when the query has vowel marks (the same marks as dictionary.py's MARK). The root
-// and related views (#11) belong here too, so that they read differently from the word itself.
-const note = (url) => params(url).get("diacritics") === "off" && /[\u064b-\u065f\u0670]/.test(query(url)) ? " · diacritics ignored" : "";
+// What an entry says: the query, that it was English (book is also Arabizi), and that diacritics
+// were ignored where that changes the result, which is only when the query has vowel marks (the
+// same marks as dictionary.py's MARK). The root and related views (#11) belong here too, so that
+// they read differently from the word itself.
+const note = (url) => params(url).get("lang") === "en" ? " · English"
+  : params(url).get("diacritics") === "off" && /[\u064b-\u065f\u0670]/.test(query(url)) ? " · diacritics ignored" : "";
 const title = (url) => query(url) + note(url);
 
 const label = (url) => {
