@@ -11,8 +11,8 @@ import re
 import sys
 from pathlib import Path
 
-# Enough for the reference words كتب, وبكتابهم and سيكتبون.
-LEMMAS = frozenset({"كَتَب", "كِتاب", "كاتِب", "كُتّاب", "أَكْتَب"})
+# Enough for the reference words كتب, وبكتابهم and سيكتبون, and مدرستي's shared letter.
+LEMMAS = frozenset({"كَتَب", "كِتاب", "كاتِب", "كُتّاب", "أَكْتَب", "مَدْرَسَة"})
 
 
 def make_fixture(source: Path, target: Path, lemmas: frozenset[str] = LEMMAS) -> Path:
