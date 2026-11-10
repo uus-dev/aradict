@@ -5,6 +5,7 @@ from __future__ import annotations
 from contextlib import asynccontextmanager
 from functools import lru_cache
 from pathlib import Path
+from typing import Literal
 
 from fastapi import FastAPI, Query
 from fastapi.responses import HTMLResponse
@@ -31,9 +32,9 @@ app.mount("/static", StaticFiles(directory=Path(__file__).parent / "static"), na
 
 
 @app.get("/", response_class=HTMLResponse)
-def word(q: str = Query("", max_length=100)) -> str:
-    q = q.strip()
-    return str(views.word_page(q, dictionary().lookup_ar(q) if q else None))
+def word(q: str = Query("", max_length=100), diacritics: Literal["on", "off"] = "on") -> str:
+    q, filter_diacritics = q.strip(), diacritics == "on"
+    return str(views.word_page(q, dictionary().lookup_ar(q, filter_diacritics) if q else None, filter_diacritics))
 
 
 @app.get("/text", response_class=HTMLResponse)
