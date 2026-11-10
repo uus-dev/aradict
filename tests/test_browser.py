@@ -39,3 +39,17 @@ def test_lookup_without_javascript_on_a_phone(base_url):
         page.goto(page.url)  # the result URL is shareable: loading it again shows the same readings
         expect(page.locator(".reading")).to_have_count(3)
         browser.close()
+
+
+def test_home_intro_sits_below_the_search_box_on_a_phone(base_url):
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch()
+        page = browser.new_context(viewport={"width": 390, "height": 844}).new_page()
+
+        page.goto(base_url)
+        search = page.get_by_role("textbox", name="Arabic word").bounding_box()
+        intro = page.locator(".intro").bounding_box()
+        assert search["y"] + search["height"] <= intro["y"]  # the explanation never sits in front of the search box
+        assert intro["y"] + intro["height"] <= 844  # and is short enough to read on the first screen
+        assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
+        browser.close()
