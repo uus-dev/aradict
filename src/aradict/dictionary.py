@@ -215,6 +215,12 @@ def _arabizi_spellings(word: str) -> list[str]:
     return ["".join(spelling for _, spelling in combination) for combination in sorted(combinations, key=lambda c: sum(rank for rank, _ in c))]
 
 
+def _doubled(word: str) -> int:
+    """How many letters word doubles with a shadda that Arabizi would write twice (mudarris). Not
+    a ي or و, which Arabizi seldom doubles: wataniya for وَطَنِيَّة."""
+    return sum(SHADDA in marks and letter not in "يو" for letter, marks in _letters(word))
+
+
 def _by_frequency(r: Reading) -> tuple:
     """Most frequent lemma first; lemmas with no figure last."""
     return r.frequency is None, -(r.frequency or 0), r.lemma
@@ -338,16 +344,20 @@ class Dictionary:
 
     def arabizi(self, text: str) -> str | None:
         """The Arabic an Arabizi word (the first, if several) stands for: of the spellings it may
-        stand for, the one with the most frequent lemma. None if the text isn't Arabizi or no
-        spelling is a known word."""
+        stand for, the one with the most frequent lemma, preferring a word that needs no shadda the
+        user did not type. None if the text isn't Arabizi or no spelling is a known word."""
         words = text.split()
         # Only readings with exactly the spelling's letters count; a lookup also finds ة as ه and ى as ي.
         found = [
             (spelling, readings) for spelling in (_arabizi_spellings(words[0]) if words else [])
             if (readings := [r for r in self.lookup_ar(spelling) if _spelled(r.form) == _spelled(spelling)])
         ]
-        # max keeps the likelier spelling of equally frequent ones; readings come most frequent first.
-        return max(found, key=lambda f: -99 if f[1][0].frequency is None else f[1][0].frequency)[0] if found else None
+        # A word that doubles more letters than the user typed twice needs a shadda they didn't type,
+        # and ranks below one that doesn't. max keeps the likelier spelling of equally ranked ones.
+        typed = len(re.findall(r"([^aeiou])\1", words[0].lower())) if words else 0
+        return max(found, key=lambda f: max(
+            (_doubled(r.form) <= typed, -99 if r.frequency is None else r.frequency) for r in f[1]
+        ))[0] if found else None
 
     def _readings(self, word: str, keep: Callable[[dict], bool]) -> list[Reading]:
         """The readings of the analyses of word that keep accepts, merged as Reading describes."""

@@ -271,6 +271,9 @@ def test_arabizi_digits_stand_for_letters_and_final_vowels_for_letters(real):
     ("shams", "شمس"), ("khubz", "خبز"), ("5ubz", "خبز"), ("ghurfa", "غرفة"), ("thaqafa", "ثقافة"), ("dhikr", "ذكر"),
     ("9alb", "قلب"), ("su2al", "سؤال"), ("2akl", "أكل"),  # 2 is a hamza
     ("mudarris", "مدرس"), ("allah", "الله"),  # a doubled consonant is a shadda or two letters
+    # A shadda the user did not type ranks a word below one without: سَهْل "easy", not سَأَحِلّ "I will
+    # dissolve". The ي of a nisba ending (وَطَنِيَّة) is doubled in Arabic but rarely in Arabizi.
+    ("salam", "سلام"), ("sahl", "سهل"), ("wataniya", "وطنية"), ("3arabi", "عربي"),
     ("kbeer", "كبير"), ("saa3a", "ساعة"), ("beit", "بيت"), ("mustashfa", "مستشفى"),
     ("shukran", "شكرا"),  # a final "an" may be tanween: شُكْراً
     ("al-kitab", "الكتاب"),
