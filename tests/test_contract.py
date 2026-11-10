@@ -67,6 +67,12 @@ def test_alif_maqsura_is_tolerated(real):
     assert "إِلَى" in [r.form for r in real.lookup_ar("الى")]
 
 
+def test_alif_maqsura_and_ya_keep_frequency_order(real):
+    # Only a final ه/ة ranks the typed spelling first; for علي the frequent preposition عَلَى
+    # ("on", and عَلَيَّ "on me") still outranks the name عَلِيّ.
+    assert "عَلَى" in [r.form for r in real.lookup_ar("علي")][:2]
+
+
 def test_tatweel_is_ignored(real):
     assert real.lookup_ar("كـتـب") == real.lookup_ar("كتب")
 

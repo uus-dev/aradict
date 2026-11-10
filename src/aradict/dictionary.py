@@ -104,7 +104,10 @@ class Dictionary:
                 root=a.get("root") or None,
                 frequency=None if logprob <= -99 else logprob,
             ))
-        # Readings spelled exactly as typed (مدرسه, not مدرسة) come first, then the most frequent
-        # lemma. Python's sort is stable, so equal keys keep the analyzer's order.
-        spelling = MARK.sub("", word)
-        return sorted(readings, key=lambda r: (MARK.sub("", r.form) != spelling, r.frequency is None, -(r.frequency or 0), r.lemma))
+        # A word-final ه also finds ة and vice versa; readings ending as typed (مدرسه, not مدرسة)
+        # come first. Then the most frequent lemma; Python's sort is stable, so equal keys keep
+        # the analyzer's order.
+        last = MARK.sub("", word)[-1:]
+        return sorted(readings, key=lambda r: (
+            last in ("ه", "ة") and MARK.sub("", r.form)[-1:] != last, r.frequency is None, -(r.frequency or 0), r.lemma,
+        ))
