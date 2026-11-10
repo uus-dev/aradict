@@ -48,6 +48,7 @@ def test_unknown_word_says_so_and_suggests_next_steps(client):
     assert "without vowel marks" in page.text
     assert "Latin letters (Arabizi)" in page.text
     assert 'class="reading"' not in page.text
+    assert re.search(r'<a href="/\?lang=en">[^<]*English → Arabic</a>', page.text)  # or switch direction
 
 
 def test_home_has_a_plain_get_form(client):
@@ -71,6 +72,8 @@ def test_live_lookup_of_a_blank_query_returns_to_the_home_url(client):
     assert 'class="reading"' not in page.text
     page = client.get("/", params={"q": "", "diacritics": "off"}, headers={"HX-Request": "true"})
     assert page.headers["HX-Push-Url"] == "/?diacritics=off"  # the switch survives clearing
+    page = client.get("/", params={"q": "", "lang": "en"}, headers={"HX-Request": "true"})
+    assert page.headers["HX-Push-Url"] == "/?lang=en"  # and so does the direction
 
 
 def test_home_intro_follows_the_search_box_until_a_word_is_looked_up(client):
@@ -196,8 +199,7 @@ def test_latin_word_with_no_arabic_match_shows_the_no_results_guidance(client):
     assert 'class="reading"' not in page
     assert "No Arabic word for" in page
     assert "Check the spelling" in page and "7 for" in page  # the Arabizi digits
-    assert "English" in page  # perhaps it was an English word
-    assert "English" not in client.get("/", params={"q": "قخغثص"}).text
+    assert 'href="/?q=hello&amp;lang=en"' in page  # perhaps it was an English word: look it up as one
     assert chip(page) == ""
 
 
@@ -376,3 +378,67 @@ def test_several_latin_words_look_up_the_first(client):
     assert page.count('class="reading"') == 3
     assert "Only the first word" in page
     assert "/text?" not in page  # the Text view reads Arabic script only
+
+
+# --- English → Arabic -------------------------------------------------------------------------
+
+def field(page: str) -> str:
+    return re.search(r'<input id="q"[^>]*>', page).group(0)
+
+
+def english_switch(page: str) -> str:
+    return re.search(r'<label[^>]*>\s*(<input type="checkbox" name="lang" value="en"[^>]*>)\s*English → Arabic\s*</label>', page).group(1)
+
+
+COVERAGE = 'class="notice coverage"'
+
+
+def test_english_lookup_shows_arabic_entries_like_arabic_lookup(client):
+    page = client.get("/", params={"q": "book", "lang": "en"}).text
+    assert page.count('class="entry"') == 2  # كِتاب and سِفْر, one entry per lemma as in Arabic lookup
+    assert '<span class="ar" lang="ar" dir="rtl">كِتاب</span>' in page and '<span class="ar" lang="ar" dir="rtl">سِفْر</span>' in page
+    assert '<p class="gloss">book</p>' in page
+    assert "2 Arabic words for “book”" in page
+    same = client.get("/", params={"q": "Book ", "lang": "en"}).text
+    assert same[same.index('<div class="entries">'):] == page[page.index('<div class="entries">'):]
+
+
+def test_english_direction_lives_in_the_url_and_sets_the_field(client):
+    page = client.get("/", params={"lang": "en"}).text
+    assert 'lang="en"' in field(page) and 'dir="ltr"' in field(page)
+    assert '<label for="q" class="sr-only">English word</label>' in page
+    assert "checked" in english_switch(page) and "data-remember" in english_switch(page)
+    assert 'href="/?lang=en"' in re.search(r'<a [^>]*class="clear"[^>]*>', page).group(0)  # Clear keeps the direction
+
+    home = client.get("/").text
+    assert 'lang="ar"' in field(home) and "checked" not in english_switch(home)
+    assert '<label for="q" class="sr-only">Arabic word</label>' in home
+
+
+def test_arabic_field_follows_the_direction_of_what_is_typed(client):
+    # Arabizi is typed in Latin letters, which read left to right; Arabic script reads right to left.
+    assert 'dir="auto"' in field(client.get("/").text)
+
+
+def test_english_mode_shows_its_coverage_limits(client):
+    for params in ({"lang": "en"}, {"q": "book", "lang": "en"}, {"q": "xyzzy", "lang": "en"}):
+        assert COVERAGE in client.get("/", params=params).text, params
+        assert COVERAGE in client.get("/", params=params, headers={"HX-Request": "true"}).text, params
+    assert COVERAGE not in client.get("/").text
+    assert COVERAGE not in client.get("/", params={"q": "كتب"}).text
+
+
+def test_english_with_no_match_suggests_next_steps_and_switching_direction(client):
+    page = client.get("/", params={"q": "xyzzy", "lang": "en"}).text
+    assert "No Arabic word for “xyzzy”" in page
+    assert "Check the spelling" in page
+    assert re.search(r'<a href="/">[^<]*Arabic → English</a>', page)
+    # Arabic typed in English mode is looked up as Arabic by the switch.
+    page = client.get("/", params={"q": "كتب", "lang": "en"}).text
+    assert 'href="/?q=%D9%83%D8%AA%D8%A8"' in page
+
+
+def test_english_live_lookup_returns_only_results(client):
+    page = client.get("/", params={"q": "books", "lang": "en"}, headers={"HX-Request": "true"}).text
+    assert "<form" not in page
+    assert page.count('class="entry"') == 2  # the "book" entries

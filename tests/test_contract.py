@@ -114,6 +114,7 @@ def test_fixture_database_matches_real_for_its_lemmas(real, fixture_db):
     unranked = lambda readings: [replace(r, top_percent=None) for r in readings]
     for word in ("كتب", "وبكتابهم", "سيكتبون"):
         assert unranked(fixture.lookup_ar(word)) == unranked(real.lookup_ar(word))
+    assert unranked(fixture.lookup_en("book")) == unranked(real.lookup_en("book"))
 
 
 def test_missing_database_fails_loudly(tmp_path):
@@ -298,3 +299,54 @@ def test_arabizi_answers_quickly_however_long_the_word(real):
     start = time.perf_counter()
     real.arabizi("kitab" * 20)
     assert time.perf_counter() - start < 2
+
+
+# --- English → Arabic -----------------------------------------------------------------------
+
+def lemmas(readings) -> list[str]:
+    return list(dict.fromkeys(r.lemma for r in readings))
+
+
+def test_english_book_finds_kitab_and_sifr(real):
+    found = real.lookup_en("book")
+    assert {"كِتاب", "سِفْر"} <= set(lemmas(found))
+    assert real.lookup_en("Book ") == found  # case and surrounding whitespace don't matter
+
+
+def test_english_phrase_matches_whole_not_its_first_word(real):
+    phrase = lemmas(real.lookup_en("piece of writing"))
+    assert phrase == ["كِتابَة"]  # essay; piece of writing
+    assert "كِتابَة" not in lemmas(real.lookup_en("piece"))
+    assert "قِطْعَة" in lemmas(real.lookup_en("piece"))  # the reference matches "piece of writing" by "piece"
+
+
+def test_english_inflected_forms_find_their_base_form(real):
+    assert {"كِتاب", "سِفْر"} <= set(lemmas(real.lookup_en("books")))
+    # The plural كُتُب is glossed "books" itself; the lemma's own form comes first.
+    assert [r.form for r in real.lookup_en("books") if r.lemma == "كِتاب"] == ["كِتاب", "كُتُب"]
+    assert [r.form for r in real.lookup_en("wrote")] == ["كَتَبَ"]
+    assert "كَتَب" in lemmas(real.lookup_en("writes"))
+
+
+def test_english_finds_each_word_once_and_verbs_in_citation_form(real):
+    found = real.lookup_en("eat")
+    assert len({(r.form, r.gloss) for r in found}) == len(found)
+    # أَكَل has stems أَكَل, أْكُل and كُل, all glossed "eat": shown once, as the perfect "he/it ate".
+    assert [(r.form, first_sense(r.gloss)) for r in found if r.lemma == "أَكَل"] == [("أَكَلَ", "he/it ate")]
+    assert {r.tags for r in found} == {("verb", "active", "3rd person masculine singular")}
+
+
+def test_english_most_frequent_first(real):
+    frequencies = [r.frequency for r in real.lookup_en("eat")]
+    known = [f for f in frequencies if f is not None]
+    assert known == sorted(known, reverse=True) and frequencies[len(known):] == [None] * (len(frequencies) - len(known))
+
+
+def test_english_ignores_bracketed_annotations(real):
+    assert "حَلُوم" in lemmas(real.lookup_en("cheese"))  # glossed "(Egyptian)_cheese"
+    assert real.lookup_en("egyptian cheese") == []
+
+
+def test_english_unknown_or_blank_finds_nothing(real):
+    assert real.lookup_en("xyzzy") == []
+    assert real.lookup_en("  ") == []

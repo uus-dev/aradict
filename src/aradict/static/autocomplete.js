@@ -45,7 +45,8 @@ const close = () => {
 
 const suggest = async () => {
   request.abort(); // the list stays until the new suggestions replace it
-  if (!toggle.checked || !input.value.trim()) return close();
+  // Suggestions complete Arabic stems; in English (the field's lang, set by the direction switch) there are none.
+  if (!toggle.checked || input.lang !== "ar" || !input.value.trim()) return close();
   request = new AbortController();
   const { signal } = request;
   let forms;

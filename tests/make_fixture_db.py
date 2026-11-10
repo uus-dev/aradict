@@ -12,9 +12,10 @@ import sys
 from pathlib import Path
 
 # Enough for the reference words كتب, وبكتابهم, سيكتبون and استخدم, مدرستي's shared letter,
-# a root with an unresolved radical (قال), a verb with no usable root or measure (لَيْسَ), and
-# forms that share a gloss (سابقي: "my former" as singular, dual and plural).
-LEMMAS = frozenset({"كَتَب", "كِتاب", "كاتِب", "كُتّاب", "أَكْتَب", "مَدْرَسَة", "ٱِسْتَخْدَم", "قال", "لَيْسَ", "سابِق"})
+# a root with an unresolved radical (قال), a verb with no usable root or measure (لَيْسَ),
+# forms that share a gloss (سابقي: "my former" as singular, dual and plural), and سِفْر, the
+# other Arabic word for English "book".
+LEMMAS = frozenset({"كَتَب", "كِتاب", "كاتِب", "كُتّاب", "أَكْتَب", "مَدْرَسَة", "ٱِسْتَخْدَم", "قال", "لَيْسَ", "سابِق", "سِفْر"})
 
 
 def make_fixture(source: Path, target: Path, lemmas: frozenset[str] = LEMMAS) -> Path:

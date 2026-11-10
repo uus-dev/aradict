@@ -1,4 +1,4 @@
-"""The dictionary contract: Arabic lookup and Arabizi on the CAMeL calima-msa-r13 morphology database."""
+"""The dictionary contract: Arabic and English lookup, Arabizi, text analysis and autocomplete on the CAMeL calima-msa-r13 morphology database."""
 
 from __future__ import annotations
 
@@ -197,6 +197,66 @@ def _arabizi_spellings(word: str) -> list[str]:
     return ["".join(spelling for _, spelling in combination) for combination in sorted(combinations, key=lambda c: sum(rank for rank, _ in c))]
 
 
+def _by_frequency(r: Reading) -> tuple:
+    """Most frequent lemma first; lemmas with no figure last."""
+    return r.frequency is None, -(r.frequency or 0), r.lemma
+
+
+# English → Arabic: an index from each English sense of a stem's gloss to the stems with it.
+BRACKETED = re.compile(r"\([^)]*\)|\[[^\]]*\]|<[^>]*>")  # (Egyptian)_cheese, write_[fem.sg.], <verb>
+THIRD_PERSON = {"be": "is", "have": "has", "do": "does", "go": "goes"}
+
+
+def _citation(form: str, lemma: str, pos: str, stem: str | None = None, gloss: str | None = None):
+    """Keeps the analyses of form that spell a lemma in its citation form: from the given stem,
+    or else from any stem but with nothing attached. A verb is 3rd person masculine singular,
+    the perfect when looked up from its perfect stem."""
+    typed = _typed(form)
+
+    def keep(a: dict) -> bool:
+        return (a["lex"], a["pos"]) == (lemma, pos) and _agrees(typed, a["diac"], True) and (
+            (a["stem"], a["stemgloss"]) == (stem, gloss) if stem else all(a[f] in ("0", "na") for f in ("prc3", "prc2", "prc1", "prc0", "enc0"))
+        ) and (pos != "verb" or (a["per"], a["gen"], a["num"]) == ("3", "m", "s"))
+    return keep
+
+
+def _english_key(text: str) -> str:
+    return " ".join(text.lower().split())
+
+
+def _english_keys(gloss: str, pos: str) -> set[str]:
+    """What a stem's gloss is found by: each sense, and for nouns and verbs the inflected forms
+    learners type (books; wrote, writes). Bracketed annotations are left out."""
+    keys = set()
+    for sense in readable.senses(BRACKETED.sub("", gloss)):
+        keys.add(sense := _english_key(sense))
+        first, _, rest = sense.partition(" ")
+        if pos == "noun":
+            keys.add(readable._plural(sense))  # ponytail: inflects the last word, so "pieces of writing" isn't found
+        elif pos == "verb" and first != "be":
+            for inflected in (readable._past(first), THIRD_PERSON.get(first) or readable._plural(first)):
+                keys.add(f"{inflected} {rest}".strip())
+    return keys - {""}
+
+
+def _english_index(stems) -> dict[str, tuple[tuple[str, str, str, str], ...]]:
+    """Each English key with the stems it finds, as (lemma, part of speech, stem, gloss). A verb's
+    stems are found as its perfect stems of the same voice, which spell its citation form."""
+    # NOAN is the database's placeholder for words it has no analysis of.
+    stems = {(a["lex"], a["pos"], a["diac"], a["gloss"], a["vox"], a["asp"]) for a in stems if a["lex"] != "NOAN"}
+    perfect: dict[tuple[str, str], set] = {}
+    for lemma, pos, stem, gloss, voice, aspect in stems:
+        if pos == "verb" and aspect == "p":
+            perfect.setdefault((lemma, voice), set()).add((lemma, pos, stem, gloss))
+    index: dict[str, set] = {}
+    for lemma, pos, stem, gloss, voice, aspect in stems:
+        # A voice with no perfect stem (a passive met only in the imperfect) is found as the active verb.
+        found = perfect.get((lemma, voice)) or perfect.get((lemma, "a"), ()) if pos == "verb" else [(lemma, pos, stem, gloss)]
+        for key in _english_keys(gloss, pos):
+            index.setdefault(key, set()).update(found)
+    return {key: tuple(sorted(found)) for key, found in index.items()}  # sorted: the same order on every run
+
+
 class Dictionary:
     def __init__(self, db_path: Path):
         if not db_path.is_file():
@@ -223,6 +283,7 @@ class Dictionary:
                 if f["pos"] == "verb" and f["lex"].startswith("آ") and f["asp"] == "i":
                     self._hamza_measures.setdefault(f["lex"], set()).add("III" if f["diac"].startswith("ؤا") else "IV")
         self._frequencies = sorted(logprob for logprob in lemmas.values() if logprob > -99)
+        self._english = _english_index(analysis for stems in self._db.stem_hash.values() for _, analysis in stems)
 
     def measure(self, lemma: str, root: str) -> str | None:
         """A verb's measure: the one template the lemma fits with the root's letters in its
@@ -283,6 +344,21 @@ class Dictionary:
                 measure=self.measure(a["lex"], root) if a["pos"] == "verb" and root else None,
             ))
         return readings
+
+    def lookup_en(self, query: str) -> list[Reading]:
+        """Arabic words with an English sense that is the query, a phrase matched whole and
+        ignoring case, or an inflected form of it ("books", "wrote"). Each reading appears once,
+        verbs in their citation form ("he/it wrote"), most frequent lemma first. Unknown words give []."""
+        found: dict[Reading, None] = {}  # an ordered set
+        for lemma, pos, stem, gloss in self._english.get(_english_key(query), ()):
+            # The lemma spells a singular noun or an active verb; a plural (كُتُب) or passive (كُتِب) stem spells
+            # itself, and an adverb takes tanween (حالِيّاً). A stem that is no word on its own (طُماط, written
+            # طُماطَة) gives its lemma's citation form instead.
+            forms = (lemma, stem, stem + "اً") if pos == "adv" else (lemma, stem)
+            readings = [r for form in dict.fromkeys(forms) for r in self._readings(form, _citation(form, lemma, pos, stem, gloss))]
+            found.update(dict.fromkeys(readings or self._readings(lemma, _citation(lemma, lemma, pos))))
+        # Within a lemma, its own form (كِتاب) before others (كُتُب).
+        return sorted(found, key=lambda r: (*_by_frequency(r), MARK.sub("", r.form) != MARK.sub("", r.lemma)))
 
     def lookup_ar(self, word: str, filter_diacritics: bool = True) -> list[Reading]:
         """Readings for an Arabic word (the first, if several), most frequent lemma first.
