@@ -28,6 +28,7 @@ TOKEN = re.compile(
 # The database keys stems by their bare letters: أ, إ, آ and ٱ as ا, ى as ي, and ة as ه.
 STEM_KEY = ALIFS | str.maketrans("ىة", "يه")
 SUGGESTIONS = 25
+NO_FREQUENCY = -99.0  # the log-probability the database gives a lemma it has no figure for
 
 # Arabizi: Arabic in Latin letters and digits. Each token stands for one or more Arabic spellings,
 # the likelier first.
@@ -175,8 +176,13 @@ def _agrees(typed: list[tuple[str, set[str]]], form: str, check_marks: bool, who
     )
 
 
+def _no_clitics(analysis: dict) -> bool:
+    """Nothing attached to the word: no proclitic and no enclitic."""
+    return all(analysis[f] in ("0", "na") for f in ("prc3", "prc2", "prc1", "prc0", "enc0"))
+
+
 def _logprob(analysis: dict) -> float:
-    return float(analysis.get("lex_logprob", -99))
+    return float(analysis.get("lex_logprob", NO_FREQUENCY))
 
 
 def _key(text: str) -> str:
@@ -249,7 +255,7 @@ def _citation(form: str, lemma: str, pos: str, stem: str | None = None, gloss: s
 
     def keep(a: dict) -> bool:
         return (a["lex"], a["pos"]) == (lemma, pos) and _agrees(typed, a["diac"], True) and (
-            (a["stem"], a["stemgloss"]) == (stem, gloss) if stem else all(a[f] in ("0", "na") for f in ("prc3", "prc2", "prc1", "prc0", "enc0"))
+            (a["stem"], a["stemgloss"]) == (stem, gloss) if stem else _no_clitics(a)
         ) and (pos != "verb" or (a["per"], a["gen"], a["num"]) == ("3", "m", "s"))
     return keep
 
@@ -331,7 +337,7 @@ class Dictionary:
             for key, f in stems.values():
                 if ROOT.fullmatch(f.get("root", "")):
                     self._root_stems.setdefault(f["root"], []).append((key, f))
-        self._frequencies = sorted(logprob for logprob in lemmas.values() if logprob > -99)
+        self._frequencies = sorted(logprob for logprob in lemmas.values() if logprob > NO_FREQUENCY)
         self._english = _english_index(analysis for stems in self._db.stem_hash.values() for _, analysis in stems)
 
     def measure(self, lemma: str, root: str) -> str | None:
@@ -367,7 +373,7 @@ class Dictionary:
         # and ranks below one that doesn't. max keeps the likelier spelling of equally ranked ones.
         typed = len(re.findall(r"([^aeiou])\1", words[0].lower())) if words else 0
         return max(found, key=lambda f: max(
-            (_doubled(r.form) <= typed, -99 if r.frequency is None else r.frequency) for r in f[1]
+            (_doubled(r.form) <= typed, NO_FREQUENCY if r.frequency is None else r.frequency) for r in f[1]
         ))[0] if found else None
 
     def _readings(self, word: str, keep: Callable[[dict], bool]) -> list[Reading]:
@@ -395,8 +401,8 @@ class Dictionary:
                 lemma=a["lex"],
                 root=root,
                 pattern=stem[1]["pattern"] if stem else None,
-                frequency=None if logprob <= -99 else logprob,
-                top_percent=None if logprob <= -99 else 100 * (1 - bisect_left(self._frequencies, logprob) / len(self._frequencies)),
+                frequency=None if logprob <= NO_FREQUENCY else logprob,
+                top_percent=None if logprob <= NO_FREQUENCY else 100 * (1 - bisect_left(self._frequencies, logprob) / len(self._frequencies)),
                 measure=self.measure(a["lex"], root) if a["pos"] == "verb" and root else None,
             ))
         return readings
@@ -478,7 +484,7 @@ class Dictionary:
         def keep(a: dict) -> bool:
             return (
                 (a["lex"], a["pos"], a["stem"], a["stemgloss"]) == (f["lex"], f["pos"], f["diac"], f["gloss"])
-                and all(a[clitic] in ("0", "na") for clitic in ("prc3", "prc2", "prc1", "prc0", "enc0"))
+                and _no_clitics(a)
                 and ((a["per"], a["gen"], a["num"]) == agreement if agreement else a["num"] != "d")
                 and not (f["asp"] == "i" and SHORT_STEM.search(a["stemcat"]))
             )
@@ -533,7 +539,7 @@ class Dictionary:
             # Typed marks short of the stem's last letter can be checked on the stem alone,
             # which saves analysing stems that can't agree.
             if cat in cats and (len(key) == len(rest) or _agrees(typed[i:], diac, check_marks, whole=False)):
-                best[key] = max(best.get(key, -99.0), freq)
+                best[key] = max(best.get(key, NO_FREQUENCY), freq)
         found: dict[str, float] = {}
         for key in sorted(best, key=best.get, reverse=True):
             if len(found) >= wanted and best[key] <= sorted(found.values(), reverse=True)[wanted - 1]:
@@ -543,5 +549,5 @@ class Dictionary:
                 for r in self._readings(word, lambda a: (
                     _key(a["stem"]) == key and a["enc0"] in ("0", "na") and _agrees(typed, a["diac"], check_marks, whole=False)
                 )):
-                    found[r.form] = max(found.get(r.form, -99.0), -99.0 if r.frequency is None else r.frequency)
+                    found[r.form] = max(found.get(r.form, NO_FREQUENCY), NO_FREQUENCY if r.frequency is None else r.frequency)
         return sorted(found, key=found.get, reverse=True)[:wanted]
