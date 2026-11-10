@@ -5,6 +5,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
+from . import readable
+
 
 @dataclass(frozen=True)
 class Reading:
@@ -29,11 +31,8 @@ def _reading_key(analysis: dict) -> tuple:
 
 
 def _representative(analyses: list[dict]) -> dict:
-    """Prefer the analysis written without a case ending and with وَ read as "and"."""
-    return next(
-        (a for a in analyses if a["cas"] in ("u", "na") and a["prc2"] in ("0", "wa_conj")),
-        analyses[0],
-    )
+    """Prefer وَ read as "and", then the analysis written without a case ending."""
+    return min(analyses, key=lambda a: (a["prc2"] not in ("0", "wa_conj"), a["cas"] not in ("u", "na")))
 
 
 class Dictionary:
@@ -58,7 +57,7 @@ class Dictionary:
             logprob = float(a.get("lex_logprob", -99))
             readings.append(Reading(
                 form=a["diac"],
-                gloss=a["gloss"].replace("_", " "),  # ponytail: raw CAMeL gloss; readable wording is #4
+                gloss=readable.gloss(a),
                 pos=a["pos"],
                 lemma=a["lex"],
                 root=a.get("root") or None,

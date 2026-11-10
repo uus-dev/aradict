@@ -11,11 +11,11 @@ def real(real_db):
 
 
 def first_sense(gloss: str) -> str:
-    return gloss.split("+")[0].split(";")[0]
+    return gloss.split(";")[0]
 
 
 def test_ktb_has_three_readings(real):
-    assert sorted(first_sense(r.gloss) for r in real.lookup_ar("كتب")) == ["be written", "books", "write"]
+    assert sorted(first_sense(r.gloss) for r in real.lookup_ar("كتب")) == ["books", "he/it was written", "he/it write"]
 
 
 def test_clitics_and_case_endings_collapse(real):
