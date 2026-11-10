@@ -31,14 +31,18 @@ async def lifespan(app: FastAPI):
     yield
 
 
+# ponytail: no rate limiting yet; #17 adds it in front of the app, or as middleware here before any route does work.
 app = FastAPI(title="AraDict", lifespan=lifespan)
 app.mount("/static", StaticFiles(directory=Path(__file__).parent / "static"), name="static")
 
 
-MAX_QUERY = 100
+MAX_QUERY = 100  # characters in any URL parameter
+# Bytes a Text form may post. MAX_TEXT characters take at most 24,000 URL-encoded; the rest lets
+# a passage somewhat over the limit come back with its length, kept for the user to shorten.
+MAX_BODY = 64_000
 
 
-FAMILY = ("root", "related", "pos", "sort")  # the URL parameters of a root or related-forms view
+LOOKUP = ("q", "diacritics", "lang")  # the URL parameters of a lookup
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -56,18 +60,18 @@ def word(
     """A lookup, or with root or related (and pos) a root's words or a lemma's forms in its place,
     sorted by sort. The lookup's own URL parameters go with every root and related-forms link, so
     their view can return to it."""
-    lookup = {key: value for key, value in request.query_params.items() if key not in FAMILY}
+    lookup = {key: value for key, value in request.query_params.items() if key in LOOKUP}
     q, filter_diacritics, english = q.strip(), diacritics == "on", lang == "en"
     status_code = 200
     try:
-        if root is not None:
+        if any(len(value) > MAX_QUERY for value in (q, root or "", related or "", pos, sort)):
+            state = views.State(f"That's too long. Type at most {MAX_QUERY} characters.")
+        elif root is not None:
             state = views.root_view(root, dictionary().root_family(root), lookup, sort)
         elif related is not None:
             state = views.related_view(related, pos, dictionary().related(related, pos), lookup, sort)
         elif not q:
             state = views.INITIAL_EN if english else views.INITIAL
-        elif len(q) > MAX_QUERY:
-            state = views.State(f"That's too long. Type at most {MAX_QUERY} characters.")
         elif not any(c.isalpha() for c in q):
             state = views.State("Type a word: letters, not only numbers or symbols.")
         else:
@@ -102,14 +106,30 @@ def _analyse(text: str, hx_request: str | None = None) -> HTMLResponse:
         except Exception:
             logger.exception("Text analysis failed")  # the passage stays out of the log
             state, status_code = views.TEXT_FAILURE, 500
+    return _text_view(text, state, hx_request, status_code)
+
+
+def _text_view(text: str, state: views.State, hx_request: str | None, status_code: int = 200) -> HTMLResponse:
     page = views.live_analysis(state) if hx_request else views.text_page(text, state)
     return HTMLResponse(str(page), status_code, {"Vary": "HX-Request"})
+
+
+async def _body(request: Request) -> bytes | None:
+    """The request body, or None when it is longer than MAX_BODY, which is then never read in full."""
+    if int(request.headers.get("content-length", 0)) > MAX_BODY:
+        return None
+    body = bytearray()
+    async for chunk in request.stream():  # a body sent without its length stops being read at the limit
+        body += chunk
+        if len(body) > MAX_BODY:
+            return None
+    return bytes(body)
 
 
 @app.get("/suggest")
 def suggest(q: str = "", diacritics: Literal["on", "off"] = "on") -> list[str]:
     """Autocomplete for the Word field: vocalized forms that complete the typed word."""
-    return dictionary().suggest(q, diacritics == "on")
+    return [] if len(q) > MAX_QUERY else dictionary().suggest(q, diacritics == "on")
 
 
 @app.get("/text", response_class=HTMLResponse)
@@ -120,8 +140,12 @@ def text(q: str = "") -> HTMLResponse:
 
 @app.post("/text", response_class=HTMLResponse)
 async def analyse(request: Request, hx_request: Annotated[str | None, Header()] = None) -> HTMLResponse:
+    body = await _body(request)
+    if body is None:
+        state = views.State(f"Your text is too long. Analyse at most {views.MAX_TEXT:,} characters at a time: shorten it and try again.")
+        return _text_view("", state, hx_request)
     # ponytail: parsed by hand; FastAPI's Form() would add python-multipart for this one field.
-    form = parse_qs((await request.body()).decode(errors="replace"))
+    form = parse_qs(body.decode(errors="replace"))
     return _analyse(form.get("text", [""])[0], hx_request)
 
 

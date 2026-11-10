@@ -3,7 +3,7 @@
 import html
 import re
 import unicodedata
-from urllib.parse import parse_qs, urlsplit
+from urllib.parse import parse_qs, urlencode, urlsplit
 
 
 def test_word_page_lists_readings_grouped_by_lemma(client):
@@ -312,6 +312,42 @@ def test_overlong_text_shows_the_limit_and_keeps_all_of_it(client):
     assert "2,004 characters" in page.text and "at most 2,000" in page.text
     assert 'class="passage"' not in page.text
     assert f">{text}</textarea>" in page.text  # nothing is cut off
+
+
+class Unreachable:
+    """A dictionary that fails every call: input refused at the door never reaches it."""
+
+    def __getattr__(self, name):
+        raise AssertionError(f"dictionary().{name} was called")
+
+
+def test_an_oversized_passage_is_refused_without_being_analysed(client, monkeypatch):
+    monkeypatch.setattr("aradict.app.dictionary", Unreachable)
+    form = {"content-type": "application/x-www-form-urlencoded"}
+    body = urlencode({"text": "كتب " * 20_000})  # 80,000 characters, far past what a form of 2,000 can need
+    sized = client.post("/text", content=body, headers=form)  # refused by its Content-Length
+    streamed = client.post("/text", content=iter([body.encode()]), headers=form)  # no length: refused while reading
+    for page in (sized, streamed):
+        assert page.status_code == 200
+        assert "Your text is too long. Analyse at most 2,000 characters at a time" in page.text
+        assert "كتب كتب" not in page.text
+
+
+def test_overlong_parameters_show_the_invalid_state_before_any_lookup(client, monkeypatch):
+    monkeypatch.setattr("aradict.app.dictionary", Unreachable)
+    long = "ك" * 101
+    for params in ({"root": long}, {"related": long, "pos": "noun"}, {"related": "كِتاب", "pos": long},
+                   {"root": "ك.ت.ب", "sort": long}, {"q": long, "root": "ك.ت.ب"}):
+        page = client.get("/", params=params)
+        assert page.status_code == 200, params
+        assert "at most 100 characters" in page.text, params
+    assert client.get("/suggest", params={"q": long}).json() == []
+
+
+def test_only_the_lookups_own_parameters_go_into_its_links(client):
+    page = client.get("/", params={"q": "كتب", "diacritics": "off", "other": "x" * 50})
+    assert "other" not in page.text
+    assert {"q": ["كتب"], "diacritics": ["off"], "root": ["ك.ت.ب"]} in links(heading(entries(page.text)[0])).values()
 
 
 def test_pasted_markup_is_shown_as_text(client):
