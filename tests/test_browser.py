@@ -318,3 +318,28 @@ def test_the_on_screen_keyboard_fits_a_phone_with_large_keys(base_url, browser):
     assert min(key["height"] for key in keys) >= 44
     assert min(key["width"] for key in keys) >= 24
     assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
+
+
+def test_word_parts_are_marked_without_colour_and_open_without_javascript(base_url, browser):
+    page = browser.new_context(java_script_enabled=False, viewport={"width": 390, "height": 844}).new_page()
+    page.goto(f"{base_url}/?q={quote('وبكتابهم')}")
+    reading = page.locator(".reading").first
+
+    def decoration(selector: str) -> str:
+        return reading.locator(selector).first.evaluate(
+            "e => getComputedStyle(e).textDecorationLine + ' ' + getComputedStyle(e).textDecorationStyle"
+        )
+
+    # Prefix, stem and suffix differ in line style as well as colour.
+    assert decoration(".form .prefix") == "underline dotted"
+    assert decoration(".form .suffix") == "underline solid"
+    assert decoration(".form .stem").startswith("none")
+
+    chips = reading.locator(".chips")
+    expect(chips).to_be_hidden()
+    reading.get_by_text("Word parts").click()
+    expect(chips).to_be_visible()
+    expect(chips.locator(".chip")).to_have_count(4)
+    expect(chips.locator(".chip").nth(1)).to_contain_text("by/with")
+    assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
+    page.context.close()
