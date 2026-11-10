@@ -8,6 +8,7 @@ from test_browser import base_url, browser  # noqa: F401  (shared server and bro
 
 
 def open_history(page):
+    page.keyboard.press("Escape")  # while typing, the suggestion list (#8) lies over the panel
     page.get_by_text("Recent lookups").click()
     return page.locator("#history").get_by_role("link")
 
@@ -15,7 +16,7 @@ def open_history(page):
 def test_a_lookup_appears_in_history_and_reopens_the_same_view(base_url, browser):
     page = browser.new_page()
     page.goto(f"{base_url}/?q={quote('كَتَبَ')}&diacritics=off")  # opened from a link: 3 readings, filter off
-    box = page.get_by_role("textbox", name="Arabic word")
+    box = page.get_by_label("Arabic word")
     box.fill("كاتب")  # a live lookup
     expect(page.get_by_role("status")).to_contain_text("كاتب")
 
@@ -41,7 +42,7 @@ def test_a_word_looked_up_again_is_listed_once(base_url, browser):
 
 def type_slowly(page, word):
     """Type one letter at a time, letting each live lookup finish, as a learner typing slowly does."""
-    box = page.get_by_role("textbox", name="Arabic word")
+    box = page.get_by_label("Arabic word")
     for letter in word:
         box.press_sequentially(letter)
         expect(page.get_by_role("status")).to_contain_text(box.input_value())
@@ -54,11 +55,11 @@ def test_typing_a_word_keeps_only_the_word_not_each_letter_on_the_way(base_url, 
     entries = open_history(page)
     expect(entries).to_have_text(["كتب"])
 
-    page.get_by_role("textbox", name="Arabic word").select_text()
+    page.get_by_label("Arabic word").select_text()
     type_slowly(page, "كاتب")  # typed over كتب: ك no longer extends it, so كتب stays
     expect(entries).to_have_text(["كاتب", "كتب"])
 
-    page.get_by_role("textbox", name="Arabic word").press("Enter")  # an explicit lookup ends the word
+    page.get_by_label("Arabic word").press("Enter")  # an explicit lookup ends the word
     type_slowly(page, "ة")
     expect(entries).to_have_text(["كاتبة", "كاتب", "كتب"])
 
@@ -75,7 +76,7 @@ def test_history_keeps_as_many_lookups_as_set_and_can_be_cleared(base_url, brows
     size.fill("2")
     size.press("Tab")
     expect(entries).to_have_text(["كتاب", "كاتب"])  # the oldest is dropped
-    page.get_by_role("textbox", name="Arabic word").fill("كاتبة")
+    page.get_by_label("Arabic word").fill("كاتبة")
     expect(entries).to_have_text(["كاتبة", "كتاب"])
 
     page.get_by_role("button", name="Clear history").click()
@@ -100,7 +101,7 @@ def test_preferences_are_remembered_on_the_device(base_url, browser):
     expect(switch).to_be_checked()
     open_history(page)
     expect(page.locator("#history").get_by_role("spinbutton")).to_have_value("7")
-    page.get_by_role("textbox", name="Arabic word").fill("كَتَبَ")  # the next lookup uses it
+    page.get_by_label("Arabic word").fill("كَتَبَ")  # the next lookup uses it
     expect(page.locator(".reading")).to_have_count(3)
     expect(page).to_have_url(f"{base_url}/?q={quote('كَتَبَ')}&diacritics=off")
 
@@ -123,7 +124,7 @@ def test_lookup_works_without_a_visible_error_when_storage_is_blocked(base_url, 
     page.goto(f"{base_url}/?q={quote('كاتب')}")
 
     page.get_by_role("checkbox", name="Ignore diacritics").check()
-    page.get_by_role("textbox", name="Arabic word").fill("كتب")
+    page.get_by_label("Arabic word").fill("كتب")
     expect(page.get_by_role("status")).to_have_text("3 readings for كتب")
     expect(page.locator(".reading")).to_have_count(3)
     expect(open_history(page)).to_have_text(["كتب", "كاتب"])  # kept for as long as the page is open
@@ -143,7 +144,7 @@ def test_no_request_carries_history_or_preferences(base_url, browser):
     requests = []
     page.on("request", lambda request: requests.append(request))
     page.goto(base_url)  # loads the stored history and preferences into the page
-    page.get_by_role("textbox", name="Arabic word").fill("كتب")
+    page.get_by_label("Arabic word").fill("كتب")
     expect(open_history(page)).to_have_text(["كتب", "كاتب"])
     page.reload()
     expect(open_history(page)).to_have_text(["كتب", "كاتب"])

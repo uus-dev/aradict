@@ -86,6 +86,12 @@ def _analyse(text: str, hx_request: str | None = None) -> HTMLResponse:
     return HTMLResponse(str(page), status_code, {"Vary": "HX-Request"})
 
 
+@app.get("/suggest")
+def suggest(q: str = "", diacritics: Literal["on", "off"] = "on") -> list[str]:
+    """Autocomplete for the Word field: vocalized forms that complete the typed word."""
+    return dictionary().suggest(q, diacritics == "on")
+
+
 @app.get("/text", response_class=HTMLResponse)
 def text(q: str = "") -> HTMLResponse:
     """The Text view. q carries the words the Word page hands over; a passage typed here is posted."""
