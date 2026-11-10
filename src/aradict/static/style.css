@@ -46,6 +46,16 @@ a { color: var(--accent) }
 #results, .arabizi { transition: opacity .15s }
 .search.htmx-request ~ #results, .search.htmx-request .arabizi { opacity: .4; transition-delay: .2s }
 
+/* Recent lookups: one line under the search until opened. history.js shows it. */
+.history { font-size: .9rem; color: var(--muted) }
+.history summary { width: fit-content; padding-block: 4px; cursor: pointer }
+.history ol { display: flex; flex-wrap: wrap; gap: 0 20px; margin: 4px 0; padding: 0; list-style: none }
+.history ol a { display: inline-block; padding-block: 2px; text-decoration: none }
+.history ol:not(:empty) + .none { display: none }
+.history .tools { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px }
+.history .tools input { width: 5em; font: inherit; padding: 4px 6px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); color: var(--fg) }
+.history .tools button { min-height: 32px; padding-inline: 12px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); color: var(--fg); font: inherit; cursor: pointer }
+
 /* About and help */
 .notice { margin-inline: 0; padding-inline-start: 14px; border-inline-start: 3px solid var(--line); color: var(--muted); font-size: .9rem }
 .placeholder { padding: 8px 12px; border: 1px dashed var(--muted); border-radius: 6px }
