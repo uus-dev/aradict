@@ -364,6 +364,14 @@ def test_english_inflected_forms_find_their_base_form(real):
     assert "كَتَب" in lemmas(real.lookup_en("writes"))
 
 
+def test_english_rows_show_the_sense_that_matched(real):
+    # ذَهَب has two perfect stems, "go;depart" and "take (with)", and imperfect stems with each sense.
+    def dhahaba(query):
+        return [r.gloss for r in real.lookup_en(query) if r.lemma == "ذَهَب"]
+    assert dhahaba("take") == dhahaba("took") == ["he/it took (with)"]
+    assert dhahaba("go") == dhahaba("went") == ["he/it went; he/it departed"]
+
+
 def test_english_inflects_as_the_glosses_do(real):
     # The third person of "focus" is "focuses", as the glosses write it ("he/it focuses").
     verbs = [r for r in real.lookup_en("focus") if r.pos == "verb"]

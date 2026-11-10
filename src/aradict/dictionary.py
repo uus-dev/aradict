@@ -257,20 +257,26 @@ def _english_keys(gloss: str, pos: str) -> set[str]:
 
 
 def _english_index(stems) -> dict[str, tuple[tuple[str, str, str, str], ...]]:
-    """Each English key with the stems it finds, as (lemma, part of speech, stem, gloss). A verb's
-    stems are found as its perfect stems of the same voice, which spell its citation form."""
+    """Each English key with the stems it finds, as (lemma, part of speech, stem, gloss). A verb is
+    found as its perfect stem with the sense that matched, which spells its citation form."""
     # NOAN is the database's placeholder for words it has no analysis of.
     stems = {(a["lex"], a["pos"], a["diac"], a["gloss"], a["vox"], a["asp"]) for a in stems if a["lex"] != "NOAN"}
     perfect: dict[tuple[str, str], set] = {}
-    for lemma, pos, stem, gloss, voice, aspect in stems:
-        if pos == "verb" and aspect == "p":
-            perfect.setdefault((lemma, voice), set()).add((lemma, pos, stem, gloss))
     index: dict[str, set] = {}
     for lemma, pos, stem, gloss, voice, aspect in stems:
-        # A voice with no perfect stem (a passive met only in the imperfect) is found as the active verb.
-        found = perfect.get((lemma, voice)) or perfect.get((lemma, "a"), ()) if pos == "verb" else [(lemma, pos, stem, gloss)]
-        for key in _english_keys(gloss, pos):
-            index.setdefault(key, set()).update(found)
+        if pos != "verb" or aspect == "p":
+            for key in _english_keys(gloss, pos):
+                index.setdefault(key, set()).add((lemma, pos, stem, gloss))
+        if pos == "verb" and aspect == "p":
+            perfect.setdefault((lemma, voice), set()).add((lemma, pos, stem, gloss))
+    # A sense that only a verb's other stems carry finds its perfect stems of the same voice, or the
+    # active ones when that voice has none (a passive met only in the imperfect).
+    for lemma, pos, stem, gloss, voice, aspect in stems:
+        if pos == "verb" and aspect != "p":
+            for key in _english_keys(gloss, pos):
+                found = index.setdefault(key, set())
+                if not any(f[:2] == (lemma, pos) for f in found):
+                    found.update(perfect.get((lemma, voice)) or perfect.get((lemma, "a"), ()))
     return {key: tuple(sorted(found)) for key, found in index.items()}  # sorted: the same order on every run
 
 
