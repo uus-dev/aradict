@@ -1,9 +1,11 @@
 """Pages, served by the app over the fixture database."""
 
 import html
+import logging
 import re
 import unicodedata
 from urllib.parse import parse_qs, urlencode, urlsplit
+from urllib.request import urlopen
 
 
 def test_word_page_lists_readings_grouped_by_lemma(client):
@@ -161,17 +163,25 @@ def test_query_without_letters_shows_the_invalid_state(client):
     assert "No entry for" not in page.text
 
 
-def test_service_failure_offers_retry_and_keeps_the_input(client, monkeypatch):
-    class Broken:
-        def lookup_ar(self, word):
-            raise RuntimeError("database gone")
+class Broken:
+    """A dictionary whose every call fails, quoting its arguments in the error as a library might."""
 
+    def __getattr__(self, name):
+        def fail(*args, **kwargs):
+            raise RuntimeError(f"{name} failed on {args}")
+        return fail
+
+
+def test_service_failure_offers_retry_and_keeps_the_input_out_of_the_log(client, monkeypatch, caplog):
     monkeypatch.setattr("aradict.app.dictionary", Broken)
     page = client.get("/", params={"q": "كتب"})
     assert page.status_code == 500
     assert "Lookup failed" in page.text
     assert 'value="كتب"' in page.text
     assert 'type="submit" form="search">Retry</button>' in page.text  # resubmits the kept input
+    # The log says what failed and where, but not the error's message, which quotes the word.
+    assert "RuntimeError" in caplog.text and "test_app.py" in caplog.text
+    assert "كتب" not in caplog.text
 
 
 def test_several_words_look_up_the_first_and_offer_the_text_view(client):
@@ -373,15 +383,24 @@ def test_live_analysis_returns_the_passage_and_its_status(client):
 
 
 def test_failed_analysis_keeps_the_text_and_never_logs_it(client, monkeypatch, caplog):
-    class Broken:
-        def analyze_text(self, text):
-            raise RuntimeError("database gone")
-
     monkeypatch.setattr("aradict.app.dictionary", Broken)
     page = client.post("/text", data={"text": "كتب سرّي"})
     assert page.status_code == 500
     assert "Analysis failed" in page.text and ">كتب سرّي</textarea>" in page.text
-    assert "database gone" in caplog.text and "سرّي" not in caplog.text
+    assert "RuntimeError" in caplog.text and "سرّي" not in caplog.text
+
+
+def test_the_access_log_leaves_out_what_was_looked_up(base_url, caplog):
+    # Run as `uvicorn aradict.app:app`, the server logs each request; its query string holds the word.
+    access = logging.getLogger("uvicorn.access")
+    caplog.set_level(logging.INFO, logger="uvicorn.access")
+    access.addHandler(caplog.handler)
+    try:
+        urlopen(f"{base_url}/?{urlencode({'q': 'سرّي'})}").close()
+    finally:
+        access.removeHandler(caplog.handler)
+    assert '"GET / HTTP/1.1" 200' in caplog.text
+    assert "q=" not in caplog.text
 
 
 def chip(page: str) -> str:

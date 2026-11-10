@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import traceback
 from contextlib import asynccontextmanager
 from functools import lru_cache
 from pathlib import Path
@@ -18,6 +19,25 @@ from .data import db_path
 from .dictionary import Dictionary
 
 logger = logging.getLogger(__name__)
+
+
+def _without_query(record: logging.LogRecord) -> bool:
+    """Cuts the query string, which holds the looked-up word, from uvicorn's access log lines.
+    `uv run aradict` turns that log off; this keeps `uvicorn aradict.app:app` safe as well."""
+    if isinstance(record.args, tuple) and len(record.args) == 5:  # client, method, path?query, HTTP version, status
+        client, method, path, version, status = record.args
+        record.args = (client, method, path.partition("?")[0], version, status)
+    return True
+
+
+logging.getLogger("uvicorn.access").addFilter(_without_query)
+
+
+def _log_failure(what: str, error: Exception) -> None:
+    """Logs what failed with the exception's type and where it was raised, never its message,
+    which may quote the word or passage (PRD: no query text in telemetry)."""
+    stack = " < ".join(f"{frame.name} ({frame.filename}:{frame.lineno})" for frame in reversed(traceback.extract_tb(error.__traceback__)))
+    logger.error("%s: %s in %s", what, type(error).__name__, stack)
 
 
 @lru_cache(maxsize=1)
@@ -79,8 +99,8 @@ def word(
             readings = dictionary().lookup_en(q) if english else dictionary().lookup_ar(arabizi or q, filter_diacritics)
             links = views.Links(lookup, {lemma: len(dictionary().related(*lemma)) for lemma in {(r.lemma, r.pos) for r in readings}})
             state = views.looked_up_en(q, readings, links) if english else views.looked_up(q, readings, arabizi, links)
-    except Exception:
-        logger.exception("Lookup failed")  # the query stays out of the log
+    except Exception as error:
+        _log_failure("Lookup failed", error)
         state, status_code = views.FAILURE, 500
     page = views.live_results(state) if hx_request else views.word_page(q, state, filter_diacritics, english)
     headers = {"Vary": "HX-Request"}
@@ -103,8 +123,8 @@ def _analyse(text: str, hx_request: str | None = None) -> HTMLResponse:
     else:
         try:
             state = views.analysed(dictionary().analyze_text(text))
-        except Exception:
-            logger.exception("Text analysis failed")  # the passage stays out of the log
+        except Exception as error:
+            _log_failure("Text analysis failed", error)
             state, status_code = views.TEXT_FAILURE, 500
     return _text_view(text, state, hx_request, status_code)
 
