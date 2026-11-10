@@ -6,11 +6,13 @@
 :root {
   color-scheme: light dark;
   --bg: #f5f6f8; --surface: #ffffff; --fg: #18202b; --muted: #556070; --line: #dce0e6; --accent: #1d5bb8;
+  --pre: #0b7566; --suf: #9a3a8a; --chip-pre: #e3f3f0; --chip-suf: #f5e6f2; --chip-stem: #e9eef6;
   --f-ui: system-ui, -apple-system, "Segoe UI", sans-serif;
   --f-ar: "Scheherazade New", "Geeza Pro", serif;
 }
 @media (prefers-color-scheme: dark) {
-  :root { --bg: #10141a; --surface: #171e27; --fg: #e5e9ef; --muted: #9ba6b5; --line: #2a3441; --accent: #82b1ff }
+  :root { --bg: #10141a; --surface: #171e27; --fg: #e5e9ef; --muted: #9ba6b5; --line: #2a3441; --accent: #82b1ff;
+    --pre: #4fcfb9; --suf: #e58ed6; --chip-pre: #143a35; --chip-suf: #3d1f39; --chip-stem: #1f2a38 }
 }
 
 * { box-sizing: border-box }
@@ -41,6 +43,16 @@ a { color: var(--accent) }
 #results { transition: opacity .15s }
 .search.htmx-request ~ #results { opacity: .4; transition-delay: .2s }
 
+/* Recent lookups: one line under the search until opened. history.js shows it. */
+.history { font-size: .9rem; color: var(--muted) }
+.history summary { width: fit-content; padding-block: 4px; cursor: pointer }
+.history ol { display: flex; flex-wrap: wrap; gap: 0 20px; margin: 4px 0; padding: 0; list-style: none }
+.history ol a { display: inline-block; padding-block: 2px; text-decoration: none }
+.history ol:not(:empty) + .none { display: none }
+.history .tools { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px }
+.history .tools input { width: 5em; font: inherit; padding: 4px 6px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); color: var(--fg) }
+.history .tools button { min-height: 32px; padding-inline: 12px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); color: var(--fg); font: inherit; cursor: pointer }
+
 /* About and help */
 .notice { margin-inline: 0; padding-inline-start: 14px; border-inline-start: 3px solid var(--line); color: var(--muted); font-size: .9rem }
 .placeholder { padding: 8px 12px; border: 1px dashed var(--muted); border-radius: 6px }
@@ -60,10 +72,48 @@ a { color: var(--accent) }
 .readings { list-style: none; margin: 0; padding: 0 }
 .reading { display: grid; grid-template-columns: auto 1fr; gap: 16px; align-items: baseline; padding-block: 6px }
 .reading + .reading { border-block-start: 1px dashed var(--line) }
-.reading .gloss { font-weight: 500; min-width: 0; overflow-wrap: anywhere }
+.reading p { margin: 0 }
+.sense { min-width: 0; overflow-wrap: anywhere }
+.gloss { font-weight: 500 }
+.grammar { font-size: .85rem; color: var(--muted) }
+.tag { display: inline-block; border: 1px solid var(--line); border-radius: 999px; padding-inline: 8px; margin-inline-end: 4px }
+
+/* Word parts: colour, and a line style that does not rely on colour (prefix dotted, suffix solid). */
+.prefix, .suffix { text-decoration-line: underline; text-underline-offset: .35em; text-decoration-thickness: 1.5px; text-decoration-skip-ink: none }
+.prefix { color: var(--pre); text-decoration-style: dotted }
+.suffix { color: var(--suf); text-decoration-style: solid }
+.legend { font-size: .85rem; color: var(--muted); margin-block: 0 8px }
+.parts summary { width: fit-content; margin-block-start: 2px; color: var(--accent); font-size: .9rem; cursor: pointer }
+.chips { list-style: none; display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0 0; padding: 0 }
+.chip { display: grid; justify-items: center; min-width: 3rem; padding: 0 10px 6px; border: 1px solid transparent; border-radius: 8px; background: var(--chip-stem) }
+.chip.prefix { background: var(--chip-pre); border: 1.5px dotted var(--pre); text-decoration: none }
+.chip.suffix { background: var(--chip-suf); border: 1.5px solid var(--suf); text-decoration: none }
+.chip .label { color: var(--muted); font-size: .8rem; text-align: center; max-width: 11rem }
+.note { font-size: .85rem; color: var(--muted); margin-block-start: 6px }
 
 @media (max-width: 640px) {
   .entry { grid-template-columns: 1fr; padding: 14px }
+}
+
+/* On-screen keyboard: the Arabic (101) layout in physical key order, so it keeps left to right. */
+.search [data-keyboard] { padding-inline: 10px; border: 1px solid var(--line); background: var(--surface); color: var(--fg) }
+.search [data-keyboard][aria-expanded="true"] { border-color: var(--accent); color: var(--accent) }
+.osk { max-width: 46rem; padding: 6px; background: var(--line); border-radius: 10px; direction: ltr; user-select: none; -webkit-user-select: none; touch-action: manipulation }
+.osk .row { display: grid; grid-template-columns: repeat(26, minmax(0, 1fr)); gap: 5px }
+.osk .row + .row { margin-block-start: 5px }
+.osk .row:nth-child(2) .key:first-child { grid-column: 3 / span 2 }
+.key { grid-column: span 2; position: relative; min-height: 48px; padding: 0; border: 0; border-radius: 6px; background: var(--surface); color: var(--fg); font: 24px/1 var(--f-ar); cursor: pointer }
+.key:active { background: var(--accent); color: var(--surface) }
+.key.fn { grid-column: span 3; font: 500 .9rem var(--f-ui) }
+.key.space { grid-column: span 23 }
+.key[aria-pressed="true"] { background: var(--fg); color: var(--bg) }
+.key[data-cap]::after { content: attr(data-cap); position: absolute; inset-block-start: 3px; inset-inline-start: 5px; font: 10px/1 var(--f-ui); color: var(--muted) }
+@media (max-width: 640px) {
+  .osk { margin-inline: -16px; padding: 4px; border-radius: 0 }
+  .osk .row { gap: 3px }
+  .osk .row + .row { margin-block-start: 3px }
+  .key { min-height: 44px; font-size: 21px }
+  .key[data-cap]::after { display: none }
 }
 
 /* Autocomplete suggestions, placed under the field by autocomplete.js */

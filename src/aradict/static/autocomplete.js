@@ -4,6 +4,8 @@
 // pushes its URL as Enter does. Without JavaScript there is neither the list nor its switch.
 const form = document.getElementById("search");
 const input = form.elements.q;
+// The on-screen keyboard (#7) of this field, if any: its keys type into the field from outside it.
+const keyboard = document.getElementById(form.querySelector(`[data-keyboard="${input.id}"]`)?.getAttribute("aria-controls"));
 
 const list = document.createElement("ul");
 list.id = "suggestions";
@@ -15,12 +17,9 @@ list.dir = "rtl";
 list.hidden = true;
 input.after(list);
 
-// Unnamed, so the switch is never part of the lookup URL. Persisting it is #13.
-const toggle = Object.assign(document.createElement("input"), { type: "checkbox", checked: true });
-const toggleLabel = document.createElement("label");
-toggleLabel.className = "option";
-toggleLabel.append(toggle, " Show suggestions");
-form.append(toggleLabel);
+// The switch is in the page, hidden until now; history.js has already restored its state.
+const toggle = document.querySelector("input[name=autocomplete]");
+toggle.closest("label").hidden = false;
 
 let request = new AbortController();
 let active = -1;
@@ -58,7 +57,7 @@ const suggest = async () => {
     return; // superseded, switched off, or offline: the lookup itself reports failures
   }
   if (signal.aborted) return;
-  if (!forms.length || document.activeElement !== input) return close();
+  if (!forms.length) return close();
   setActive(-1);
   list.replaceChildren(...forms.map((text, i) => {
     const option = document.createElement("li");
@@ -68,10 +67,13 @@ const suggest = async () => {
     option.textContent = text;
     return option;
   }));
+  // Under the field, or under the on-screen keyboard while it is open, so it never covers the keys.
+  const box = form.getBoundingClientRect();
+  const field = input.getBoundingClientRect();
   Object.assign(list.style, {
-    top: `${input.offsetTop + input.offsetHeight}px`,
-    left: `${input.offsetLeft}px`,
-    width: `${input.offsetWidth}px`,
+    top: `${(keyboard && !keyboard.hidden ? keyboard : input).getBoundingClientRect().bottom - box.top}px`,
+    left: `${field.left - box.left}px`,
+    width: `${field.width}px`,
   });
   list.hidden = false;
   input.setAttribute("aria-expanded", "true");
@@ -98,8 +100,12 @@ toggle.addEventListener("input", (event) => event.stopPropagation());
 toggle.addEventListener("change", setSwitch);
 
 input.addEventListener("input", suggest);
-input.addEventListener("blur", close);
 form.addEventListener("submit", close);
+// Leaving the field closes the list, but the on-screen keys type into it without taking focus.
+const leaves = ({ target }) => target !== input && !list.contains(target) && !keyboard?.contains(target);
+for (const type of ["focusin", "pointerdown"]) {
+  document.addEventListener(type, (event) => leaves(event) && close());
+}
 
 input.addEventListener("keydown", (event) => {
   const count = list.children.length;
@@ -114,9 +120,8 @@ input.addEventListener("keydown", (event) => {
   } else if (event.key === "Enter" && !list.hidden && active >= 0) {
     event.preventDefault();
     choose(list.children[active]);
-  } else if (event.key === "Escape" && !list.hidden) {
-    event.preventDefault();
-    close(); // the lookup of the typed text stays
+  } else if (event.key === "Escape") {
+    close(); // also drops suggestions still on their way; the lookup of the typed text stays
   }
 });
 

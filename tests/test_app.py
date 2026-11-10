@@ -14,6 +14,31 @@ def test_word_page_lists_readings_grouped_by_lemma(client):
     assert '<span class="ar" lang="ar" dir="rtl">كَتَب</span>' in page.text
 
 
+def test_reading_shows_marked_parts_gloss_grammar_and_word_parts(client):
+    page = client.get("/", params={"q": "وبكتابهم"}).text
+    start = page.index('<li class="reading">')
+    reading = page[start:page.index("</details>", start)]
+    # The form, with each part marked by its role.
+    assert ('<span class="ar form" lang="ar" dir="rtl"><span class="prefix">وَ</span><span class="prefix">بِ</span>'
+            '<span class="stem">كِتاب</span><span class="suffix">هم</span></span>') in reading
+    assert '<p class="gloss">and by/with their book</p>' in reading
+    assert '<p class="grammar"><span class="tag">masculine singular</span> construct state</p>' in reading
+    # Word parts: a native disclosure, closed by default, one labelled chip per part, right to left.
+    assert '<details class="parts"><summary>Word parts</summary><ol class="chips" dir="rtl">' in reading
+    assert ('<li class="chip prefix"><span class="ar" lang="ar">بِـ</span>'
+            '<span class="label"><span class="sr-only">prefix: </span>by/with</span></li>') in reading
+    assert '<span class="ar" lang="ar">ـهم</span><span class="label"><span class="sr-only">suffix: </span>their</span>' in reading
+    assert '<p class="pos">noun</p>' in page  # the entry's part of speech, in plain English
+
+
+def test_word_parts_explain_a_letter_two_parts_share(client):
+    page = client.get("/", params={"q": "مدرستي"}).text
+    # مَدْرَسَتَيَّ "my two schools": the dual ending and "my" share one ي, written with a shadda.
+    assert '<span class="ar" lang="ar">ـَتَيْ</span><span class="label"><span class="sr-only">suffix: </span>dual ending</span>' in page
+    assert '<span class="ar" lang="ar">ـيَ</span><span class="label"><span class="sr-only">suffix: </span>my</span>' in page
+    assert '<p class="note"><span class="ar" lang="ar" dir="rtl">ـَتَيْ</span> + <span class="ar" lang="ar" dir="rtl">ـيَ</span> are written' in page
+
+
 def test_unknown_word_says_so_and_suggests_next_steps(client):
     page = client.get("/", params={"q": "قخغثص"})
     assert page.status_code == 200
@@ -161,7 +186,7 @@ def test_diacritic_filter_is_on_by_default_and_can_be_switched_off(client):
 
 def test_form_has_a_labelled_diacritics_switch(client):
     page = client.get("/").text
-    assert re.search(r'<label[^>]*>\s*<input type="checkbox" name="diacritics" value="off"\s*>\s*Ignore diacritics', page)
+    assert re.search(r'<label[^>]*>\s*<input type="checkbox" name="diacritics" value="off"[^>]*>\s*Ignore diacritics', page)
 
 
 def test_latin_letters_get_a_hint_towards_english(client):
