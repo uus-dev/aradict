@@ -65,7 +65,8 @@ def _use(top_percent: float | None) -> str:
     if top_percent is None:
         return "frequency unknown"
     band = "very common" if top_percent <= 1 else "common" if top_percent <= 10 else "less common" if top_percent <= 40 else "rare"
-    return f"{band} · top {max(1, round(top_percent))}% of words"
+    # The least frequent lemmas share the lowest figure, so they are all "top 100%", which says nothing.
+    return band if round(top_percent) >= 100 else f"{band} · top {max(1, round(top_percent))}% of words"
 
 
 def _chip_text(s: Segment) -> str:

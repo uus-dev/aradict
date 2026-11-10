@@ -242,6 +242,11 @@ def test_each_entry_heads_its_readings_with_part_of_speech_measure_root_and_use(
     assert '<p class="pos">verb · Measure X</p>' in client.get("/", params={"q": "استخدم"}).text
 
 
+def test_the_least_frequent_lemmas_read_just_rare(client):
+    # آر "area" is at the database's lowest frequency, where "top 100% of words" says nothing.
+    assert "<dt>Use</dt><dd>rare</dd>" in client.get("/", params={"q": "آر"}).text
+
+
 def test_unresolved_radicals_and_missing_root_or_measure_show_as_such(client):
     qal = entries(client.get("/", params={"q": "قال"}).text)[0]
     assert '<dt>Root</dt><dd><span class="ar" lang="ar" dir="rtl">ق ◌ ل</span></dd>' in qal

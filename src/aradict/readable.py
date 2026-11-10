@@ -281,8 +281,16 @@ DOUBLE_FINAL = set("""
 """.split())
 
 
+def _inflected(verb: str) -> bool:
+    """A few stems are glossed in the past already: قالَ as "said", others as "blurred". Verbs
+    ending in -eed (exceed, need), shed and shred are base forms."""
+    return verb == "said" or verb.endswith("ed") and not verb.endswith("eed") and verb not in ("shed", "shred")
+
+
 def _past(verb: str) -> str:
     """The English simple past: write → wrote, use → used, try → tried, stop → stopped, add → added."""
+    if _inflected(verb):
+        return verb
     if verb in IRREGULAR_PAST:
         return IRREGULAR_PAST[verb]
     if verb.endswith("e"):
@@ -296,14 +304,31 @@ def _past(verb: str) -> str:
     return verb + "ed"
 
 
+def _third_person(verb: str) -> str:
+    """The English present for he, she or it: write → writes, pass → passes, carry → carries."""
+    if _inflected(verb):
+        return verb
+    if verb in ("have", "do", "go"):
+        return {"have": "has", "do": "does", "go": "goes"}[verb]
+    if verb.endswith("y") and verb[-2:-1] not in ("a", "e", "i", "o", "u"):
+        return verb[:-1] + "ies"
+    if verb.endswith(("s", "x", "z", "ch", "sh")):
+        return verb + "es"
+    return verb + "s"
+
+
 def _verb(sense: str, a: dict, future: bool) -> str:
-    """Put the verb in its tense: "will" for the future, the English past for the perfect, and
-    "be" (the passive) by person. The imperfect keeps the base form ("they write")."""
+    """Put the verb in its tense: "will" for the future, the English past for the perfect, the
+    present for the imperfect ("he/it writes", "they write"), and "be" (the passive) by person."""
     first, _, rest = sense.partition(" ")
     if first != "be":
         if future:
             return f"will {sense}"
-        return " ".join(filter(None, (_past(first), rest))) if a["asp"] == "p" else sense
+        if a["asp"] == "p":
+            first = _past(first)
+        elif a["per"] + a["num"] == "3s":
+            first = _third_person(first)
+        return " ".join(filter(None, (first, rest)))
     singular = a["per"] + a["num"] in ("1s", "3s")
     if a["asp"] == "p":
         be = "was" if singular else "were"
