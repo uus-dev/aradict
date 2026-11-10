@@ -102,6 +102,21 @@ def test_several_words_analyse_the_first(real):
     assert real.lookup_ar(" كتب  كتاب ") == real.lookup_ar("كتب")
 
 
+def test_a_lookup_response_names_its_query_mode_and_completion(real):
+    found = real.lookup(" كتب  كتاب ")
+    assert (found.query, found.mode, found.complete) == ("كتب", "ar", False)  # one of two words looked up
+    assert found.readings == tuple(real.lookup_ar("كتب"))
+    found = real.lookup("kitab")
+    assert (found.query, found.mode, found.complete) == ("كِتاب", "arabizi", True)  # the Arabic it stands for
+    assert found.readings == tuple(real.lookup_ar("كِتاب"))
+    found = real.lookup("كَتَبَ", filter_diacritics=False)
+    assert (found.query, found.mode, found.complete, len(found.readings)) == ("كَتَبَ", "ar", True, 3)
+    found = real.lookup(" piece  of writing", english=True)
+    assert (found.query, found.mode, found.complete) == ("piece of writing", "en", True)  # a phrase, whole
+    assert found.readings == tuple(real.lookup_en("piece of writing"))
+    assert (real.lookup("zzz").mode, real.lookup("zzz").readings) == ("ar", ())  # Latin with no Arabic word
+
+
 def test_non_arabic_input_has_no_readings(real):
     # The analyzer invents a "foreign", "digit" or "punc" reading for these; none is a dictionary entry.
     for word in ("hello", "123", "كتب123", "؟"):
@@ -181,6 +196,20 @@ def test_default_order_is_stable_grouped_by_lemma_and_most_frequent_first(real):
         best = [max(-99 if r.frequency is None else r.frequency for r in readings if (r.lemma, r.pos) == lemma) for lemma in lemmas]
         assert best == sorted(best, reverse=True), word
     assert [r.lemma for r in real.lookup_ar("سيكتبون")] == ["كَتَب", "كَتَب", "أَكْتَب", "أَكْتَب"]
+
+
+def test_each_reading_has_a_stable_id(real):
+    readings = real.lookup_ar("كتاب", filter_diacritics=False)
+    assert len({r.id for r in readings}) == len(readings)
+    # The same reading has the same id wherever it is found, and on every run.
+    book = next(r for r in readings if r.form == "كِتاب")
+    assert real.related("كِتاب", "noun")[0].id == book.id == "f433e39b956f"  # pinned: a saved id must keep working
+
+
+def test_readings_carry_their_stems_pattern(real):
+    # The stem's vowel template, with the root's letters as numbered slots.
+    assert {(r.form, r.pattern) for r in real.lookup_ar("اِسْتَخْدَمَ")} == {("اِسْتَخْدَمَ", "ٱِسْتَ1ْ2َ3")}
+    assert {r.pattern for r in real.lookup_ar("كتب") if r.lemma == "كِتاب"} == {"1ُ2ُ3"}  # the plural كُتُب
 
 
 def test_readings_place_their_lemma_among_all_lemmas_by_frequency(real):
@@ -271,6 +300,9 @@ def test_arabizi_digits_stand_for_letters_and_final_vowels_for_letters(real):
     ("shams", "شمس"), ("khubz", "خبز"), ("5ubz", "خبز"), ("ghurfa", "غرفة"), ("thaqafa", "ثقافة"), ("dhikr", "ذكر"),
     ("9alb", "قلب"), ("su2al", "سؤال"), ("2akl", "أكل"),  # 2 is a hamza
     ("mudarris", "مدرس"), ("allah", "الله"),  # a doubled consonant is a shadda or two letters
+    # A shadda the user did not type ranks a word below one without: سَهْل "easy", not سَأَحِلّ "I will
+    # dissolve". The ي of a nisba ending (وَطَنِيَّة) is doubled in Arabic but rarely in Arabizi.
+    ("salam", "سلام"), ("sahl", "سهل"), ("wataniya", "وطنية"), ("3arabi", "عربي"),
     ("kbeer", "كبير"), ("saa3a", "ساعة"), ("beit", "بيت"), ("mustashfa", "مستشفى"),
     ("shukran", "شكرا"),  # a final "an" may be tanween: شُكْراً
     ("al-kitab", "الكتاب"),
@@ -362,6 +394,20 @@ def test_english_inflected_forms_find_their_base_form(real):
     assert [r.form for r in real.lookup_en("books") if r.lemma == "كِتاب"] == ["كِتاب", "كُتُب"]
     assert [r.form for r in real.lookup_en("wrote")] == ["كَتَبَ"]
     assert "كَتَب" in lemmas(real.lookup_en("writes"))
+
+
+def test_english_rows_show_the_sense_that_matched(real):
+    # ذَهَب has two perfect stems, "go;depart" and "take (with)", and imperfect stems with each sense.
+    def dhahaba(query):
+        return [r.gloss for r in real.lookup_en(query) if r.lemma == "ذَهَب"]
+    assert dhahaba("take") == dhahaba("took") == ["he/it took (with)"]
+    assert dhahaba("go") == dhahaba("went") == ["he/it went; he/it departed"]
+
+
+def test_english_inflects_as_the_glosses_do(real):
+    # The third person of "focus" is "focuses", as the glosses write it ("he/it focuses").
+    verbs = [r for r in real.lookup_en("focus") if r.pos == "verb"]
+    assert verbs and real.lookup_en("focuses") == verbs
 
 
 def test_english_finds_each_word_once_and_verbs_in_citation_form(real):

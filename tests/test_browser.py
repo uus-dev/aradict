@@ -1,36 +1,10 @@
 """Browser journeys in Chromium against a real server on the fixture database."""
 
 import re
-import threading
-import time
 import unicodedata
 from urllib.parse import quote
 
-import pytest
-import uvicorn
-from playwright.sync_api import Error as PlaywrightError, expect, sync_playwright
-
-from aradict.app import app
-
-
-@pytest.fixture(scope="module")
-def base_url(fixture_env):
-    server = uvicorn.Server(uvicorn.Config(app, host="127.0.0.1", port=0, log_level="warning"))
-    thread = threading.Thread(target=server.run, daemon=True)
-    thread.start()
-    while not server.started:
-        time.sleep(0.05)
-    yield "http://127.0.0.1:%d" % server.servers[0].sockets[0].getsockname()[1]
-    server.should_exit = True
-    thread.join(5)
-
-
-@pytest.fixture(scope="module")
-def browser():
-    with sync_playwright() as playwright:
-        browser = playwright.chromium.launch()
-        yield browser
-        browser.close()
+from playwright.sync_api import Error as PlaywrightError, expect
 
 
 def lookup_url(base_url: str, query: str) -> re.Pattern:
@@ -145,7 +119,7 @@ def test_a_slow_earlier_response_never_replaces_a_newer_one(base_url, browser):
 
 def test_a_failed_lookup_offers_retry_and_keeps_the_input(base_url, browser, monkeypatch):
     class Broken:
-        def lookup_ar(self, word):
+        def lookup(self, text, english, filter_diacritics):
             raise RuntimeError("database gone")
 
     page = browser.new_page()
@@ -575,6 +549,27 @@ def test_text_is_analysed_after_a_pause_and_markup_stays_text(base_url, browser)
     assert dialogs == []
 
 
+def test_a_failed_analysis_offers_retry_and_keeps_the_text(base_url, browser, monkeypatch):
+    class Broken:
+        def analyze_text(self, text):
+            raise RuntimeError("database gone")
+
+    page = browser.new_page()
+    page.goto(f"{base_url}/text")
+    box = page.get_by_role("textbox", name="Arabic text")
+    status = page.get_by_role("status")
+
+    monkeypatch.setattr("aradict.app.dictionary", Broken)
+    box.fill("كتب كتاب")
+    expect(status).to_have_text("Analysis failed. Your text is kept, so you can try again.")
+    expect(box).to_have_value("كتب كتاب")
+
+    monkeypatch.undo()
+    page.get_by_role("button", name="Retry").click()
+    expect(status).to_have_text("2 words")
+    expect(page.locator(".passage .tok")).to_have_count(2)
+
+
 def test_text_details_sit_under_the_word_on_a_wide_screen(base_url, browser):
     page = browser.new_page(viewport={"width": 1280, "height": 800})
     page.goto(f"{base_url}/text?q={quote('كتب كتاب')}")
@@ -592,7 +587,7 @@ def test_text_details_sit_under_the_word_on_a_wide_screen(base_url, browser):
 
 def test_arabizi_shows_the_arabic_it_looked_up_and_keeps_it_on_reload(base_url, browser, monkeypatch):
     class Broken:
-        def arabizi(self, text):
+        def lookup(self, text, english, filter_diacritics):
             raise RuntimeError("database gone")
 
     page = browser.new_context(viewport={"width": 390, "height": 844}).new_page()
@@ -686,10 +681,10 @@ def test_root_view_sorts_and_returns_without_javascript_on_a_phone(base_url, bro
     meaning.get_by_role("link").click()
     expect(meaning).to_have_attribute("aria-sort", "ascending")
     first = page.get_by_role("cell").nth(1)  # the first row's meaning
-    expect(first).to_have_text("authors (f.); writers (f.)")
+    expect(first).to_have_text("authors; writers")
     page.reload()  # the sort is in the URL
     expect(meaning).to_have_attribute("aria-sort", "ascending")
-    expect(first).to_have_text("authors (f.); writers (f.)")
+    expect(first).to_have_text("authors; writers")
     meaning.get_by_role("link").click()
     expect(meaning).to_have_attribute("aria-sort", "descending")
     expect(first).to_have_text("writing")

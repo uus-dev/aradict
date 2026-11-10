@@ -12,12 +12,15 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 
-# Harakat, tanween, sukun, hamza marks and the dagger alif. Shadda is not among them: it
-# doubles a letter, so it counts as one.
-MARKS = "\u064b-\u0650\u0652-\u0655\u0670"
+# The marks written on Arabic letters, defined once for AraDict. VOWELS are harakat, tanween,
+# sukun, hamza marks and the dagger alif; shadda is not among them: it doubles a letter, so a
+# doubled letter counts as one.
+VOWELS = "\u064b-\u0650\u0652-\u065f\u0670"
 SHADDA = "\u0651"
-_MARK = re.compile(f"[{MARKS}]")
-_LETTER_VARIANTS = str.maketrans("ٱأإآىة", "اااايت")  # one letter, however CAMeL's parts and spelling write it
+VOWEL = re.compile(f"[{VOWELS}]")
+MARK = re.compile(f"[{VOWELS}{SHADDA}]")  # every mark, shadda too
+ALIFS = str.maketrans("أإآٱ", "اااا")  # alif's hamza forms and wasla, as a bare ا
+_LETTER_VARIANTS = ALIFS | str.maketrans("ىة", "يت")  # one letter, however CAMeL's parts and spelling write it
 
 # Words for attached particles, keyed by tag and bare letters (a tag alone where it is unambiguous).
 # The last row is for function words a few stored stems carry at their end (مِمّا, بَعْدَما).
@@ -109,7 +112,8 @@ def parts(a: dict) -> list[tuple[str, str]]:
 
 
 def _letters(text: str) -> str:
-    return _MARK.sub("", text).translate(_LETTER_VARIANTS)
+    """The letters of text, shadda kept and letter variants folded, to match CAMeL's parts to its spelling."""
+    return VOWEL.sub("", text).translate(_LETTER_VARIANTS)
 
 
 def _particle(text: str, tag: str) -> str | None:
@@ -188,13 +192,13 @@ def segments(a: dict) -> tuple[Segment, ...]:
     pcs = parts(a)
     k, _ = _stem(pcs, a)
     # Put each shadda straight after its letter (letter, shadda, vowel), so a doubled letter is one unit.
-    form = re.sub(f"([{MARKS}]+){SHADDA}", lambda m: SHADDA + m.group(1), a["diac"])
+    form = re.sub(f"([{VOWELS}]+){SHADDA}", lambda m: SHADDA + m.group(1), a["diac"])
     starts, merged, pos, last, used = [], [], 0, -1, -1
     for i, (text, _) in enumerate(pcs):
         starts.append(pos)
         merged.append(False)
-        for letter in _MARK.sub("", text):
-            while pos < len(form) and _MARK.match(form[pos]):
+        for letter in VOWEL.sub("", text):
+            while pos < len(form) and VOWEL.match(form[pos]):
                 pos += 1
             if pos < len(form) and _letters(letter) == _letters(form[pos]):
                 last, pos = pos, pos + 1
@@ -205,8 +209,8 @@ def segments(a: dict) -> tuple[Segment, ...]:
                     starts[i], merged[i] = last, True
                 used, pos = last, pos + (form[pos:pos + 1] == SHADDA)
             # Otherwise the spelling leaves this letter out.
-        next_starts_with_mark = i + 1 < len(pcs) and _MARK.match(pcs[i + 1][0])
-        while pos < len(form) and _MARK.match(form[pos]) and not next_starts_with_mark:
+        next_starts_with_mark = i + 1 < len(pcs) and VOWEL.match(pcs[i + 1][0])
+        while pos < len(form) and VOWEL.match(form[pos]) and not next_starts_with_mark:
             pos += 1  # vowels after this part's last letter, such as a case ending, belong to it
     cuts = [form[start:end] for start, end in zip(starts, starts[1:] + [len(form)])]
     shares = [merged[i] or merged[i + 1:i + 2] == [True] for i in range(len(pcs))]
@@ -287,7 +291,16 @@ def _inflected(verb: str) -> bool:
     return verb == "said" or verb.endswith("ed") and not verb.endswith("eed") and verb not in ("shed", "shred")
 
 
-def _past(verb: str) -> str:
+def _s(word: str) -> str:
+    """A word with the English -s ending: write → writes, pass → passes, carry → carries."""
+    if word.endswith("y") and word[-2:-1] not in ("a", "e", "i", "o", "u"):
+        return word[:-1] + "ies"
+    if word.endswith(("s", "x", "z", "ch", "sh")):
+        return word + "es"
+    return word + "s"
+
+
+def past(verb: str) -> str:
     """The English simple past: write → wrote, use → used, try → tried, stop → stopped, add → added."""
     if _inflected(verb):
         return verb
@@ -304,17 +317,11 @@ def _past(verb: str) -> str:
     return verb + "ed"
 
 
-def _third_person(verb: str) -> str:
-    """The English present for he, she or it: write → writes, pass → passes, carry → carries."""
+def third_person(verb: str) -> str:
+    """The English present for he, she or it: write → writes, focus → focuses, carry → carries."""
     if _inflected(verb):
         return verb
-    if verb in ("have", "do", "go"):
-        return {"have": "has", "do": "does", "go": "goes"}[verb]
-    if verb.endswith("y") and verb[-2:-1] not in ("a", "e", "i", "o", "u"):
-        return verb[:-1] + "ies"
-    if verb.endswith(("s", "x", "z", "ch", "sh")):
-        return verb + "es"
-    return verb + "s"
+    return {"be": "is", "have": "has", "do": "does", "go": "goes"}.get(verb) or _s(verb)
 
 
 def _verb(sense: str, a: dict, future: bool) -> str:
@@ -325,9 +332,9 @@ def _verb(sense: str, a: dict, future: bool) -> str:
         if future:
             return f"will {sense}"
         if a["asp"] == "p":
-            first = _past(first)
+            first = past(first)
         elif a["per"] + a["num"] == "3s":
-            first = _third_person(first)
+            first = third_person(first)
         return " ".join(filter(None, (first, rest)))
     singular = a["per"] + a["num"] in ("1s", "3s")
     if a["asp"] == "p":
@@ -339,32 +346,28 @@ def _verb(sense: str, a: dict, future: bool) -> str:
     return be + sense[2:]
 
 
-def _plural(sense: str) -> str:
+def plural(sense: str) -> str:
     """English plural of a noun sense, inflecting the word before any bracketed note."""
     head, paren, note = sense.partition(" (")
     *rest, word = head.split(" ")
     if word in IRREGULAR_PLURALS:
         word = IRREGULAR_PLURALS[word]
-    elif word.endswith("y") and word[-2:-1] not in ("a", "e", "i", "o", "u"):
-        word = word[:-1] + "ies"
-    elif word.endswith(("ss", "x", "z", "ch", "sh")):
-        word += "es"
-    elif word.endswith("s"):
-        pass  # CAMeL often glosses a singular stem with a plural sense ("law;statutes")
-    else:
-        word += "s"  # ponytail: regular rules plus a few irregulars; extend IRREGULAR_PLURALS as glosses need
+    elif not word.endswith("s") or word.endswith("ss"):  # CAMeL often glosses a singular stem with a plural sense ("law;statutes")
+        word = _s(word)  # ponytail: regular rules plus a few irregulars; extend IRREGULAR_PLURALS as glosses need
     return " ".join(rest + [word]) + paren + note
 
 
 def _noun(sense: str, a: dict, suffixes: list[str]) -> str:
     """Number and gender that English shows on the noun itself: "two schools", "teacher (f.)"."""
     if a["num"] == "d":
-        sense = "two " + _plural(sense)
+        sense = "two " + plural(sense)
     elif a["num"] == "p" and a["form_num"] == "p":  # sound plural; a broken plural's stem gloss is already plural
-        sense = _plural(sense)
+        sense = plural(sense)
+    # A woman, from a masculine headword: مُدَرِّسَة from مُدَرِّس. A broken plural spelled with the
+    # feminine ending (كَتَبَة "writers") is not feminine in meaning.
     feminine_ending = any(tag.startswith("NSUFF_FEM") for tag in suffixes)
-    if feminine_ending and not _letters(a["lex"]).endswith("ت"):
-        sense += " (f.)"  # a woman, from a masculine headword: مُدَرِّسَة from مُدَرِّس
+    if feminine_ending and a["gen"] == "f" and not _letters(a["lex"]).endswith("ت"):
+        sense += " (f.)"
     return sense
 
 

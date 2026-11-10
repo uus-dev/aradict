@@ -4,8 +4,6 @@ from urllib.parse import parse_qs, quote, unquote, urlsplit
 
 from playwright.sync_api import expect
 
-from test_browser import base_url, browser  # noqa: F401  (shared server and browser fixtures)
-
 
 def open_history(page):
     page.keyboard.press("Escape")  # while typing, the suggestion list (#8) lies over the panel

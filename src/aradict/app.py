@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import traceback
 from contextlib import asynccontextmanager
 from functools import lru_cache
 from pathlib import Path
@@ -20,6 +21,25 @@ from .dictionary import Dictionary
 logger = logging.getLogger(__name__)
 
 
+def _without_query(record: logging.LogRecord) -> bool:
+    """Cuts the query string, which holds the looked-up word, from uvicorn's access log lines.
+    `uv run aradict` turns that log off; this keeps `uvicorn aradict.app:app` safe as well."""
+    if isinstance(record.args, tuple) and len(record.args) == 5:  # client, method, path?query, HTTP version, status
+        client, method, path, version, status = record.args
+        record.args = (client, method, path.partition("?")[0], version, status)
+    return True
+
+
+logging.getLogger("uvicorn.access").addFilter(_without_query)
+
+
+def _log_failure(what: str, error: Exception) -> None:
+    """Logs what failed with the exception's type and where it was raised, never its message,
+    which may quote the word or passage (PRD: no query text in telemetry)."""
+    stack = " < ".join(f"{frame.name} ({frame.filename}:{frame.lineno})" for frame in reversed(traceback.extract_tb(error.__traceback__)))
+    logger.error("%s: %s in %s", what, type(error).__name__, stack)
+
+
 @lru_cache(maxsize=1)
 def dictionary() -> Dictionary:
     return Dictionary(db_path())
@@ -31,14 +51,17 @@ async def lifespan(app: FastAPI):
     yield
 
 
+# ponytail: no rate limiting yet; #17 adds it in front of the app, or as middleware here before any route does work.
 app = FastAPI(title="AraDict", lifespan=lifespan)
 app.mount("/static", StaticFiles(directory=Path(__file__).parent / "static"), name="static")
 
 
-MAX_QUERY = 100
+# Bytes a Text form may post. MAX_TEXT characters take at most 24,000 URL-encoded; the rest lets
+# a passage somewhat over the limit come back with its length, kept for the user to shorten.
+MAX_BODY = 64_000
 
 
-FAMILY = ("root", "related", "pos", "sort")  # the URL parameters of a root or related-forms view
+LOOKUP = ("q", "diacritics", "lang")  # the URL parameters of a lookup
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -56,27 +79,26 @@ def word(
     """A lookup, or with root or related (and pos) a root's words or a lemma's forms in its place,
     sorted by sort. The lookup's own URL parameters go with every root and related-forms link, so
     their view can return to it."""
-    lookup = {key: value for key, value in request.query_params.items() if key not in FAMILY}
+    lookup = {key: value for key, value in request.query_params.items() if key in LOOKUP}
     q, filter_diacritics, english = q.strip(), diacritics == "on", lang == "en"
     status_code = 200
     try:
-        if root is not None:
+        if any(len(value) > views.MAX_QUERY for value in (q, root or "", related or "", pos, sort)):
+            state = views.State(f"That's too long. Type at most {views.MAX_QUERY} characters.")
+        elif root is not None:
             state = views.root_view(root, dictionary().root_family(root), lookup, sort)
         elif related is not None:
             state = views.related_view(related, pos, dictionary().related(related, pos), lookup, sort)
         elif not q:
             state = views.INITIAL_EN if english else views.INITIAL
-        elif len(q) > MAX_QUERY:
-            state = views.State(f"That's too long. Type at most {MAX_QUERY} characters.")
         elif not any(c.isalpha() for c in q):
             state = views.State("Type a word: letters, not only numbers or symbols.")
         else:
-            arabizi = None if english else dictionary().arabizi(q)  # None unless q is Arabizi
-            readings = dictionary().lookup_en(q) if english else dictionary().lookup_ar(arabizi or q, filter_diacritics)
-            links = views.Links(lookup, {lemma: len(dictionary().related(*lemma)) for lemma in {(r.lemma, r.pos) for r in readings}})
-            state = views.looked_up_en(q, readings, links) if english else views.looked_up(q, readings, arabizi, links)
-    except Exception:
-        logger.exception("Lookup failed")  # the query stays out of the log
+            found = dictionary().lookup(q, english, filter_diacritics)
+            links = views.Links(lookup, {lemma: len(dictionary().related(*lemma)) for lemma in {(r.lemma, r.pos) for r in found.readings}})
+            state = views.looked_up_en(found, links) if english else views.looked_up(q, found, links)
+    except Exception as error:
+        _log_failure("Lookup failed", error)
         state, status_code = views.FAILURE, 500
     page = views.live_results(state) if hx_request else views.word_page(q, state, filter_diacritics, english)
     headers = {"Vary": "HX-Request"}
@@ -99,29 +121,53 @@ def _analyse(text: str, hx_request: str | None = None) -> HTMLResponse:
     else:
         try:
             state = views.analysed(dictionary().analyze_text(text))
-        except Exception:
-            logger.exception("Text analysis failed")  # the passage stays out of the log
+        except Exception as error:
+            _log_failure("Text analysis failed", error)
             state, status_code = views.TEXT_FAILURE, 500
+    return _text_view(text, state, hx_request, status_code)
+
+
+def _text_view(text: str, state: views.State, hx_request: str | None, status_code: int = 200) -> HTMLResponse:
     page = views.live_analysis(state) if hx_request else views.text_page(text, state)
     return HTMLResponse(str(page), status_code, {"Vary": "HX-Request"})
+
+
+async def _body(request: Request) -> bytes | None:
+    """The request body, or None when it is longer than MAX_BODY, which is then never read in full."""
+    if int(request.headers.get("content-length", 0)) > MAX_BODY:
+        return None
+    body = bytearray()
+    async for chunk in request.stream():  # a body sent without its length stops being read at the limit
+        body += chunk
+        if len(body) > MAX_BODY:
+            return None
+    return bytes(body)
 
 
 @app.get("/suggest")
 def suggest(q: str = "", diacritics: Literal["on", "off"] = "on") -> list[str]:
     """Autocomplete for the Word field: vocalized forms that complete the typed word."""
-    return dictionary().suggest(q, diacritics == "on")
+    return [] if len(q) > views.MAX_QUERY else dictionary().suggest(q, diacritics == "on")
 
 
 @app.get("/text", response_class=HTMLResponse)
 def text(q: str = "") -> HTMLResponse:
-    """The Text view. q carries the words the Word page hands over; a passage typed here is posted."""
+    """The Text view. q carries the words the Word page hands over, no more than a lookup holds,
+    so a passage never travels in an address; a passage typed here is posted."""
+    if len(q) > views.MAX_QUERY:
+        state = views.State(f"A link brings at most {views.MAX_QUERY} characters to the Text view. Paste longer text into the box.")
+        return _text_view("", state, None)
     return _analyse(q)
 
 
 @app.post("/text", response_class=HTMLResponse)
 async def analyse(request: Request, hx_request: Annotated[str | None, Header()] = None) -> HTMLResponse:
+    body = await _body(request)
+    if body is None:
+        state = views.State(f"Your text is too long. Analyse at most {views.MAX_TEXT:,} characters at a time: shorten it and try again.")
+        return _text_view("", state, hx_request)
     # ponytail: parsed by hand; FastAPI's Form() would add python-multipart for this one field.
-    form = parse_qs((await request.body()).decode(errors="replace"))
+    form = parse_qs(body.decode(errors="replace"))
     return _analyse(form.get("text", [""])[0], hx_request)
 
 

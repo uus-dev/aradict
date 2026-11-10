@@ -1,9 +1,11 @@
 """Pages, served by the app over the fixture database."""
 
 import html
+import logging
 import re
 import unicodedata
-from urllib.parse import parse_qs, urlsplit
+from urllib.parse import parse_qs, urlencode, urlsplit
+from urllib.request import urlopen
 
 
 def test_word_page_lists_readings_grouped_by_lemma(client):
@@ -97,6 +99,8 @@ def test_about_answers_what_a_visitor_needs_before_trusting_a_result(client):
     privacy = about[about.index('id="privacy"'):]
     for fact in ("no accounts", "stay in this browser", "never sent", "not logged"):
         assert fact in privacy, fact
+    # What reaches the Text view through its address: a Word lookup's words, which a link caps.
+    assert "at most 100 characters" in privacy[:privacy.index("</section>")]
     # Support and native apps.
     assert 'href="https://github.com/uus-dev/aradict/issues"' in about
     assert "AraDict has no native apps" in about
@@ -161,17 +165,25 @@ def test_query_without_letters_shows_the_invalid_state(client):
     assert "No entry for" not in page.text
 
 
-def test_service_failure_offers_retry_and_keeps_the_input(client, monkeypatch):
-    class Broken:
-        def lookup_ar(self, word):
-            raise RuntimeError("database gone")
+class Broken:
+    """A dictionary whose every call fails, quoting its arguments in the error as a library might."""
 
+    def __getattr__(self, name):
+        def fail(*args, **kwargs):
+            raise RuntimeError(f"{name} failed on {args}")
+        return fail
+
+
+def test_service_failure_offers_retry_and_keeps_the_input_out_of_the_log(client, monkeypatch, caplog):
     monkeypatch.setattr("aradict.app.dictionary", Broken)
     page = client.get("/", params={"q": "كتب"})
     assert page.status_code == 500
     assert "Lookup failed" in page.text
     assert 'value="كتب"' in page.text
     assert 'type="submit" form="search">Retry</button>' in page.text  # resubmits the kept input
+    # The log says what failed and where, but not the error's message, which quotes the word.
+    assert "RuntimeError" in caplog.text and "test_app.py" in caplog.text
+    assert "كتب" not in caplog.text
 
 
 def test_several_words_look_up_the_first_and_offer_the_text_view(client):
@@ -314,6 +326,42 @@ def test_overlong_text_shows_the_limit_and_keeps_all_of_it(client):
     assert f">{text}</textarea>" in page.text  # nothing is cut off
 
 
+class Unreachable:
+    """A dictionary that fails every call: input refused at the door never reaches it."""
+
+    def __getattr__(self, name):
+        raise AssertionError(f"dictionary().{name} was called")
+
+
+def test_an_oversized_passage_is_refused_without_being_analysed(client, monkeypatch):
+    monkeypatch.setattr("aradict.app.dictionary", Unreachable)
+    form = {"content-type": "application/x-www-form-urlencoded"}
+    body = urlencode({"text": "كتب " * 20_000})  # 80,000 characters, far past what a form of 2,000 can need
+    sized = client.post("/text", content=body, headers=form)  # refused by its Content-Length
+    streamed = client.post("/text", content=iter([body.encode()]), headers=form)  # no length: refused while reading
+    for page in (sized, streamed):
+        assert page.status_code == 200
+        assert "Your text is too long. Analyse at most 2,000 characters at a time" in page.text
+        assert "كتب كتب" not in page.text
+
+
+def test_overlong_parameters_show_the_invalid_state_before_any_lookup(client, monkeypatch):
+    monkeypatch.setattr("aradict.app.dictionary", Unreachable)
+    long = "ك" * 101
+    for params in ({"root": long}, {"related": long, "pos": "noun"}, {"related": "كِتاب", "pos": long},
+                   {"root": "ك.ت.ب", "sort": long}, {"q": long, "root": "ك.ت.ب"}):
+        page = client.get("/", params=params)
+        assert page.status_code == 200, params
+        assert "at most 100 characters" in page.text, params
+    assert client.get("/suggest", params={"q": long}).json() == []
+
+
+def test_only_the_lookups_own_parameters_go_into_its_links(client):
+    page = client.get("/", params={"q": "كتب", "diacritics": "off", "other": "x" * 50})
+    assert "other" not in page.text
+    assert {"q": ["كتب"], "diacritics": ["off"], "root": ["ك.ت.ب"]} in links(heading(entries(page.text)[0])).values()
+
+
 def test_pasted_markup_is_shown_as_text(client):
     page = client.post("/text", data={"text": "<script>alert(1)</script> كتب"}).text
     assert "<script>alert" not in page
@@ -327,6 +375,14 @@ def test_the_word_pages_text_view_link_analyses_all_its_words(client):
     assert passage_of(page).count('class="tok word"') == 2
 
 
+def test_a_text_view_link_carries_no_more_than_a_word_lookup(client, monkeypatch):
+    monkeypatch.setattr("aradict.app.dictionary", Unreachable)
+    passage = "كتب " * 25 + "كتاب"  # 104 characters: a passage, not a lookup's words
+    page = client.get("/text", params={"q": passage}).text
+    assert "A link brings at most 100 characters to the Text view" in page
+    assert passage not in page and 'class="passage"' not in page
+
+
 def test_live_analysis_returns_the_passage_and_its_status(client):
     page = client.post("/text", data={"text": "كتب قخغثص كتب"}, headers={"HX-Request": "true"})
     assert "<html" not in page.text and "<textarea" not in page.text
@@ -337,15 +393,25 @@ def test_live_analysis_returns_the_passage_and_its_status(client):
 
 
 def test_failed_analysis_keeps_the_text_and_never_logs_it(client, monkeypatch, caplog):
-    class Broken:
-        def analyze_text(self, text):
-            raise RuntimeError("database gone")
-
     monkeypatch.setattr("aradict.app.dictionary", Broken)
     page = client.post("/text", data={"text": "كتب سرّي"})
     assert page.status_code == 500
     assert "Analysis failed" in page.text and ">كتب سرّي</textarea>" in page.text
-    assert "database gone" in caplog.text and "سرّي" not in caplog.text
+    assert 'type="submit" form="analyse">Retry</button>' in page.text  # resubmits the kept text
+    assert "RuntimeError" in caplog.text and "سرّي" not in caplog.text
+
+
+def test_the_access_log_leaves_out_what_was_looked_up(base_url, caplog):
+    # Run as `uvicorn aradict.app:app`, the server logs each request; its query string holds the word.
+    access = logging.getLogger("uvicorn.access")
+    caplog.set_level(logging.INFO, logger="uvicorn.access")
+    access.addHandler(caplog.handler)
+    try:
+        urlopen(f"{base_url}/?{urlencode({'q': 'سرّي'})}").close()
+    finally:
+        access.removeHandler(caplog.handler)
+    assert '"GET / HTTP/1.1" 200' in caplog.text
+    assert "q=" not in caplog.text
 
 
 def chip(page: str) -> str:
@@ -412,6 +478,17 @@ def test_entries_link_to_their_root_and_related_forms_keeping_the_lookup(client)
     }
     assert '<dt>Root</dt><dd><a href="' in kitab and ">ك ت ب</span></a>" in kitab  # the root itself is the link
     assert "all 4 forms of كاتِب" in links(heading(katib))  # writer and clerk, and two plurals
+
+
+def test_an_entry_offers_each_of_its_roots(client):
+    # إِجارَة is stored under two roots, one per sense: "rent" (أ ج ر) and "protection" (ج و ر).
+    ijara, = entries(client.get("/", params={"q": "إجارة"}).text)
+    roots = {name: params for name, params in links(heading(ijara)).items() if name.startswith("Words from the root")}
+    assert roots == {
+        "Words from the root ◌ ج ر": {"q": ["إجارة"], "root": ["#.ج.ر"]},
+        "Words from the root ج ◌ ر": {"q": ["إجارة"], "root": ["ج.#.ر"]},
+    }
+    assert "No forms" not in client.get("/", params={"root": "ج.#.ر"}).text  # each opens its own root view
 
 
 def test_no_root_or_related_forms_means_no_link(client):
@@ -574,6 +651,7 @@ def test_english_with_no_match_suggests_next_steps_and_switching_direction(clien
     # Arabic typed in English mode is looked up as Arabic by the switch.
     page = client.get("/", params={"q": "كتب", "lang": "en"}).text
     assert 'href="/?q=%D9%83%D8%AA%D8%A8"' in page
+    assert 'No Arabic word for “<span class="ar" lang="ar" dir="rtl">كتب</span>”' in page  # in its own language and direction
 
 
 def test_english_live_lookup_returns_only_results(client):

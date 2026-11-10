@@ -9,9 +9,10 @@ from urllib.parse import urlencode
 
 from htpy import Element, Node, a, blockquote, body, br, button, caption, code, dd, details, div, dl, dt, form, fragment, h1, h2, h3, head, header, html, i, input, label, li, link, main, meta, nav, ol, p, path, rect, script, section, span, summary, svg, table, tbody, td, template, textarea, th, thead, title, tr, ul
 
-from .dictionary import MEASURES, Reading, Segment, Token, alphabetical
+from .dictionary import MEASURES, Lookup, Reading, Segment, Token, alphabetical
 from .readable import POS
 
+ARABIC = re.compile("[\u0600-\u06ff]")  # Arabic script
 PAGES = [("word", "/", "Word"), ("text", "/text", "Text"), ("about", "/about", "About")]
 
 
@@ -54,14 +55,14 @@ def _root(root: str | None) -> Node:
     return ar(" ".join("◌" if letter == "#" else letter for letter in root.split("."))) if root else span(class_="muted")["unavailable"]
 
 
-def _kind(r: Reading) -> str:
+def _pos_and_measure(r: Reading) -> str:
     """The part of speech, and a verb's measure."""
     if r.pos != "verb":
         return r.tags[0]
     return f"{r.tags[0]} · {f'Measure {r.measure}' if r.measure else 'measure unavailable'}"
 
 
-def _use(top_percent: float | None) -> str:
+def _how_common(top_percent: float | None) -> str:
     """How common the lemma is, from its rank among all lemmas with a frequency."""
     if top_percent is None:
         return "frequency unknown"
@@ -77,7 +78,7 @@ def _chip_text(s: Segment) -> str:
 
 def _parts(r: Reading) -> Node:
     """The reading's parts as labelled chips, behind a native disclosure that needs no script."""
-    shared = [(a, b) for a, b in zip(r.segments, r.segments[1:]) if a.spelling != a.text and b.spelling != b.text]
+    shared = [(earlier, later) for earlier, later in zip(r.segments, r.segments[1:]) if earlier.spelling != earlier.text and later.spelling != later.text]
     return details(class_="parts")[
         summary["Word parts"],
         ol(class_="chips", dir="rtl")[(
@@ -88,7 +89,8 @@ def _parts(r: Reading) -> Node:
             for s in r.segments
         )],
         # Two parts that share one written letter (a shadda or madda) each show their own copy.
-        (p(class_="note")[ar(_chip_text(a)), " + ", ar(_chip_text(b)), " are written ", ar(f"ـ{a.text}{b.text}")] for a, b in shared),
+        (p(class_="note")[ar(_chip_text(earlier)), " + ", ar(_chip_text(later)), " are written ", ar(f"ـ{earlier.text}{later.text}")]
+         for earlier, later in shared),
     ]
 
 
@@ -115,7 +117,7 @@ class Links(NamedTuple):
     lemma (with its part of speech) has."""
 
     lookup: dict[str, str]
-    forms: dict[tuple[str, str], int]
+    form_counts: dict[tuple[str, str], int]
 
 
 def _url(params: dict[str, str]) -> str:
@@ -126,16 +128,21 @@ def _entry(lemma: str, glosses: dict[str, list[Reading]], heading: Element, link
     """A lemma's heading, said once, then its readings, one result per gloss. With links, the
     root opens the root's words, and a lemma with more than one form links to all of them."""
     first = next(iter(glosses.values()))[0]
-    forms = links.forms.get((first.lemma, first.pos), 0) if links else 0
+    forms = links.form_counts.get((first.lemma, first.pos), 0) if links else 0
+    # A lemma's senses may be stored under different roots (إِجارَة "rent" and "protection"): each is offered.
+    roots = list(dict.fromkeys(r.root for group in glosses.values() for r in group if r.root)) or [None]
     return section(class_="entry")[
         div(class_="head")[
             heading[ar(lemma)],
-            p(class_="pos")[_kind(first)],
+            p(class_="pos")[_pos_and_measure(first)],
             dl[
                 dt["Root"],
-                dd[a(href=_url(links.lookup | {"root": first.root}))[span(class_="sr-only")["Words from the root "], _root(first.root)]
-                   if links and first.root else _root(first.root)],
-                dt["Use"], dd[_use(first.top_percent)],
+                dd[([
+                    i > 0 and ", ",
+                    a(href=_url(links.lookup | {"root": root}))[span(class_="sr-only")["Words from the root "], _root(root)]
+                    if links and root else _root(root),
+                ] for i, root in enumerate(roots))],
+                dt["Use"], dd[_how_common(first.top_percent)],
                 forms > 1 and [dt["Forms"], dd[
                     a(href=_url(links.lookup | {"related": first.lemma, "pos": first.pos}))[f"all {forms} forms", span(class_="sr-only")[" of ", ar(lemma)]],
                 ]],
@@ -148,8 +155,9 @@ def _entry(lemma: str, glosses: dict[str, list[Reading]], heading: Element, link
 LEGEND = p(class_="legend")["In each form: ", span(class_="prefix")["prefix"], " · stem · ", span(class_="suffix")["suffix"]]
 
 
-def _count(readings) -> str:
-    return f"{len(readings)} reading{'s' if len(readings) != 1 else ''}"
+def _n(count: int, noun: str) -> str:
+    """A count and its noun, plural unless one: "1 reading", "3 readings"."""
+    return f"{count} {noun}{'s' if count != 1 else ''}"
 
 
 def _entries(readings: Iterable[Reading], heading: Element = h2, links: Links | None = None) -> Node:
@@ -181,19 +189,20 @@ class State(NamedTuple):
 INITIAL = State(body=_intro())
 
 
-def looked_up(query: str, readings: list[Reading], arabizi: str | None = None, links: Links | None = None) -> State:
-    """The outcome of a completed lookup. Of several words only the first is looked up, and a notice says so.
-    An Arabizi query is looked up as the Arabic it was read as, given in arabizi. Entries link to
-    their root and related forms with links."""
-    words = query.split()
-    latin = bool(re.search("[A-Za-z]", query)) and not re.search("[\u0600-\u06ff]", query)
+def looked_up(text: str, found: Lookup, links: Links | None = None) -> State:
+    """The outcome of a completed lookup of the typed text. Of several words only the first is looked
+    up, and a notice says so. An Arabizi word is looked up as the Arabic it stands for, which the
+    page shows. Entries link to their root and related forms with links."""
+    words = text.split()
+    latin = bool(re.search("[A-Za-z]", text)) and not ARABIC.search(text)
     notice = p(class_="notice")[
         "Only the first word, ", _arabizi(words[0]) if latin else ar(words[0]), ", was looked up.",
         # The Text view reads Arabic script only.
-        not latin and [" ", a(href=f"/text?{urlencode({'q': query})}")["Read them all in the Text view"], "."],
-    ] if len(words) > 1 else None
-    if readings:
-        return State([f"{_count(readings)} for ", ar(arabizi or words[0])], [notice, LEGEND, _entries(readings, h2, links)], arabizi)
+        not latin and [" ", a(href=f"/text?{urlencode({'q': text})}")["Read them all in the Text view"], "."],
+    ] if not found.complete else None
+    if found.readings:
+        arabizi = found.query if found.mode == "arabizi" else None
+        return State([f"{_n(len(found.readings), 'reading')} for ", ar(found.query)], [notice, LEGEND, _entries(found.readings, h2, links)], arabizi)
     if latin:
         return State(["No Arabic word for ", _arabizi(words[0])], [notice, div(class_="empty")[
             p["AraDict read this as Arabic in Latin letters (Arabizi), but found no word it could stand for. You could:"],
@@ -203,7 +212,7 @@ def looked_up(query: str, readings: list[Reading], arabizi: str | None = None, l
                     ar("خ"), ", 7 for ", ar("ح"), " and 9 for ", ar("ق"), ". ", a(href="/about#typing")["More about Arabizi"],
                 ],
                 li["Type it in Arabic script."],
-                li["Looking for an English word? ", a(href=f"/?{urlencode({'q': query, 'lang': 'en'})}")["Look it up in English → Arabic"]],
+                li["Looking for an English word? ", a(href=f"/?{urlencode({'q': text, 'lang': 'en'})}")["Look it up in English → Arabic"]],
             ],
         ]])
     return State(["No entry for ", ar(words[0])], [notice, div(class_="empty")[
@@ -228,15 +237,16 @@ INITIAL_EN = State(body=[
 ])
 
 
-def looked_up_en(query: str, readings: list[Reading], links: Links | None = None) -> State:
+def looked_up_en(found: Lookup, links: Links | None = None) -> State:
     """The outcome of a completed English → Arabic lookup, with the coverage note. Entries link to
     their root and related forms with links."""
-    if readings:
-        n = len(readings)
-        return State(f"{n} Arabic word{'s' if n != 1 else ''} for “{query}”", [COVERAGE, LEGEND, _entries(readings, h2, links)])
+    query = found.query
+    if found.readings:
+        return State(f"{_n(len(found.readings), 'Arabic word')} for “{query}”", [COVERAGE, LEGEND, _entries(found.readings, h2, links)])
     # Arabic typed here is meant the other way round, so switching direction keeps it.
-    back = f"/?{urlencode({'q': query})}" if re.search("[\u0600-\u06ff]", query) else "/"
-    return State(f"No Arabic word for “{query}”", [COVERAGE, div(class_="empty")[
+    arabic = bool(ARABIC.search(query))
+    back = f"/?{urlencode({'q': query})}" if arabic else "/"
+    return State(["No Arabic word for “", ar(query) if arabic else query, "”"], [COVERAGE, div(class_="empty")[
         p["AraDict found no Arabic word with this English meaning. You could:"],
         ul[
             li["Check the spelling."],
@@ -263,21 +273,28 @@ SORT_KEYS = {  # None for a row with no value, which goes last either way
 }
 
 
-def _sorted(rows: list[Reading], sort: str) -> list[Reading]:
-    """Rows sorted by a column ("gloss"), or in reverse ("-gloss"). Python's sort is stable, so rows
-    that tie keep the family order, whichever the direction."""
-    key = SORT_KEYS.get(sort.removeprefix("-"))
-    if not key:
+def _sort_order(sort: str) -> tuple[str | None, bool]:
+    """The column a sort parameter names, "gloss" or "-gloss" in reverse, and whether it is
+    reversed; no column for anything else."""
+    column = sort.removeprefix("-")
+    return (column, sort.startswith("-")) if column in SORT_KEYS else (None, False)
+
+
+def _sorted(rows: list[Reading], column: str | None, descending: bool) -> list[Reading]:
+    """Rows sorted by a column, or in family order with none. Python's sort is stable, so rows that
+    tie keep the family order, whichever the direction."""
+    if column is None:
         return rows
-    return sorted((r for r in rows if key(r) is not None), key=key, reverse=sort.startswith("-")) + [r for r in rows if key(r) is None]
+    key = SORT_KEYS[column]
+    return sorted((r for r in rows if key(r) is not None), key=key, reverse=descending) + [r for r in rows if key(r) is None]
 
 
 def _family(label: str, name: Node, status: Node, rows: list[Reading], lookup: dict[str, str], view: dict[str, str], sort: str) -> State:
     """A root's words or a lemma's forms in place of the lookup's results. A chip says which, and
     closing it returns to the lookup. Each column header links to the list sorted by it, then in
     reverse, then back in family order; the sorted column says so to assistive technology."""
-    column = sort.removeprefix("-") if sort.removeprefix("-") in SORT_KEYS else None
-    order = column and ("descending" if sort.startswith("-") else "ascending")
+    column, descending = _sort_order(sort)
+    order = column and ("descending" if descending else "ascending")
 
     def header(key: str | None, text: str) -> Node:
         if key is None:
@@ -302,14 +319,14 @@ def _family(label: str, name: Node, status: Node, rows: list[Reading], lookup: d
                     td(data_label="Root")[_root(r.root)],
                     td(data_label="Measure")[r.measure or ("unavailable" if r.pos == "verb" else "")],
                 ]
-                for r in _sorted(rows, sort)
+                for r in _sorted(rows, column, descending)
             )],
         ],
     ])
 
 
 def _forms(rows: list[Reading]) -> str:
-    return f"{len(rows) or 'No'} form{'s' if len(rows) != 1 else ''}"
+    return _n(len(rows), "form") if rows else "No forms"
 
 
 def related_view(lemma: str, pos: str, rows: list[Reading], lookup: dict[str, str], sort: str = "") -> State:
@@ -402,8 +419,12 @@ def live_analysis(state: State) -> Node:
     return fragment[p(id="status", hx_swap_oob="innerHTML")[state.status], state.body]
 
 
+MAX_QUERY = 100  # characters a Word lookup, and so any URL parameter, may carry
 MAX_TEXT = 2000
-TEXT_FAILURE = State("Analysis failed. Your text is kept, so you can try again.")
+TEXT_FAILURE = State(
+    "Analysis failed. Your text is kept, so you can try again.",
+    p(class_="retry")[button(type="submit", form="analyse")["Retry"]],
+)
 
 
 def _token(t: Token, ids: dict[str, str]) -> Node:
@@ -411,7 +432,7 @@ def _token(t: Token, ids: dict[str, str]) -> Node:
     if t.kind not in ("word", "unknown"):
         return t.text
     return button(type="button", class_=f"tok {t.kind}", popovertarget=ids[t.text])[
-        t.text, span(class_="sr-only", lang="en")[", ", _count(t.readings) if t.readings else "not in the dictionary"],
+        t.text, span(class_="sr-only", lang="en")[", ", _n(len(t.readings), "reading") if t.readings else "not in the dictionary"],
     ]
 
 
@@ -420,7 +441,7 @@ def _details(t: Token, id: str) -> Node:
     return div(id=id, class_="tok-pop", popover=True, role="dialog", aria_labelledby=f"{id}-h")[
         div(class_="tp-head")[
             h2(id=f"{id}-h")[ar(t.text)],
-            p(class_="muted")[_count(t.readings) if t.readings else "not in the dictionary"],
+            p(class_="muted")[_n(len(t.readings), "reading") if t.readings else "not in the dictionary"],
             button(type="button", popovertarget=id, popovertargetaction="hide")["Close"],
         ],
         _entries(t.readings, h3) if t.readings else p(class_="tp-msg")[
@@ -438,7 +459,7 @@ def analysed(tokens: list[Token]) -> State:
             words.setdefault(t.text, t)
     ids = {word: f"w{i}" for i, word in enumerate(words)}
     n, unknown = sum(t.kind in ("word", "unknown") for t in tokens), sum(t.kind == "unknown" for t in tokens)
-    status = f"{n} word{'s' if n != 1 else ''}{f', {unknown} not in the dictionary' if unknown else ''}" if n else "No Arabic words to analyse."
+    status = f"{_n(n, 'word')}{f', {unknown} not in the dictionary' if unknown else ''}" if n else "No Arabic words to analyse."
     return State(status, [
         # The passage keeps its spaces and line breaks (white-space: pre-wrap).
         div(class_="passage", lang="ar", dir="rtl")[(_token(t, ids) for t in tokens)],
@@ -452,7 +473,7 @@ def text_page(text: str, state: State) -> Node:
         # Posted, so a passage stays out of the page address. Live analysis is the same POST, after a pause
         # in typing and at once on submit; a newer request aborts an older one.
         form(
-            id="analyse", class_="text-in", method="post", action="/text", data_failure=TEXT_FAILURE.status,
+            id="analyse", class_="text-in", method="post", action="/text",
             hx_post="/text", hx_trigger="input delay:500ms, submit", hx_target="#analysis", hx_sync="this:replace",
         )[
             label(for_="text")["Arabic text"],
@@ -466,6 +487,8 @@ def text_page(text: str, state: State) -> Node:
         _keyboard_panel("text"),
         p(id="status", class_="status", role="status")[state.status],
         div(id="analysis")[state.body],
+        # Shown by text.js when live analysis fails, including when the server can't be reached.
+        template(id="failure", data_status=TEXT_FAILURE.status)[TEXT_FAILURE.body],
         script(src="/static/text.js", type="module"),
         script(src="/static/keyboard.js", type="module"),
     ])
@@ -565,7 +588,11 @@ def about_page() -> Node:
                 li["AraDict has no accounts, no advertising and no user profiles."],
                 li["Your lookup history and settings stay in this browser, on your device. They are never sent to AraDict, and you can clear them at any time."],
                 li["Lookups run on AraDict's server, so each word you look up is sent there. The word is also part of the page address, so you can bookmark or share a result."],
-                li["Passages you paste into the Text view are sent to the server to be analysed, and are not logged. They never go into the page address."],
+                li[
+                    "Passages you type or paste into the Text view are sent to the server to be analysed, and are not logged. "
+                    "They never go into the page address. Only the link from a Word lookup to the Text view carries words in its "
+                    f"address: the words you looked up, at most {MAX_QUERY} characters."
+                ],
             ],
         ],
         section(id="support")[

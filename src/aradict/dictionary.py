@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import itertools
 import re
 import unicodedata
@@ -11,10 +12,9 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from . import readable
-from .readable import Segment
+from .readable import ALIFS, MARK, SHADDA, VOWEL, Segment
 
 LOOK_ALIKES = str.maketrans({"ی": "ي", "ک": "ك", "ـ": None})  # Persian/Urdu letters; tatweel
-MARK = re.compile("[\u064b-\u065f\u0670]")  # tanween, short vowels, shadda, sukun, dagger alif
 # The database leaves the fatha before a long ا unwritten (كِتاب): a letter, maybe a shadda, then ا.
 # It also leaves out the fatha a dagger alif implies (اللّٰه).
 IMPLIED_FATHA = re.compile("(?<=[\u0621-\u064a])(\u0651?)(?=\u0627)")
@@ -26,8 +26,9 @@ TOKEN = re.compile(
     re.S,
 )
 # The database keys stems by their bare letters: أ, إ, آ and ٱ as ا, ى as ي, and ة as ه.
-STEM_KEY = str.maketrans("أإآٱىة", "اااايه")
+STEM_KEY = ALIFS | str.maketrans("ىة", "يه")
 SUGGESTIONS = 25
+NO_FREQUENCY = -99.0  # the log-probability the database gives a lemma it has no figure for
 
 # Arabizi: Arabic in Latin letters and digits. Each token stands for one or more Arabic spellings,
 # the likelier first.
@@ -36,7 +37,7 @@ ARABIZI_CONSONANTS = {
     "d": "دض", "dh": "ذظض", "r": "ر", "z": "زظ", "s": "سص", "sh": "ش", "3": "ع", "gh": "غ", "f": "ف", "v": "ف",
     "q": "ق", "9": "ق", "k": "ك", "l": "ل", "m": "م", "n": "ن", "w": "و", "y": "ي", "2": "أإءئؤ",
 }
-FATHA, KASRA, DAMMA, SHADDA = "\u064e", "\u0650", "\u064f", "\u0651"
+FATHA, KASRA, DAMMA = "\u064e", "\u0650", "\u064f"
 # A vowel is short, written as a vowel mark that filters readings like a typed one, or long,
 # written as a letter; at the end of a word, a letter first. A word-initial vowel is always ا.
 ARABIZI_VOWELS = {  # token: (inside a word, at its end)
@@ -53,8 +54,7 @@ ARABIZI_TOKEN = re.compile("(?<=.)an$|" + "|".join(sorted(ARABIZI_CONSONANTS.key
 SPELLING_LIMIT = 2048  # spellings tried per word, at most about 0.3 s for the longest word
 ARABIZI_LONGEST = 24  # letters; wabimudarrisatihim has 18
 # Every mark but tanween fath, which a spelling must match (شكراً), so a final ا isn't a case ending.
-UNSPELLED = re.compile("[\u064c-\u065f\u0670]")
-ALIFS = str.maketrans("أإآٱ", "اااا")
+UNSPELLED = re.compile(f"(?!\u064b){MARK.pattern}")
 
 # Verb measures as the consonants of the lemma (the perfect "he" form), vowels left out and
 # shadda kept. Digits stand for the root's letters in order (1 2 3 are ف ع ل), so a template
@@ -86,7 +86,6 @@ TEMPLATES = [
 ]
 WEAK = "اأإءؤئوىي"
 ROOT = re.compile("[\u0621-\u064a#](\\.[\u0621-\u064a#])+")  # letters joined by dots; a few stored roots are junk ("لس", "NTWS")
-VOWELS = re.compile("[\u064b-\u0650\u0652\u0670]")  # everything but shadda
 # The database's categories for the short imperfect stem of hollow, doubled and weak-final verbs,
 # which stands before consonant endings and in the jussive: قُل (يَقُلْنَ, لَمْ يَقُلْ) beside قُول.
 # ponytail: relies on calima-msa-r13's category names; check them when the database changes.
@@ -98,6 +97,7 @@ class Reading:
     """One way to read the typed word, after merging analyses that differ only in a case or
     mood ending or in how a proclitic is read."""
 
+    id: str  # stable: the same reading has the same id wherever it is found, on every run
     form: str
     gloss: str  # the whole word in English, e.g. "and by/with their book"
     tags: tuple[str, ...]  # part of speech, voice, agreement, e.g. ("verb", "active", "3rd person masculine singular")
@@ -106,6 +106,7 @@ class Reading:
     pos: str
     lemma: str
     root: str | None
+    pattern: str | None  # the stem's vowel template, the root's letters as numbered slots: ٱِسْتَ1ْ2َ3
     frequency: float | None  # lemma log-probability; None when the database has no figure
     top_percent: float | None  # the share of lemmas at least as frequent as this one, among those with a frequency
     measure: str | None  # a verb's measure, "I" to "XII" or "QI" to "QIV"; None for other parts of speech or when it can't be derived
@@ -120,6 +121,17 @@ class Token:
     start: int
     end: int
     readings: tuple[Reading, ...] = ()
+
+
+@dataclass(frozen=True)
+class Lookup:
+    """A lookup's response: what was looked up and how, whether that was all of the text, and the
+    readings in order."""
+
+    query: str  # the word looked up: the first typed, the Arabic an Arabizi word stands for, or an English phrase
+    mode: str  # "ar" (Arabic script, or Latin letters that stand for no Arabic word), "arabizi" or "en" (English)
+    complete: bool  # False when the text has more words than the one looked up
+    readings: tuple[Reading, ...]
 
 
 def _reading_key(analysis: dict) -> tuple:
@@ -138,7 +150,7 @@ def _representative(analyses: list[dict]) -> dict:
     return min(analyses, key=lambda a: (a["prc2"] not in ("0", "wa_conj"), a["cas"] not in ("u", "na")))
 
 
-def _letters(word: str) -> list[tuple[str, set[str]]]:
+def _marked_letters(word: str) -> list[tuple[str, set[str]]]:
     """Each letter with the marks written on it."""
     letters: list[tuple[str, set[str]]] = []
     for char in word:
@@ -150,22 +162,27 @@ def _letters(word: str) -> list[tuple[str, set[str]]]:
 
 
 def _typed(word: str) -> list[tuple[str, set[str]]]:
-    return _letters(word.replace("\u064b\u0627", "\u0627\u064b"))  # the database puts tanween fath on the ا
+    return _marked_letters(word.replace("\u064b\u0627", "\u0627\u064b"))  # the database puts tanween fath on the ا
 
 
 def _agrees(typed: list[tuple[str, set[str]]], form: str, check_marks: bool, whole: bool = True) -> bool:
     """A hamza the user typed is the analysis's hamza (bare ا matches any), and, when
     check_marks is on, every mark the user typed is on the same letter of the analysis.
     Unless whole is set, the typed letters need only begin the form."""
-    letters = _letters(IMPLIED_FATHA.sub("\u064e\\1", form).replace("\u0670", "\u064e\u0670"))
+    letters = _marked_letters(IMPLIED_FATHA.sub("\u064e\\1", form).replace("\u0670", "\u064e\u0670"))
     return (len(letters) == len(typed) if whole else len(letters) >= len(typed)) and all(
         (letter not in "أإآ" or letter == other) and (not check_marks or marks <= other_marks)
         for (letter, marks), (other, other_marks) in zip(typed, letters)
     )
 
 
+def _no_clitics(analysis: dict) -> bool:
+    """Nothing attached to the word: no proclitic and no enclitic."""
+    return all(analysis[f] in ("0", "na") for f in ("prc3", "prc2", "prc1", "prc0", "enc0"))
+
+
 def _logprob(analysis: dict) -> float:
-    return float(analysis.get("lex_logprob", -99))
+    return float(analysis.get("lex_logprob", NO_FREQUENCY))
 
 
 def _key(text: str) -> str:
@@ -215,6 +232,12 @@ def _arabizi_spellings(word: str) -> list[str]:
     return ["".join(spelling for _, spelling in combination) for combination in sorted(combinations, key=lambda c: sum(rank for rank, _ in c))]
 
 
+def _doubled(word: str) -> int:
+    """How many letters word doubles with a shadda that Arabizi would write twice (mudarris). Not
+    a ي or و, which Arabizi seldom doubles: wataniya for وَطَنِيَّة."""
+    return sum(SHADDA in marks and letter not in "يو" for letter, marks in _marked_letters(word))
+
+
 def _by_frequency(r: Reading) -> tuple:
     """Most frequent lemma first; lemmas with no figure last."""
     return r.frequency is None, -(r.frequency or 0), r.lemma
@@ -222,7 +245,6 @@ def _by_frequency(r: Reading) -> tuple:
 
 # English → Arabic: an index from each English sense of a stem's gloss to the stems with it.
 BRACKETED = re.compile(r"\([^)]*\)|\[[^\]]*\]|<[^>]*>")  # (Egyptian)_cheese, write_[fem.sg.], <verb>
-THIRD_PERSON = {"be": "is", "have": "has", "do": "does", "go": "goes"}
 
 
 def _citation(form: str, lemma: str, pos: str, stem: str | None = None, gloss: str | None = None):
@@ -233,7 +255,7 @@ def _citation(form: str, lemma: str, pos: str, stem: str | None = None, gloss: s
 
     def keep(a: dict) -> bool:
         return (a["lex"], a["pos"]) == (lemma, pos) and _agrees(typed, a["diac"], True) and (
-            (a["stem"], a["stemgloss"]) == (stem, gloss) if stem else all(a[f] in ("0", "na") for f in ("prc3", "prc2", "prc1", "prc0", "enc0"))
+            (a["stem"], a["stemgloss"]) == (stem, gloss) if stem else _no_clitics(a)
         ) and (pos != "verb" or (a["per"], a["gen"], a["num"]) == ("3", "m", "s"))
     return keep
 
@@ -250,28 +272,34 @@ def _english_keys(gloss: str, pos: str) -> set[str]:
         keys.add(sense := _english_key(sense))
         first, _, rest = sense.partition(" ")
         if pos == "noun":
-            keys.add(readable._plural(sense))  # ponytail: inflects the last word, so "pieces of writing" isn't found
+            keys.add(readable.plural(sense))  # ponytail: inflects the last word, so "pieces of writing" isn't found
         elif pos == "verb" and first != "be":
-            for inflected in (readable._past(first), THIRD_PERSON.get(first) or readable._plural(first)):
+            for inflected in (readable.past(first), readable.third_person(first)):
                 keys.add(f"{inflected} {rest}".strip())
     return keys - {""}
 
 
 def _english_index(stems) -> dict[str, tuple[tuple[str, str, str, str], ...]]:
-    """Each English key with the stems it finds, as (lemma, part of speech, stem, gloss). A verb's
-    stems are found as its perfect stems of the same voice, which spell its citation form."""
+    """Each English key with the stems it finds, as (lemma, part of speech, stem, gloss). A verb is
+    found as its perfect stem with the sense that matched, which spells its citation form."""
     # NOAN is the database's placeholder for words it has no analysis of.
     stems = {(a["lex"], a["pos"], a["diac"], a["gloss"], a["vox"], a["asp"]) for a in stems if a["lex"] != "NOAN"}
     perfect: dict[tuple[str, str], set] = {}
-    for lemma, pos, stem, gloss, voice, aspect in stems:
-        if pos == "verb" and aspect == "p":
-            perfect.setdefault((lemma, voice), set()).add((lemma, pos, stem, gloss))
     index: dict[str, set] = {}
     for lemma, pos, stem, gloss, voice, aspect in stems:
-        # A voice with no perfect stem (a passive met only in the imperfect) is found as the active verb.
-        found = perfect.get((lemma, voice)) or perfect.get((lemma, "a"), ()) if pos == "verb" else [(lemma, pos, stem, gloss)]
-        for key in _english_keys(gloss, pos):
-            index.setdefault(key, set()).update(found)
+        if pos != "verb" or aspect == "p":
+            for key in _english_keys(gloss, pos):
+                index.setdefault(key, set()).add((lemma, pos, stem, gloss))
+        if pos == "verb" and aspect == "p":
+            perfect.setdefault((lemma, voice), set()).add((lemma, pos, stem, gloss))
+    # A sense that only a verb's other stems carry finds its perfect stems of the same voice, or the
+    # active ones when that voice has none (a passive met only in the imperfect).
+    for lemma, pos, stem, gloss, voice, aspect in stems:
+        if pos == "verb" and aspect != "p":
+            for key in _english_keys(gloss, pos):
+                found = index.setdefault(key, set())
+                if not any(f[:2] == (lemma, pos) for f in found):
+                    found.update(perfect.get((lemma, voice)) or perfect.get((lemma, "a"), ()))
     return {key: tuple(sorted(found)) for key, found in index.items()}  # sorted: the same order on every run
 
 
@@ -309,7 +337,7 @@ class Dictionary:
             for key, f in stems.values():
                 if ROOT.fullmatch(f.get("root", "")):
                     self._root_stems.setdefault(f["root"], []).append((key, f))
-        self._frequencies = sorted(logprob for logprob in lemmas.values() if logprob > -99)
+        self._frequencies = sorted(logprob for logprob in lemmas.values() if logprob > NO_FREQUENCY)
         self._english = _english_index(analysis for stems in self._db.stem_hash.values() for _, analysis in stems)
 
     def measure(self, lemma: str, root: str) -> str | None:
@@ -317,7 +345,7 @@ class Dictionary:
         slots. Three-letter measures go before the quadriliteral ones. None when no template
         fits or the lemma fits two."""
         radicals = root.split(".")
-        word = VOWELS.sub("", lemma).replace("ٱ", "ا").replace("آ", "أا")
+        word = VOWEL.sub("", lemma).replace("ٱ", "ا").replace("آ", "أا")
         found = list(dict.fromkeys(
             name for name, template, slots in TEMPLATES
             if (m := template.fullmatch(word)) and all(
@@ -333,16 +361,20 @@ class Dictionary:
 
     def arabizi(self, text: str) -> str | None:
         """The Arabic an Arabizi word (the first, if several) stands for: of the spellings it may
-        stand for, the one with the most frequent lemma. None if the text isn't Arabizi or no
-        spelling is a known word."""
+        stand for, the one with the most frequent lemma, preferring a word that needs no shadda the
+        user did not type. None if the text isn't Arabizi or no spelling is a known word."""
         words = text.split()
         # Only readings with exactly the spelling's letters count; a lookup also finds ة as ه and ى as ي.
         found = [
             (spelling, readings) for spelling in (_arabizi_spellings(words[0]) if words else [])
             if (readings := [r for r in self.lookup_ar(spelling) if _spelled(r.form) == _spelled(spelling)])
         ]
-        # max keeps the likelier spelling of equally frequent ones; readings come most frequent first.
-        return max(found, key=lambda f: -99 if f[1][0].frequency is None else f[1][0].frequency)[0] if found else None
+        # A word that doubles more letters than the user typed twice needs a shadda they didn't type,
+        # and ranks below one that doesn't. max keeps the likelier spelling of equally ranked ones.
+        typed = len(re.findall(r"([^aeiou])\1", words[0].lower())) if words else 0
+        return max(found, key=lambda f: max(
+            (_doubled(r.form) <= typed, NO_FREQUENCY if r.frequency is None else r.frequency) for r in f[1]
+        ))[0] if found else None
 
     def _readings(self, word: str, keep: Callable[[dict], bool]) -> list[Reading]:
         """The readings of the analyses of word that keep accepts, merged as Reading describes."""
@@ -353,11 +385,13 @@ class Dictionary:
                 continue
             groups.setdefault(_reading_key(analysis), []).append(analysis)
         readings = []
-        for analyses in groups.values():
+        for key, analyses in groups.items():
             a = _representative(analyses)
             logprob = _logprob(a)
             root = a.get("root") if ROOT.fullmatch(a.get("root", "")) else None
+            stem = self._lemma_stems.get((a["lex"], a["pos"]), {}).get((a["stem"], a["stemgloss"], a["asp"], a.get("root")))
             readings.append(Reading(
+                id=hashlib.blake2b("\t".join((a["diac"], *key)).encode(), digest_size=6).hexdigest(),
                 form=a["diac"],
                 gloss=readable.gloss(a),
                 tags=readable.tags(a),
@@ -366,11 +400,25 @@ class Dictionary:
                 pos=a["pos"],
                 lemma=a["lex"],
                 root=root,
-                frequency=None if logprob <= -99 else logprob,
-                top_percent=None if logprob <= -99 else 100 * (1 - bisect_left(self._frequencies, logprob) / len(self._frequencies)),
+                pattern=stem[1]["pattern"] if stem else None,
+                frequency=None if logprob <= NO_FREQUENCY else logprob,
+                top_percent=None if logprob <= NO_FREQUENCY else 100 * (1 - bisect_left(self._frequencies, logprob) / len(self._frequencies)),
                 measure=self.measure(a["lex"], root) if a["pos"] == "verb" and root else None,
             ))
         return readings
+
+    def lookup(self, text: str, english: bool = False, filter_diacritics: bool = True) -> Lookup:
+        """The lookup the Word page makes: English → Arabic with english set; otherwise Arabic →
+        English for the first word, in Arabic script or Arabizi (see lookup_ar and arabizi)."""
+        if english:
+            phrase = " ".join(text.split())
+            return Lookup(phrase, "en", True, tuple(self.lookup_en(phrase)))
+        words = text.split()
+        arabizi = self.arabizi(text)
+        return Lookup(
+            arabizi or (words[0] if words else ""), "arabizi" if arabizi else "ar", len(words) <= 1,
+            tuple(self.lookup_ar(arabizi or text, filter_diacritics)),
+        )
 
     def lookup_en(self, query: str) -> list[Reading]:
         """Arabic words with an English sense that is the query, a phrase matched whole and
@@ -436,7 +484,7 @@ class Dictionary:
         def keep(a: dict) -> bool:
             return (
                 (a["lex"], a["pos"], a["stem"], a["stemgloss"]) == (f["lex"], f["pos"], f["diac"], f["gloss"])
-                and all(a[clitic] in ("0", "na") for clitic in ("prc3", "prc2", "prc1", "prc0", "enc0"))
+                and _no_clitics(a)
                 and ((a["per"], a["gen"], a["num"]) == agreement if agreement else a["num"] != "d")
                 and not (f["asp"] == "i" and SHORT_STEM.search(a["stemcat"]))
             )
@@ -491,7 +539,7 @@ class Dictionary:
             # Typed marks short of the stem's last letter can be checked on the stem alone,
             # which saves analysing stems that can't agree.
             if cat in cats and (len(key) == len(rest) or _agrees(typed[i:], diac, check_marks, whole=False)):
-                best[key] = max(best.get(key, -99.0), freq)
+                best[key] = max(best.get(key, NO_FREQUENCY), freq)
         found: dict[str, float] = {}
         for key in sorted(best, key=best.get, reverse=True):
             if len(found) >= wanted and best[key] <= sorted(found.values(), reverse=True)[wanted - 1]:
@@ -501,5 +549,5 @@ class Dictionary:
                 for r in self._readings(word, lambda a: (
                     _key(a["stem"]) == key and a["enc0"] in ("0", "na") and _agrees(typed, a["diac"], check_marks, whole=False)
                 )):
-                    found[r.form] = max(found.get(r.form, -99.0), -99.0 if r.frequency is None else r.frequency)
+                    found[r.form] = max(found.get(r.form, NO_FREQUENCY), NO_FREQUENCY if r.frequency is None else r.frequency)
         return sorted(found, key=found.get, reverse=True)[:wanted]

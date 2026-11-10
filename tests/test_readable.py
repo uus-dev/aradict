@@ -112,6 +112,11 @@ def test_senses_already_plural_are_not_pluralized_again(real):
     assert "my two laws; my two statutes; my two regulations" in glosses(real, "قانوني")
 
 
+def test_a_broken_plural_spelled_with_ta_marbuta_is_not_called_feminine(real):
+    # كَتَبَة "writers", a broken plural of كاتِب, ends in ة but means men or a mixed group.
+    assert "authors; writers" in glosses(real, "كتبة")
+
+
 def test_article_and_sound_plurals(real):
     assert "the book" in glosses(real, "الكتاب")
     assert glosses(real, "مدرسون") == {"instructors; teachers"}

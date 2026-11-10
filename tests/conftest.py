@@ -1,8 +1,12 @@
 import os
+import threading
+import time
 from pathlib import Path
 
 import pytest
+import uvicorn
 from fastapi.testclient import TestClient
+from playwright.sync_api import sync_playwright
 
 from aradict.app import app, dictionary
 from aradict.data import db_path
@@ -38,3 +42,25 @@ def fixture_env(fixture_db):
 def client(fixture_env):
     with TestClient(app) as test_client:
         yield test_client
+
+
+@pytest.fixture(scope="module")
+def base_url(fixture_env):
+    """A real server on the fixture database, for browser journeys: one per test module."""
+    server = uvicorn.Server(uvicorn.Config(app, host="127.0.0.1", port=0, log_level="warning"))
+    thread = threading.Thread(target=server.run, daemon=True)
+    thread.start()
+    while not server.started:
+        time.sleep(0.05)
+    yield "http://127.0.0.1:%d" % server.servers[0].sockets[0].getsockname()[1]
+    server.should_exit = True
+    thread.join(5)
+
+
+@pytest.fixture(scope="module")
+def browser():
+    """Chromium, shared by a test module's journeys."""
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch()
+        yield browser
+        browser.close()

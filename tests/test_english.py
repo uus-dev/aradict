@@ -4,8 +4,6 @@ from urllib.parse import quote
 
 from playwright.sync_api import Error as PlaywrightError, expect
 
-from test_browser import base_url, browser  # noqa: F401  (shared server and browser fixtures)
-
 
 def switch(page):
     return page.get_by_role("checkbox", name="English → Arabic")
