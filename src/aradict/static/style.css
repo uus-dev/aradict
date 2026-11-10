@@ -20,7 +20,7 @@ a { color: var(--accent) }
 .wrap { max-width: 60rem; margin-inline: auto; padding-inline: max(16px, env(safe-area-inset-left, 0px)) max(16px, env(safe-area-inset-right, 0px)) }
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap }
 .ar { font-family: var(--f-ar); font-size: 1.45em; line-height: 1.6 }
-.muted, .pos { color: var(--muted) }
+.muted, .pos, .intro { color: var(--muted) }
 
 .site { background: var(--surface); border-block-end: 1px solid var(--line) }
 .site .wrap { display: flex; align-items: baseline; gap: 24px; padding-block: 12px }
@@ -39,6 +39,10 @@ a { color: var(--accent) }
 /* While a lookup runs, the previous results fade so they don't read as current. The delay keeps fast lookups from flickering. */
 #results { transition: opacity .15s }
 .search.htmx-request ~ #results { opacity: .4; transition-delay: .2s }
+
+/* About and help */
+.notice { margin-inline: 0; padding-inline-start: 14px; border-inline-start: 3px solid var(--line); color: var(--muted); font-size: .9rem }
+.placeholder { padding: 8px 12px; border: 1px dashed var(--muted); border-radius: 6px }
 
 .entries, .empty { background: var(--surface); border: 1px solid var(--line); border-radius: 10px }
 .empty { padding: 20px; margin-block-start: 8px }

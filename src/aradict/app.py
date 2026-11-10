@@ -42,7 +42,7 @@ def word(q: str = "", hx_request: Annotated[str | None, Header()] = None) -> HTM
     q = q.strip()
     status_code = 200
     if not q:
-        state = views.State()
+        state = views.INITIAL
     elif len(q) > MAX_QUERY:
         state = views.State(f"That's too long. Type at most {MAX_QUERY} characters.")
     elif not any(c.isalpha() for c in q):

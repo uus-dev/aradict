@@ -161,3 +161,14 @@ def test_a_failed_lookup_offers_retry_and_keeps_the_input(base_url, browser, mon
     page.get_by_role("button", name="Retry").click()
     expect(status).to_have_text("3 readings for كتب")
     expect(page.locator(".reading")).to_have_count(3)
+
+
+def test_home_intro_sits_below_the_search_box_on_a_phone(base_url, browser):
+    page = browser.new_context(viewport={"width": 390, "height": 844}).new_page()
+
+    page.goto(base_url)
+    search = page.get_by_role("textbox", name="Arabic word").bounding_box()
+    intro = page.locator(".intro").bounding_box()
+    assert search["y"] + search["height"] <= intro["y"]  # the explanation never sits in front of the search box
+    assert intro["y"] + intro["height"] <= 844  # and is short enough to read on the first screen
+    assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
