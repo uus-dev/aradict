@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from . import readable
+from .readable import Segment
 
 
 @dataclass(frozen=True)
@@ -14,7 +15,10 @@ class Reading:
     mood ending or in how a proclitic is read."""
 
     form: str
-    gloss: str
+    gloss: str  # the whole word in English, e.g. "and by/with their book"
+    tags: tuple[str, ...]  # part of speech, voice, agreement, e.g. ("verb", "active", "3rd person masculine singular")
+    grammar: str  # the rest in plain English, e.g. "perfect (past)"; empty when the spelling fixes nothing more
+    segments: tuple[Segment, ...]  # prefixes, the stem, suffixes
     pos: str
     lemma: str
     root: str | None
@@ -58,6 +62,9 @@ class Dictionary:
             readings.append(Reading(
                 form=a["diac"],
                 gloss=readable.gloss(a),
+                tags=readable.tags(a),
+                grammar=readable.grammar(analyses),
+                segments=readable.segments(a),
                 pos=a["pos"],
                 lemma=a["lex"],
                 root=a.get("root") or None,
