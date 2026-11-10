@@ -16,7 +16,8 @@ def test_word_page_lists_readings_grouped_by_lemma(client):
 
 def test_reading_shows_marked_parts_gloss_grammar_and_word_parts(client):
     page = client.get("/", params={"q": "وبكتابهم"}).text
-    reading = page[page.index('<li class="reading">'):page.index("</details>")]
+    start = page.index('<li class="reading">')
+    reading = page[start:page.index("</details>", start)]
     # The form, with each part marked by its role.
     assert ('<span class="ar form" lang="ar" dir="rtl"><span class="prefix">وَ</span><span class="prefix">بِ</span>'
             '<span class="stem">كِتاب</span><span class="suffix">هم</span></span>') in reading
@@ -185,7 +186,7 @@ def test_diacritic_filter_is_on_by_default_and_can_be_switched_off(client):
 
 def test_form_has_a_labelled_diacritics_switch(client):
     page = client.get("/").text
-    assert re.search(r'<label[^>]*>\s*<input type="checkbox" name="diacritics" value="off"\s*>\s*Ignore diacritics', page)
+    assert re.search(r'<label[^>]*>\s*<input type="checkbox" name="diacritics" value="off"[^>]*>\s*Ignore diacritics', page)
 
 
 def test_latin_letters_get_a_hint_towards_english(client):

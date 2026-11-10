@@ -179,16 +179,33 @@ def word_page(query: str, state: State, filter_diacritics: bool = True) -> Node:
             _keyboard_toggle("q"),
             a(href="/", class_="clear", hidden=not query)["Clear"],
             button(type="submit")["Look up"],
-            label(class_="option")[input(type="checkbox", name="diacritics", value="off", checked=not filter_diacritics), " Ignore diacritics"],
+            label(class_="option")[input(type="checkbox", name="diacritics", value="off", checked=not filter_diacritics, data_remember=True), " Ignore diacritics"],
         ],
         _keyboard_panel("q"),
+        _history(),
         p(id="status", class_="status", role="status")[state.status],
         div(id="results")[state.body],
         # Shown by lookup.js when a live lookup fails, including when the server can't be reached.
         template(id="failure", data_status=FAILURE.status)[FAILURE.body],
         script(src="/static/lookup.js", type="module"),
         script(src="/static/keyboard.js", type="module"),
+        script(src="/static/history.js", type="module"),
     ])
+
+
+def _history() -> Node:
+    """Recent lookups. history.js fills the list from this browser's storage and shows the panel,
+    so without JavaScript, where there is no history, it stays hidden. It sits outside the search
+    form, so nothing in it is ever sent with a lookup."""
+    return details(id="history", class_="history", hidden=True)[
+        summary["Recent lookups"],
+        ol,
+        p(class_="none")["Words you look up appear here."],
+        p(class_="tools")[
+            label["Keep ", input(type="number", name="history-size", min="0", value="50", data_remember=True), " lookups"],
+            button(type="button")["Clear history"],
+        ],
+    ]
 
 
 def live_results(state: State) -> Node:
