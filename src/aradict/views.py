@@ -53,6 +53,21 @@ def _root(root: str | None) -> Node:
     return ar(" ".join("◌" if letter == "#" else letter for letter in root.split("."))) if root else span(class_="muted")["unavailable"]
 
 
+def _kind(r: Reading) -> str:
+    """The part of speech, and a verb's measure."""
+    if r.pos != "verb":
+        return r.tags[0]
+    return f"{r.tags[0]} · {f'Measure {r.measure}' if r.measure else 'measure unavailable'}"
+
+
+def _use(top_percent: float | None) -> str:
+    """How common the lemma is, from its rank among all lemmas with a frequency."""
+    if top_percent is None:
+        return "frequency unknown"
+    band = "very common" if top_percent <= 1 else "common" if top_percent <= 10 else "less common" if top_percent <= 40 else "rare"
+    return f"{band} · top {max(1, round(top_percent))}% of words"
+
+
 def _chip_text(s: Segment) -> str:
     """A part on its own, with a tatweel where it joins the rest of the word."""
     return {"prefix": f"{s.spelling}ـ", "suffix": f"ـ{s.spelling}"}.get(s.role, s.spelling)
@@ -75,15 +90,33 @@ def _parts(r: Reading) -> Node:
     ]
 
 
-def _reading(r: Reading) -> Node:
-    return li(class_="reading")[
-        span(class_="ar form", lang="ar", dir="rtl")[(span(class_=s.role)[s.text] for s in r.segments)],
-        div(class_="sense")[
-            p(class_="gloss")[r.gloss],
-            # The part of speech heads the entry; voice, agreement and the rest go with each reading.
-            (r.tags[1:] or r.grammar) and p(class_="grammar")[(span(class_="tag")[t] for t in r.tags[1:]), r.grammar and f" {r.grammar}"],
-            len(r.segments) > 1 and _parts(r),
+def _reading(group: list[Reading]) -> Node:
+    """One result: the readings that share a gloss, such as an adjective's singular, dual and
+    plural. The gloss is said once; each form keeps its own grammar and parts."""
+    return li(class_="reading")[(
+        fragment[
+            span(class_="ar form", lang="ar", dir="rtl")[(span(class_=s.role)[s.text] for s in r.segments)],
+            div(class_="sense")[
+                r is group[0] and p(class_="gloss")[r.gloss],
+                # The part of speech heads the entry; voice, agreement and the rest go with each reading.
+                (r.tags[1:] or r.grammar) and p(class_="grammar")[(span(class_="tag")[t] for t in r.tags[1:]), r.grammar and f" {r.grammar}"],
+                len(r.segments) > 1 and _parts(r),
+            ],
+        ]
+        for r in group
+    )]
+
+
+def _entry(lemma: str, glosses: dict[str, list[Reading]], heading: Element) -> Node:
+    """A lemma's heading, said once, then its readings, one result per gloss."""
+    first = next(iter(glosses.values()))[0]
+    return section(class_="entry")[
+        div(class_="head")[
+            heading[ar(lemma)],
+            p(class_="pos")[_kind(first)],
+            dl[dt["Root"], dd[_root(first.root)], dt["Use"], dd[_use(first.top_percent)]],
         ],
+        ul(class_="readings")[(_reading(group) for group in glosses.values())],
     ]
 
 
@@ -96,22 +129,10 @@ def _count(readings) -> str:
 
 def _entries(readings: Iterable[Reading], heading: Element = h2) -> Node:
     """One entry per lemma and part of speech, in the order the readings arrive."""
-    groups: dict[tuple[str, str], list[Reading]] = {}
+    groups: dict[tuple[str, str], dict[str, list[Reading]]] = {}
     for reading in readings:
-        groups.setdefault((reading.lemma, reading.pos), []).append(reading)
-    return div(class_="entries")[
-        (
-            section(class_="entry")[
-                div(class_="head")[
-                    heading[ar(lemma)],
-                    p(class_="pos")[group[0].tags[0]],
-                    dl[dt["Root"], dd[_root(group[0].root)]],
-                ],
-                ul(class_="readings")[(_reading(r) for r in group)],
-            ]
-            for (lemma, pos), group in groups.items()
-        )
-    ]
+        groups.setdefault((reading.lemma, reading.pos), {}).setdefault(reading.gloss, []).append(reading)
+    return div(class_="entries")[(_entry(lemma, glosses, heading) for (lemma, _), glosses in groups.items())]
 
 
 def _intro() -> Node:
