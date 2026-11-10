@@ -640,6 +640,7 @@ def test_english_with_no_match_suggests_next_steps_and_switching_direction(clien
     # Arabic typed in English mode is looked up as Arabic by the switch.
     page = client.get("/", params={"q": "كتب", "lang": "en"}).text
     assert 'href="/?q=%D9%83%D8%AA%D8%A8"' in page
+    assert 'No Arabic word for “<span class="ar" lang="ar" dir="rtl">كتب</span>”' in page  # in its own language and direction
 
 
 def test_english_live_lookup_returns_only_results(client):

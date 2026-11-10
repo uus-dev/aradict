@@ -12,6 +12,7 @@ from htpy import Element, Node, a, blockquote, body, br, button, caption, code, 
 from .dictionary import MEASURES, Reading, Segment, Token, alphabetical
 from .readable import POS
 
+ARABIC = re.compile("[\u0600-\u06ff]")  # Arabic script
 PAGES = [("word", "/", "Word"), ("text", "/text", "Text"), ("about", "/about", "About")]
 
 
@@ -186,7 +187,7 @@ def looked_up(query: str, readings: list[Reading], arabizi: str | None = None, l
     An Arabizi query is looked up as the Arabic it was read as, given in arabizi. Entries link to
     their root and related forms with links."""
     words = query.split()
-    latin = bool(re.search("[A-Za-z]", query)) and not re.search("[\u0600-\u06ff]", query)
+    latin = bool(re.search("[A-Za-z]", query)) and not ARABIC.search(query)
     notice = p(class_="notice")[
         "Only the first word, ", _arabizi(words[0]) if latin else ar(words[0]), ", was looked up.",
         # The Text view reads Arabic script only.
@@ -235,8 +236,9 @@ def looked_up_en(query: str, readings: list[Reading], links: Links | None = None
         n = len(readings)
         return State(f"{n} Arabic word{'s' if n != 1 else ''} for “{query}”", [COVERAGE, LEGEND, _entries(readings, h2, links)])
     # Arabic typed here is meant the other way round, so switching direction keeps it.
-    back = f"/?{urlencode({'q': query})}" if re.search("[\u0600-\u06ff]", query) else "/"
-    return State(f"No Arabic word for “{query}”", [COVERAGE, div(class_="empty")[
+    arabic = bool(ARABIC.search(query))
+    back = f"/?{urlencode({'q': query})}" if arabic else "/"
+    return State(["No Arabic word for “", ar(query) if arabic else query, "”"], [COVERAGE, div(class_="empty")[
         p["AraDict found no Arabic word with this English meaning. You could:"],
         ul[
             li["Check the spelling."],
