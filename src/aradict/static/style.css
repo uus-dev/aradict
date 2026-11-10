@@ -65,3 +65,24 @@ a { color: var(--accent) }
 @media (max-width: 640px) {
   .entry { grid-template-columns: 1fr; padding: 14px }
 }
+
+/* On-screen keyboard: the Arabic (101) layout in physical key order, so it keeps left to right. */
+.search [data-keyboard] { padding-inline: 10px; border: 1px solid var(--line); background: var(--surface); color: var(--fg) }
+.search [data-keyboard][aria-expanded="true"] { border-color: var(--accent); color: var(--accent) }
+.osk { max-width: 46rem; padding: 6px; background: var(--line); border-radius: 10px; direction: ltr; user-select: none; -webkit-user-select: none; touch-action: manipulation }
+.osk .row { display: grid; grid-template-columns: repeat(26, minmax(0, 1fr)); gap: 5px }
+.osk .row + .row { margin-block-start: 5px }
+.osk .row:nth-child(2) .key:first-child { grid-column: 3 / span 2 }
+.key { grid-column: span 2; position: relative; min-height: 48px; padding: 0; border: 0; border-radius: 6px; background: var(--surface); color: var(--fg); font: 24px/1 var(--f-ar); cursor: pointer }
+.key:active { background: var(--accent); color: var(--surface) }
+.key.fn { grid-column: span 3; font: 500 .9rem var(--f-ui) }
+.key.space { grid-column: span 23 }
+.key[aria-pressed="true"] { background: var(--fg); color: var(--bg) }
+.key[data-cap]::after { content: attr(data-cap); position: absolute; inset-block-start: 3px; inset-inline-start: 5px; font: 10px/1 var(--f-ui); color: var(--muted) }
+@media (max-width: 640px) {
+  .osk { margin-inline: -16px; padding: 4px; border-radius: 0 }
+  .osk .row { gap: 3px }
+  .osk .row + .row { margin-block-start: 3px }
+  .key { min-height: 44px; font-size: 21px }
+  .key[data-cap]::after { display: none }
+}

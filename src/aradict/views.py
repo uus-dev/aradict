@@ -6,7 +6,7 @@ import re
 from typing import NamedTuple
 from urllib.parse import urlencode
 
-from htpy import Node, a, blockquote, body, br, button, code, dd, div, dl, dt, form, fragment, h1, h2, head, header, html, i, input, label, li, link, main, meta, nav, p, script, section, span, template, title, ul
+from htpy import Node, a, blockquote, body, br, button, code, dd, div, dl, dt, form, fragment, h1, h2, head, header, html, i, input, label, li, link, main, meta, nav, p, path, rect, script, section, span, svg, template, title, ul
 
 from .dictionary import Reading
 
@@ -114,6 +114,20 @@ FAILURE = State(
 )
 
 
+def _keyboard_toggle(field: str) -> Node:
+    """Opens the on-screen keyboard that types into a field. Hidden until keyboard.js draws the keys and shows it."""
+    return button(type="button", hidden=True, data_keyboard=field, aria_controls=f"{field}-keyboard", aria_expanded="false", aria_label="Arabic keyboard")[
+        svg(width="24", height="18", viewBox="0 0 24 18", fill="none", stroke="currentColor", stroke_width="1.6", aria_hidden="true")[
+            rect(x="1", y="1", width="22", height="16", rx="2"),
+            path(d="M5 6h1M9 6h1M13 6h1M17 6h1M5 10h1M9 10h1M13 10h1M17 10h1M7 13.5h10", stroke_linecap="round"),
+        ]
+    ]
+
+
+def _keyboard_panel(field: str) -> Node:
+    return div(id=f"{field}-keyboard", class_="osk", role="group", aria_label="Arabic keyboard", hidden=True)
+
+
 def word_page(query: str, state: State, filter_diacritics: bool = True) -> Node:
     return _page("Word", "word", [
         h1(class_="sr-only")["Word lookup"],
@@ -125,15 +139,18 @@ def word_page(query: str, state: State, filter_diacritics: bool = True) -> Node:
         )[
             label(for_="q", class_="sr-only")["Arabic word"],
             input(id="q", name="q", value=query, dir="rtl", lang="ar", autocomplete="off", spellcheck="false"),
+            _keyboard_toggle("q"),
             a(href="/", class_="clear", hidden=not query)["Clear"],
             button(type="submit")["Look up"],
             label(class_="option")[input(type="checkbox", name="diacritics", value="off", checked=not filter_diacritics), " Ignore diacritics"],
         ],
+        _keyboard_panel("q"),
         p(id="status", class_="status", role="status")[state.status],
         div(id="results")[state.body],
         # Shown by lookup.js when a live lookup fails, including when the server can't be reached.
         template(id="failure", data_status=FAILURE.status)[FAILURE.body],
         script(src="/static/lookup.js", type="module"),
+        script(src="/static/keyboard.js", type="module"),
     ])
 
 
