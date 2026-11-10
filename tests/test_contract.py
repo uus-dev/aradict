@@ -1,5 +1,7 @@
 """The dictionary contract, checked against the real pinned database."""
 
+import re
+import time
 import unicodedata
 from dataclasses import replace
 
@@ -18,7 +20,7 @@ def first_sense(gloss: str) -> str:
 
 
 def test_ktb_has_three_readings(real):
-    assert sorted(first_sense(r.gloss) for r in real.lookup_ar("كتب")) == ["books", "he/it was written", "he/it write"]
+    assert sorted(first_sense(r.gloss) for r in real.lookup_ar("كتب")) == ["books", "he/it was written", "he/it wrote"]
 
 
 def test_clitics_and_case_endings_collapse(real):
@@ -38,7 +40,7 @@ def test_unknown_word_has_no_readings(real):
 
 
 def test_typed_diacritics_filter_readings(real):
-    assert [first_sense(r.gloss) for r in real.lookup_ar("كَتَبَ")] == ["he/it write"]
+    assert [first_sense(r.gloss) for r in real.lookup_ar("كَتَبَ")] == ["he/it wrote"]
     assert len(real.lookup_ar("كَتَبَ", filter_diacritics=False)) == 3
 
 
@@ -185,3 +187,114 @@ def test_readings_place_their_lemma_among_all_lemmas_by_frequency(real):
     top = {r.lemma: r.top_percent for r in real.lookup_ar("سيكتبون")}
     assert top == {"كَتَب": pytest.approx(5.2, abs=0.05), "أَكْتَب": None}
     assert [r.top_percent for r in real.lookup_ar("استخدم")][0] == pytest.approx(7.2, abs=0.05)
+
+
+def test_text_keeps_every_token_in_order_with_its_kind_and_offset(real):
+    passage = "كتب، 3 BBC\nقخغثص"
+    tokens = real.analyze_text(passage)
+    assert [(t.text, t.kind) for t in tokens] == [
+        ("كتب", "word"), ("،", "punctuation"), (" ", "space"), ("3", "number"), (" ", "space"),
+        ("BBC", "foreign"), ("\n", "space"), ("قخغثص", "unknown"),
+    ]
+    assert all(passage[t.start:t.end] == t.text for t in tokens)
+    assert tokens[0].readings == tuple(real.lookup_ar("كتب")) and tokens[-1].readings == ()
+
+
+def test_text_diacritics_filter_their_own_token(real):
+    vocalized, bare = real.analyze_text("كَتَبَ كتب")[::2]
+    assert [first_sense(r.gloss) for r in vocalized.readings] == ["he/it wrote"]
+    assert len(bare.readings) == 3
+
+
+def test_suggestions_complete_a_stem_most_frequent_first(real):
+    # كِتاب "book" (-3.5), كُتّاب "writers" from two lemmas (-3.9, shown once), كَتائِب "battalions"
+    # (-4.2), and كِتابَة "writing" (-4.4), whose stem is كِتاب with the feminine ة attached.
+    suggestions = real.suggest("كتا")
+    assert suggestions[:4] == ["كِتاب", "كُتّاب", "كَتائِب", "كِتابَة"]
+    assert len(suggestions) == len(set(suggestions))
+
+
+def test_suggestions_keep_an_attached_prefix(real):
+    suggestions = real.suggest("وكتا")
+    assert suggestions[:2] == ["وَكِتاب", "وَكُتّاب"]
+    assert all(s.startswith("وَ") for s in suggestions)
+    # Completions of the whole typed word come before those that read part of it as a prefix:
+    # الكت completes إِلِكْترُونِيّ "electronic" as well as الكِتاب "the book".
+    suggestions = real.suggest("الكت")
+    assert suggestions.index("إِلِكْترُونِيّ") < suggestions.index("الكِتاب")
+
+
+def test_typed_diacritics_and_hamza_filter_suggestions(real):
+    assert real.suggest("كُتّا") == ["كُتّاب"]  # the damma and shadda leave out كِتاب
+    assert "كِتاب" in real.suggest("كُتّا", filter_diacritics=False)
+    assert real.suggest("وَكُتّا") == ["وَكُتّاب"]  # marks on the prefix count too
+    assert real.suggest("وِكتا") == []
+    assert "إِلَى" in real.suggest("ال")  # a bare ا completes any hamza form
+    assert {s[0] for s in real.suggest("أك")} == {"أ"}  # a typed hamza keeps only its own
+
+
+def test_looking_up_a_suggestion_shows_that_reading(real):
+    for typed in ("كتا", "وكتا", "مدر", "يكت", "الكت", "ك"):
+        for suggestion in real.suggest(typed):
+            assert suggestion in [r.form for r in real.lookup_ar(suggestion)], (typed, suggestion)
+
+
+def test_suggestions_are_capped_and_need_arabic_letters(real):
+    assert len(real.suggest("ك")) == 25
+    for text in ("", "  ", "قخغ", "hello", "123"):
+        assert real.suggest(text) == [], text
+
+
+def letters(arabic: str) -> str:
+    return re.sub("[ً-ٰٟ]", "", arabic)
+
+
+def test_arabizi_without_vowels_reads_as_the_bare_letters(real):
+    assert real.arabizi("ktb") == "كتب"
+
+
+def test_arabizi_vowels_are_marks_or_long_letters_as_the_database_confirms(real):
+    # The reference leaves "i" in Latin and always writes "a" as ا.
+    assert real.arabizi("kitab") == "كِتاب"
+    assert real.arabizi("katab") == "كَتَب"
+    # The typed vowel filters like a vowel mark, as About promises: كِتاب "book", not كُتّاب "writers".
+    assert [r.lemma for r in real.lookup_ar(real.arabizi("kitab"))] == ["كِتاب"]
+
+
+def test_arabizi_digits_stand_for_letters_and_final_vowels_for_letters(real):
+    assert letters(real.arabizi("mar7aba")) == "مرحبا"
+    assert letters(real.arabizi("3arabi")) == "عربي"
+
+
+@pytest.mark.parametrize("arabizi, arabic", [
+    ("shams", "شمس"), ("khubz", "خبز"), ("5ubz", "خبز"), ("ghurfa", "غرفة"), ("thaqafa", "ثقافة"), ("dhikr", "ذكر"),
+    ("9alb", "قلب"), ("su2al", "سؤال"), ("2akl", "أكل"),  # 2 is a hamza
+    ("mudarris", "مدرس"), ("allah", "الله"),  # a doubled consonant is a shadda or two letters
+    ("kbeer", "كبير"), ("saa3a", "ساعة"), ("beit", "بيت"), ("mustashfa", "مستشفى"),
+    ("shukran", "شكرا"),  # a final "an" may be tanween: شُكْراً
+    ("al-kitab", "الكتاب"),
+])
+def test_arabizi_spelling_conventions(real, arabizi, arabic):
+    assert letters(real.arabizi(arabizi)) == arabic
+
+
+def test_arabizi_picks_the_spelling_with_the_most_frequent_lemma(real):
+    # s may be س or ص, h ه or ح: صَباح "morning" outranks سَبّاح "swimmer".
+    assert letters(real.arabizi("sabah")) == "صباح"
+
+
+def test_arabizi_needs_a_known_word(real):
+    assert real.arabizi("zzz") is None  # Arabizi letters, but no Arabic word
+    assert real.arabizi("xbox") is None  # x stands for no Arabic letter
+    assert real.arabizi("كتب") is None  # Arabic script is not Arabizi
+    assert real.arabizi(" ") is None
+
+
+def test_arabizi_reads_the_first_word(real):
+    assert real.arabizi(" kitab  kabir ") == real.arabizi("kitab")
+
+
+def test_arabizi_answers_quickly_however_long_the_word(real):
+    start = time.perf_counter()
+    real.arabizi("kitab" * 20)
+    assert time.perf_counter() - start < 2

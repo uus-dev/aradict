@@ -3,12 +3,13 @@
 from __future__ import annotations
 
 import re
+from collections.abc import Iterable
 from typing import NamedTuple
 from urllib.parse import urlencode
 
-from htpy import Node, a, blockquote, body, br, button, code, dd, details, div, dl, dt, form, fragment, h1, h2, head, header, html, i, input, label, li, link, main, meta, nav, ol, p, script, section, span, summary, template, title, ul
+from htpy import Element, Node, a, blockquote, body, br, button, code, dd, details, div, dl, dt, form, fragment, h1, h2, h3, head, header, html, i, input, label, li, link, main, meta, nav, ol, p, path, rect, script, section, span, summary, svg, template, textarea, title, ul
 
-from .dictionary import Reading, Segment
+from .dictionary import Reading, Segment, Token
 
 PAGES = [("word", "/", "Word"), ("text", "/text", "Text"), ("about", "/about", "About")]
 
@@ -16,6 +17,10 @@ PAGES = [("word", "/", "Word"), ("text", "/text", "Text"), ("about", "/about", "
 def ar(text: str) -> Node:
     """Arabic inside an English page: its own language and right-to-left direction."""
     return span(class_="ar", lang="ar", dir="rtl")[text]
+
+
+def _arabizi(text: str) -> Node:
+    return i(lang="ar-Latn")[text]
 
 
 def _page(heading: str, active: str, content: Node) -> Node:
@@ -102,12 +107,12 @@ def _reading(group: list[Reading]) -> Node:
     )]
 
 
-def _entry(lemma: str, glosses: dict[str, list[Reading]]) -> Node:
+def _entry(lemma: str, glosses: dict[str, list[Reading]], heading: Element) -> Node:
     """A lemma's heading, said once, then its readings, one result per gloss."""
     first = next(iter(glosses.values()))[0]
     return section(class_="entry")[
         div(class_="head")[
-            h2[ar(lemma)],
+            heading[ar(lemma)],
             p(class_="pos")[_kind(first)],
             dl[dt["Root"], dd[_root(first.root)], dt["Use"], dd[_use(first.top_percent)]],
         ],
@@ -115,15 +120,19 @@ def _entry(lemma: str, glosses: dict[str, list[Reading]]) -> Node:
     ]
 
 
-def _entries(readings: list[Reading]) -> Node:
+LEGEND = p(class_="legend")["In each form: ", span(class_="prefix")["prefix"], " · stem · ", span(class_="suffix")["suffix"]]
+
+
+def _count(readings) -> str:
+    return f"{len(readings)} reading{'s' if len(readings) != 1 else ''}"
+
+
+def _entries(readings: Iterable[Reading], heading: Element = h2) -> Node:
     """One entry per lemma and part of speech, in the order the readings arrive."""
     groups: dict[tuple[str, str], dict[str, list[Reading]]] = {}
     for reading in readings:
         groups.setdefault((reading.lemma, reading.pos), {}).setdefault(reading.gloss, []).append(reading)
-    return [
-        p(class_="legend")["In each form: ", span(class_="prefix")["prefix"], " · stem · ", span(class_="suffix")["suffix"]],
-        div(class_="entries")[(_entry(lemma, glosses) for (lemma, _), glosses in groups.items())],
-    ]
+    return div(class_="entries")[(_entry(lemma, glosses, heading) for (lemma, _), glosses in groups.items())]
 
 
 def _intro() -> Node:
@@ -136,33 +145,48 @@ def _intro() -> Node:
 
 
 class State(NamedTuple):
-    """One outcome of a lookup: the status line, which screen readers announce, and what
-    fills the results area below it."""
+    """One outcome of a lookup: the status line, which screen readers announce, what fills
+    the results area below it, and the Arabic an Arabizi query was looked up as."""
 
     status: Node = None
     body: Node = None
+    arabizi: str | None = None
 
 
 INITIAL = State(body=_intro())
 
 
-def looked_up(query: str, readings: list[Reading]) -> State:
-    """The outcome of a completed lookup. Of several words only the first is looked up, and a notice says so."""
+def looked_up(query: str, readings: list[Reading], arabizi: str | None = None) -> State:
+    """The outcome of a completed lookup. Of several words only the first is looked up, and a notice says so.
+    An Arabizi query is looked up as the Arabic it was read as, given in arabizi."""
     words = query.split()
     latin = bool(re.search("[A-Za-z]", query)) and not re.search("[\u0600-\u06ff]", query)
     notice = p(class_="notice")[
-        "Only the first word, ", ar(words[0]), ", was looked up. ",
-        a(href=f"/text?{urlencode({'q': query})}")["Read them all in the Text view"], ".",
-    ] if len(words) > 1 and not latin else None
+        "Only the first word, ", _arabizi(words[0]) if latin else ar(words[0]), ", was looked up.",
+        # The Text view reads Arabic script only.
+        not latin and [" ", a(href=f"/text?{urlencode({'q': query})}")["Read them all in the Text view"], "."],
+    ] if len(words) > 1 else None
     if readings:
-        return State([f"{len(readings)} reading{'s' if len(readings) != 1 else ''} for ", ar(words[0])], [notice, _entries(readings)])
-    if latin:  # ponytail: a hint until Arabizi (#10) and English lookup (#9) ship
-        return State("Type the word in Arabic script", div(class_="empty")[
-            p["Arabic in Latin letters (Arabizi) isn't supported yet. Looking for an English word? English → Arabic lookup is coming soon."],
-        ])
+        return State([f"{_count(readings)} for ", ar(arabizi or words[0])], [notice, LEGEND, _entries(readings)], arabizi)
+    if latin:
+        return State(["No Arabic word for ", _arabizi(words[0])], [notice, div(class_="empty")[
+            p["AraDict read this as Arabic in Latin letters (Arabizi), but found no word it could stand for. You could:"],
+            ul[
+                li[
+                    "Check the spelling. Use digits for the letters Latin lacks: 2 for ", ar("ء"), ", 3 for ", ar("ع"), ", 5 for ",
+                    ar("خ"), ", 7 for ", ar("ح"), " and 9 for ", ar("ق"), ". ", a(href="/about#typing")["More about Arabizi"],
+                ],
+                li["Type it in Arabic script."],
+                li["Looking for an English word? English → Arabic lookup is coming soon."],
+            ],
+        ]])
     return State(["No entry for ", ar(words[0])], [notice, div(class_="empty")[
         p["AraDict couldn't find this word in its Modern Standard Arabic dictionary. You could:"],
-        ul[li["Check the spelling."], li["Type it without vowel marks."]],
+        ul[
+            li["Check the spelling."],
+            li["Type it without vowel marks."],
+            li["Type it in Latin letters (Arabizi), such as ", _arabizi("kitab"), " or ", _arabizi("3arabi"), "."],
+        ],
     ]])
 
 
@@ -170,6 +194,25 @@ FAILURE = State(
     "Lookup failed. Your word is kept, so you can try again.",
     p(class_="retry")[button(type="submit", form="search")["Retry"]],
 )
+
+
+def _keyboard_toggle(field: str) -> Node:
+    """Opens the on-screen keyboard that types into a field. Hidden until keyboard.js draws the keys and shows it."""
+    return button(type="button", hidden=True, data_keyboard=field, aria_controls=f"{field}-keyboard", aria_expanded="false", aria_label="Arabic keyboard")[
+        svg(width="24", height="18", viewBox="0 0 24 18", fill="none", stroke="currentColor", stroke_width="1.6", aria_hidden="true")[
+            rect(x="1", y="1", width="22", height="16", rx="2"),
+            path(d="M5 6h1M9 6h1M13 6h1M17 6h1M5 10h1M9 10h1M13 10h1M17 10h1M7 13.5h10", stroke_linecap="round"),
+        ]
+    ]
+
+
+def _keyboard_panel(field: str) -> Node:
+    return div(id=f"{field}-keyboard", class_="osk", role="group", aria_label="Arabic keyboard", hidden=True)
+
+
+def _arabizi_chip(arabic: str | None, **attributes) -> Node:
+    """Next to the input: the Arabic an Arabizi query was looked up as."""
+    return p(id="arabizi", class_="arabizi", hidden=not arabic, **attributes)[arabic and ["Looked up as ", ar(arabic)]]
 
 
 def word_page(query: str, state: State, filter_diacritics: bool = True) -> Node:
@@ -183,32 +226,122 @@ def word_page(query: str, state: State, filter_diacritics: bool = True) -> Node:
         )[
             label(for_="q", class_="sr-only")["Arabic word"],
             input(id="q", name="q", value=query, dir="rtl", lang="ar", autocomplete="off", spellcheck="false"),
+            _keyboard_toggle("q"),
             a(href="/", class_="clear", hidden=not query)["Clear"],
             button(type="submit")["Look up"],
-            label(class_="option")[input(type="checkbox", name="diacritics", value="off", checked=not filter_diacritics), " Ignore diacritics"],
+            _arabizi_chip(state.arabizi),
+            label(class_="option")[input(type="checkbox", name="diacritics", value="off", checked=not filter_diacritics, data_remember=True), " Ignore diacritics"],
+            # Shown by autocomplete.js and remembered by history.js. form="" leaves it out of the lookup and its URL.
+            label(class_="option", hidden=True)[input(type="checkbox", name="autocomplete", form="", checked=True, data_remember=True), " Show suggestions"],
         ],
+        _keyboard_panel("q"),
+        _history(),
         p(id="status", class_="status", role="status")[state.status],
         div(id="results")[state.body],
         # Shown by lookup.js when a live lookup fails, including when the server can't be reached.
         template(id="failure", data_status=FAILURE.status)[FAILURE.body],
         script(src="/static/lookup.js", type="module"),
+        script(src="/static/keyboard.js", type="module"),
+        script(src="/static/history.js", type="module"),
+        script(src="/static/autocomplete.js", type="module"),  # after history.js, which restores its switch
     ])
 
 
+def _history() -> Node:
+    """Recent lookups. history.js fills the list from this browser's storage and shows the panel,
+    so without JavaScript, where there is no history, it stays hidden. It sits outside the search
+    form, so nothing in it is ever sent with a lookup."""
+    return details(id="history", class_="history", hidden=True)[
+        summary["Recent lookups"],
+        ol,
+        p(class_="none")["Words you look up appear here."],
+        p(class_="tools")[
+            label["Keep ", input(type="number", name="history-size", min="0", value="50", data_remember=True), " lookups"],
+            button(type="button")["Clear history"],
+        ],
+    ]
+
+
 def live_results(state: State) -> Node:
-    """What a live lookup swaps into the results area, with the status line updated out of band."""
+    """What a live lookup swaps into the results area, with the status line and Arabizi chip updated out of band."""
+    return fragment[p(id="status", hx_swap_oob="innerHTML")[state.status], _arabizi_chip(state.arabizi, hx_swap_oob="true"), state.body]
+
+
+def live_analysis(state: State) -> Node:
+    """What live analysis swaps into the analysis area, with the status line updated out of band."""
     return fragment[p(id="status", hx_swap_oob="innerHTML")[state.status], state.body]
 
 
-def text_page() -> Node:
-    return _page("Text", "text", [h1["Text"], p["Passage analysis is coming soon. For now, look up one word at a time on the Word page."]])
+MAX_TEXT = 2000
+TEXT_FAILURE = State("Analysis failed. Your text is kept, so you can try again.")
+
+
+def _token(t: Token, ids: dict[str, str]) -> Node:
+    """A word as a button that opens its details; anything else as it was typed."""
+    if t.kind not in ("word", "unknown"):
+        return t.text
+    return button(type="button", class_=f"tok {t.kind}", popovertarget=ids[t.text])[
+        t.text, span(class_="sr-only", lang="en")[", ", _count(t.readings) if t.readings else "not in the dictionary"],
+    ]
+
+
+def _details(t: Token, id: str) -> Node:
+    """A word's readings, grouped by lemma as on the Word page, in a native popover."""
+    return div(id=id, class_="tok-pop", popover=True, role="dialog", aria_labelledby=f"{id}-h")[
+        div(class_="tp-head")[
+            h2(id=f"{id}-h")[ar(t.text)],
+            p(class_="muted")[_count(t.readings) if t.readings else "not in the dictionary"],
+            button(type="button", popovertarget=id, popovertargetaction="hide")["Close"],
+        ],
+        _entries(t.readings, h3) if t.readings else p(class_="tp-msg")[
+            "AraDict couldn't find this word in its Modern Standard Arabic dictionary."
+        ],
+        p(class_="tp-foot")[a(href=f"/?{urlencode({'q': t.text})}")["Open in Word lookup"]],
+    ]
+
+
+def analysed(tokens: list[Token]) -> State:
+    """The passage as typed, each word opening its details. A word written twice opens the same details."""
+    words: dict[str, Token] = {}  # each word once, in order
+    for t in tokens:
+        if t.kind in ("word", "unknown"):
+            words.setdefault(t.text, t)
+    ids = {word: f"w{i}" for i, word in enumerate(words)}
+    n, unknown = sum(t.kind in ("word", "unknown") for t in tokens), sum(t.kind == "unknown" for t in tokens)
+    status = f"{n} word{'s' if n != 1 else ''}{f', {unknown} not in the dictionary' if unknown else ''}" if n else "No Arabic words to analyse."
+    return State(status, [
+        # The passage keeps its spaces and line breaks (white-space: pre-wrap).
+        div(class_="passage", lang="ar", dir="rtl")[(_token(t, ids) for t in tokens)],
+        (_details(t, ids[word]) for word, t in words.items()),
+    ])
+
+
+def text_page(text: str, state: State) -> Node:
+    return _page("Text", "text", [
+        h1(class_="sr-only")["Text"],
+        # Posted, so a passage stays out of the page address. Live analysis is the same POST, after a pause
+        # in typing and at once on submit; a newer request aborts an older one.
+        form(
+            id="analyse", class_="text-in", method="post", action="/text", data_failure=TEXT_FAILURE.status,
+            hx_post="/text", hx_trigger="input delay:500ms, submit", hx_target="#analysis", hx_sync="this:replace",
+        )[
+            label(for_="text")["Arabic text"],
+            textarea(
+                id="text", name="text", rows="4", dir="rtl", lang="ar", spellcheck="false",
+                placeholder="Paste or type Arabic text", aria_describedby="text-hint",
+            )[text],
+            p(id="text-hint", class_="hint")[f"Analyse at most {MAX_TEXT:,} characters at a time."],
+            div(class_="actions")[button(type="submit")["Analyse"], _keyboard_toggle("text")],
+        ],
+        _keyboard_panel("text"),
+        p(id="status", class_="status", role="status")[state.status],
+        div(id="analysis")[state.body],
+        script(src="/static/text.js", type="module"),
+        script(src="/static/keyboard.js", type="module"),
+    ])
 
 
 REPO = "https://github.com/uus-dev/aradict"
-
-
-def _arabizi(text: str) -> Node:
-    return i(lang="ar-Latn")[text]
 
 
 def about_page() -> Node:
@@ -258,7 +391,8 @@ def about_page() -> Node:
                 _arabizi("3arabi"), ". AraDict turns them into Arabic script and shows the Arabic it looked up. Digits stand for letters "
                 "with no Latin match: 2 for ", ar("ء"), ", 3 for ", ar("ع"), ", 5 for ", ar("خ"), ", 7 for ", ar("ح"), " and 9 for ",
                 ar("ق"), ". The pairs sh, kh, gh, th and dh stand for ", ar("ش"), ", ", ar("خ"), ", ", ar("غ"), ", ", ar("ث"), " and ",
-                ar("ذ"), ". Short vowels are optional."
+                ar("ذ"), ". Short vowels are optional, and the ones you type work like vowel marks: ", _arabizi("kitab"), " finds ",
+                ar("كِتاب"), " “book” but not ", ar("كُتّاب"), " “writers”."
             ],
         ],
         section(id="sources")[

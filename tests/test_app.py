@@ -1,8 +1,8 @@
 """Pages, served by the app over the fixture database."""
 
 import html
-import unicodedata
 import re
+import unicodedata
 from urllib.parse import parse_qs, urlsplit
 
 
@@ -17,7 +17,8 @@ def test_word_page_lists_readings_grouped_by_lemma(client):
 
 def test_reading_shows_marked_parts_gloss_grammar_and_word_parts(client):
     page = client.get("/", params={"q": "وبكتابهم"}).text
-    reading = page[page.index('<li class="reading">'):page.index("</details>")]
+    start = page.index('<li class="reading">')
+    reading = page[start:page.index("</details>", start)]
     # The form, with each part marked by its role.
     assert ('<span class="ar form" lang="ar" dir="rtl"><span class="prefix">وَ</span><span class="prefix">بِ</span>'
             '<span class="stem">كِتاب</span><span class="suffix">هم</span></span>') in reading
@@ -45,6 +46,7 @@ def test_unknown_word_says_so_and_suggests_next_steps(client):
     assert "No entry for" in page.text
     assert "Check the spelling" in page.text
     assert "without vowel marks" in page.text
+    assert "Latin letters (Arabizi)" in page.text
     assert 'class="reading"' not in page.text
 
 
@@ -86,7 +88,7 @@ def test_about_answers_what_a_visitor_needs_before_trusting_a_result(client):
     assert 'class="placeholder"' in about
     # Typing Arabic: hamza, diacritics, the on-screen keyboard, phone keyboards, Arabizi.
     typing = about[about.index('id="typing"'):]
-    for topic in ("hamza", "vowel marks", "on-screen keyboard", "phone", "Arabizi", "mar7aba"):
+    for topic in ("hamza", "vowel marks", "on-screen keyboard", "phone", "Arabizi", "mar7aba", "kitab"):
         assert topic in typing, topic
     # Privacy: no accounts, history on the device, passages not logged.
     privacy = about[about.index('id="privacy"'):]
@@ -186,18 +188,30 @@ def test_diacritic_filter_is_on_by_default_and_can_be_switched_off(client):
 
 def test_form_has_a_labelled_diacritics_switch(client):
     page = client.get("/").text
-    assert re.search(r'<label[^>]*>\s*<input type="checkbox" name="diacritics" value="off"\s*>\s*Ignore diacritics', page)
+    assert re.search(r'<label[^>]*>\s*<input type="checkbox" name="diacritics" value="off"[^>]*>\s*Ignore diacritics', page)
 
 
-def test_latin_letters_get_a_hint_towards_english(client):
+def test_latin_word_with_no_arabic_match_shows_the_no_results_guidance(client):
     page = client.get("/", params={"q": "hello"}).text
     assert 'class="reading"' not in page
-    assert "English" in page
+    assert "No Arabic word for" in page
+    assert "Check the spelling" in page and "7 for" in page  # the Arabizi digits
+    assert "English" in page  # perhaps it was an English word
     assert "English" not in client.get("/", params={"q": "قخغثص"}).text
+    assert chip(page) == ""
 
 
 def test_one_word_has_no_multi_word_notice(client):
     assert "Only the first word" not in client.get("/", params={"q": "كتب"}).text
+
+
+def test_suggestions_come_as_a_list_of_vocalized_forms(client):
+    response = client.get("/suggest", params={"q": "كتا"})
+    assert response.status_code == 200
+    assert response.json()[:2] == ["كِتاب", "كُتّاب"]
+    assert client.get("/suggest", params={"q": "كُتّا"}).json() == ["كُتّاب"]
+    assert "كِتاب" in client.get("/suggest", params={"q": "كُتّا", "diacritics": "off"}).json()  # follows the switch
+    assert client.get("/suggest", params={"q": ""}).json() == []
 
 
 def test_server_does_not_log_looked_up_words(monkeypatch):
@@ -243,3 +257,122 @@ def test_readings_that_share_a_gloss_are_one_result_listing_every_form(client):
     assert sorted(forms) == sorted(["سابِقِي", "سابِقَيَّ", "سابِقِيَّ"])  # singular, dual and plural
     assert result.count('class="gloss"') == 1
     assert result.count('class="grammar"') == 3  # each form keeps its own grammar
+
+
+def test_text_page_starts_with_an_empty_passage_box_and_documents_its_limit(client):
+    page = client.get("/text").text
+    assert re.search(r'<textarea[^>]*placeholder="[^"]+"[^>]*></textarea>', page)
+    assert "at most 2,000 characters" in page
+    assert 'method="post" action="/text"' in page  # a passage never goes into the page address
+
+
+def passage_of(page: str) -> str:
+    return re.search(r'<div class="passage"[^>]*>(.*?)</div>', page, re.S).group(1)
+
+
+def test_text_keeps_the_passage_in_order_and_marks_unknown_words(client):
+    passage = passage_of(client.post("/text", data={"text": "كتب، 3 BBC\r\nقخغثص كتب"}).text)
+    # What a reader sees is the passage as typed: punctuation, number, Latin text and line break in place.
+    shown = re.sub(r'<span class="sr-only".*?</span>|<[^>]+>', "", passage)
+    assert html.unescape(shown) == "كتب، 3 BBC\nقخغثص كتب"
+    # Each word is a button; an unknown word is marked by its class and its accessible name, not by colour alone.
+    assert re.findall(r'<button type="button" class="tok (\w+)" popovertarget="(\w+)">', passage) == [
+        ("word", "w0"), ("unknown", "w1"), ("word", "w0"),  # the repeated word opens the same details
+    ]
+    assert '<span class="sr-only" lang="en">, 3 readings</span>' in passage
+    assert '<span class="sr-only" lang="en">, not in the dictionary</span>' in passage
+
+
+def test_word_details_show_its_readings_and_open_in_word_lookup(client):
+    page = client.post("/text", data={"text": "كَتَبَ كتب قخغثص"}).text
+    vocalized, bare, unknown = (page[page.index(f'<div id="{i}"'):] for i in ("w0", "w1", "w2"))
+    assert re.match(r'<div id="w0" class="tok-pop" popover role="dialog" aria-labelledby="w0-h">', vocalized)
+    # The same entries as the Word page: one per lemma, with its part of speech and root, then its readings.
+    assert vocalized[:vocalized.index('id="w1"')].count('class="reading"') == 1  # only the vocalized reading
+    assert bare[:bare.index('id="w2"')].count('class="entry"') == 2 and bare[:bare.index('id="w2"')].count('class="reading"') == 3
+    assert '<p class="gloss">he/it wrote</p>' in vocalized and "<dt>Root</dt>" in vocalized
+    assert "not in the dictionary" in unknown and 'class="reading"' not in unknown
+    hrefs = [html.unescape(h) for h in re.findall(r'<a href="([^"]*)">Open in Word lookup</a>', page)]
+    assert [parse_qs(urlsplit(h).query) for h in hrefs] == [{"q": ["كَتَبَ"]}, {"q": ["كتب"]}, {"q": ["قخغثص"]}]
+    assert all(h.startswith("/?") for h in hrefs)
+
+
+def test_overlong_text_shows_the_limit_and_keeps_all_of_it(client):
+    text = "كتب " * 500 + "كتاب"  # 2,004 characters
+    page = client.post("/text", data={"text": text})
+    assert page.status_code == 200
+    assert "2,004 characters" in page.text and "at most 2,000" in page.text
+    assert 'class="passage"' not in page.text
+    assert f">{text}</textarea>" in page.text  # nothing is cut off
+
+
+def test_pasted_markup_is_shown_as_text(client):
+    page = client.post("/text", data={"text": "<script>alert(1)</script> كتب"}).text
+    assert "<script>alert" not in page
+    assert html.unescape(re.sub(r"<[^>]+>", "", passage_of(page))).startswith("<script>alert(1)</script> كتب")
+
+
+def test_the_word_pages_text_view_link_analyses_all_its_words(client):
+    word_page = client.get("/", params={"q": "كتب كتاب"}).text
+    page = client.get(html.unescape(re.search(r'href="(/text\?[^"]*)"', word_page).group(1))).text
+    assert ">كتب كتاب</textarea>" in page
+    assert passage_of(page).count('class="tok word"') == 2
+
+
+def test_live_analysis_returns_the_passage_and_its_status(client):
+    page = client.post("/text", data={"text": "كتب قخغثص كتب"}, headers={"HX-Request": "true"})
+    assert "<html" not in page.text and "<textarea" not in page.text
+    assert 'id="arabizi"' not in page.text  # the Word page's Arabizi chip has no place to land here
+    assert '<p id="status" hx-swap-oob="innerHTML">3 words, 1 not in the dictionary</p>' in page.text
+    assert passage_of(page.text).count('class="tok ') == 3
+    assert page.headers["Vary"] == "HX-Request"
+
+
+def test_failed_analysis_keeps_the_text_and_never_logs_it(client, monkeypatch, caplog):
+    class Broken:
+        def analyze_text(self, text):
+            raise RuntimeError("database gone")
+
+    monkeypatch.setattr("aradict.app.dictionary", Broken)
+    page = client.post("/text", data={"text": "كتب سرّي"})
+    assert page.status_code == 500
+    assert "Analysis failed" in page.text and ">كتب سرّي</textarea>" in page.text
+    assert "database gone" in caplog.text and "سرّي" not in caplog.text
+
+
+def chip(page: str) -> str:
+    """The text of the Arabizi chip next to the input, or "" when it is hidden."""
+    tag = re.search(r'<p id="arabizi"([^>]*)>(.*?)</p>', page)
+    return "" if "hidden" in tag.group(1) else html.unescape(re.sub("<[^>]+>", "", tag.group(2)))
+
+
+def test_arabizi_is_looked_up_as_the_arabic_it_stands_for(client):
+    page = client.get("/", params={"q": "ktb"}).text
+    assert page.count('class="reading"') == 3  # the readings of كتب
+    assert '3 readings for <span class="ar" lang="ar" dir="rtl">كتب</span>' in page
+    assert "كتب" in chip(page)
+    assert 'value="ktb"' in page  # the input keeps what was typed
+
+    page = client.get("/", params={"q": "kitab"}).text
+    assert "كِتاب" in chip(page)  # Arabic script, with the vowel typed
+
+
+def test_arabic_input_shows_no_arabizi_chip(client):
+    assert chip(client.get("/", params={"q": "كتب"}).text) == ""
+    assert chip(client.get("/").text) == ""
+
+
+def test_live_lookup_updates_the_arabizi_chip(client):
+    live = {"HX-Request": "true"}
+    page = client.get("/", params={"q": "ktb"}, headers=live).text
+    assert 'hx-swap-oob="true"' in re.search(r'<p id="arabizi"[^>]*>', page).group(0)
+    assert "كتب" in chip(page)
+    for query in ("كتب", "hello", ""):  # Arabic, no match, and cleared all hide it
+        assert chip(client.get("/", params={"q": query}, headers=live).text) == "", query
+
+
+def test_several_latin_words_look_up_the_first(client):
+    page = client.get("/", params={"q": "ktb kitab"}).text
+    assert page.count('class="reading"') == 3
+    assert "Only the first word" in page
+    assert "/text?" not in page  # the Text view reads Arabic script only

@@ -7,8 +7,9 @@ from contextlib import asynccontextmanager
 from functools import lru_cache
 from pathlib import Path
 from typing import Annotated, Literal
+from urllib.parse import parse_qs
 
-from fastapi import FastAPI, Header
+from fastapi import FastAPI, Header, Request
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 
@@ -53,12 +54,13 @@ def word(
         state = views.State("Type a word: letters, not only numbers or symbols.")
     else:
         try:
-            readings = dictionary().lookup_ar(q, filter_diacritics)
+            arabizi = dictionary().arabizi(q)  # None unless q is Arabizi
+            readings = dictionary().lookup_ar(arabizi or q, filter_diacritics)
         except Exception:
             logger.exception("Lookup failed")  # the query stays out of the log
             state, status_code = views.FAILURE, 500
         else:
-            state = views.looked_up(q, readings)
+            state = views.looked_up(q, readings, arabizi)
     page = views.live_results(state) if hx_request else views.word_page(q, state, filter_diacritics)
     headers = {"Vary": "HX-Request"}
     if hx_request and not q:
@@ -67,9 +69,40 @@ def word(
     return HTMLResponse(str(page), status_code, headers)
 
 
+def _analyse(text: str, hx_request: str | None = None) -> HTMLResponse:
+    text = text.replace("\r\n", "\n").strip()  # a form posts line breaks as CR LF
+    status_code = 200
+    if not text:
+        state = views.State()
+    elif len(text) > views.MAX_TEXT:
+        state = views.State(f"Your text has {len(text):,} characters. Analyse at most {views.MAX_TEXT:,} at a time: shorten it and try again.")
+    else:
+        try:
+            state = views.analysed(dictionary().analyze_text(text))
+        except Exception:
+            logger.exception("Text analysis failed")  # the passage stays out of the log
+            state, status_code = views.TEXT_FAILURE, 500
+    page = views.live_analysis(state) if hx_request else views.text_page(text, state)
+    return HTMLResponse(str(page), status_code, {"Vary": "HX-Request"})
+
+
+@app.get("/suggest")
+def suggest(q: str = "", diacritics: Literal["on", "off"] = "on") -> list[str]:
+    """Autocomplete for the Word field: vocalized forms that complete the typed word."""
+    return dictionary().suggest(q, diacritics == "on")
+
+
 @app.get("/text", response_class=HTMLResponse)
-def text() -> str:
-    return str(views.text_page())
+def text(q: str = "") -> HTMLResponse:
+    """The Text view. q carries the words the Word page hands over; a passage typed here is posted."""
+    return _analyse(q)
+
+
+@app.post("/text", response_class=HTMLResponse)
+async def analyse(request: Request, hx_request: Annotated[str | None, Header()] = None) -> HTMLResponse:
+    # ponytail: parsed by hand; FastAPI's Form() would add python-multipart for this one field.
+    form = parse_qs((await request.body()).decode(errors="replace"))
+    return _analyse(form.get("text", [""])[0], hx_request)
 
 
 @app.get("/about", response_class=HTMLResponse)
