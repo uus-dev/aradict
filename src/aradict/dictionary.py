@@ -125,6 +125,17 @@ class Token:
     readings: tuple[Reading, ...] = ()
 
 
+@dataclass(frozen=True)
+class Lookup:
+    """A lookup's response: what was looked up and how, whether that was all of the text, and the
+    readings in order."""
+
+    query: str  # the word looked up: the first typed, the Arabic an Arabizi word stands for, or an English phrase
+    mode: str  # "ar" (Arabic script, or Latin letters that stand for no Arabic word), "arabizi" or "en" (English)
+    complete: bool  # False when the text has more words than the one looked up
+    readings: tuple[Reading, ...]
+
+
 def _reading_key(analysis: dict) -> tuple:
     # Ignoring case (cas), state (stt) and mood (mod) folds case and mood endings into one
     # reading. Treating every وَ reading (and, while, particle) as one folds the proclitic.
@@ -392,6 +403,19 @@ class Dictionary:
                 measure=self.measure(a["lex"], root) if a["pos"] == "verb" and root else None,
             ))
         return readings
+
+    def lookup(self, text: str, english: bool = False, filter_diacritics: bool = True) -> Lookup:
+        """The lookup the Word page makes: English → Arabic with english set; otherwise Arabic →
+        English for the first word, in Arabic script or Arabizi (see lookup_ar and arabizi)."""
+        if english:
+            phrase = " ".join(text.split())
+            return Lookup(phrase, "en", True, tuple(self.lookup_en(phrase)))
+        words = text.split()
+        arabizi = self.arabizi(text)
+        return Lookup(
+            arabizi or (words[0] if words else ""), "arabizi" if arabizi else "ar", len(words) <= 1,
+            tuple(self.lookup_ar(arabizi or text, filter_diacritics)),
+        )
 
     def lookup_en(self, query: str) -> list[Reading]:
         """Arabic words with an English sense that is the query, a phrase matched whole and

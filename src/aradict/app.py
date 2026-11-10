@@ -94,10 +94,9 @@ def word(
         elif not any(c.isalpha() for c in q):
             state = views.State("Type a word: letters, not only numbers or symbols.")
         else:
-            arabizi = None if english else dictionary().arabizi(q)  # None unless q is Arabizi
-            readings = dictionary().lookup_en(q) if english else dictionary().lookup_ar(arabizi or q, filter_diacritics)
-            links = views.Links(lookup, {lemma: len(dictionary().related(*lemma)) for lemma in {(r.lemma, r.pos) for r in readings}})
-            state = views.looked_up_en(q, readings, links) if english else views.looked_up(q, readings, arabizi, links)
+            found = dictionary().lookup(q, english, filter_diacritics)
+            links = views.Links(lookup, {lemma: len(dictionary().related(*lemma)) for lemma in {(r.lemma, r.pos) for r in found.readings}})
+            state = views.looked_up_en(found, links) if english else views.looked_up(q, found, links)
     except Exception as error:
         _log_failure("Lookup failed", error)
         state, status_code = views.FAILURE, 500

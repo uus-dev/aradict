@@ -102,6 +102,21 @@ def test_several_words_analyse_the_first(real):
     assert real.lookup_ar(" كتب  كتاب ") == real.lookup_ar("كتب")
 
 
+def test_a_lookup_response_names_its_query_mode_and_completion(real):
+    found = real.lookup(" كتب  كتاب ")
+    assert (found.query, found.mode, found.complete) == ("كتب", "ar", False)  # one of two words looked up
+    assert found.readings == tuple(real.lookup_ar("كتب"))
+    found = real.lookup("kitab")
+    assert (found.query, found.mode, found.complete) == ("كِتاب", "arabizi", True)  # the Arabic it stands for
+    assert found.readings == tuple(real.lookup_ar("كِتاب"))
+    found = real.lookup("كَتَبَ", filter_diacritics=False)
+    assert (found.query, found.mode, found.complete, len(found.readings)) == ("كَتَبَ", "ar", True, 3)
+    found = real.lookup(" piece  of writing", english=True)
+    assert (found.query, found.mode, found.complete) == ("piece of writing", "en", True)  # a phrase, whole
+    assert found.readings == tuple(real.lookup_en("piece of writing"))
+    assert (real.lookup("zzz").mode, real.lookup("zzz").readings) == ("ar", ())  # Latin with no Arabic word
+
+
 def test_non_arabic_input_has_no_readings(real):
     # The analyzer invents a "foreign", "digit" or "punc" reading for these; none is a dictionary entry.
     for word in ("hello", "123", "كتب123", "؟"):

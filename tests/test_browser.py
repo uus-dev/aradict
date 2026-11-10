@@ -119,7 +119,7 @@ def test_a_slow_earlier_response_never_replaces_a_newer_one(base_url, browser):
 
 def test_a_failed_lookup_offers_retry_and_keeps_the_input(base_url, browser, monkeypatch):
     class Broken:
-        def lookup_ar(self, word):
+        def lookup(self, text, english, filter_diacritics):
             raise RuntimeError("database gone")
 
     page = browser.new_page()
@@ -587,7 +587,7 @@ def test_text_details_sit_under_the_word_on_a_wide_screen(base_url, browser):
 
 def test_arabizi_shows_the_arabic_it_looked_up_and_keeps_it_on_reload(base_url, browser, monkeypatch):
     class Broken:
-        def arabizi(self, text):
+        def lookup(self, text, english, filter_diacritics):
             raise RuntimeError("database gone")
 
     page = browser.new_context(viewport={"width": 390, "height": 844}).new_page()

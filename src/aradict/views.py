@@ -9,7 +9,7 @@ from urllib.parse import urlencode
 
 from htpy import Element, Node, a, blockquote, body, br, button, caption, code, dd, details, div, dl, dt, form, fragment, h1, h2, h3, head, header, html, i, input, label, li, link, main, meta, nav, ol, p, path, rect, script, section, span, summary, svg, table, tbody, td, template, textarea, th, thead, title, tr, ul
 
-from .dictionary import MEASURES, Reading, Segment, Token, alphabetical
+from .dictionary import MEASURES, Lookup, Reading, Segment, Token, alphabetical
 from .readable import POS
 
 ARABIC = re.compile("[\u0600-\u06ff]")  # Arabic script
@@ -187,19 +187,20 @@ class State(NamedTuple):
 INITIAL = State(body=_intro())
 
 
-def looked_up(query: str, readings: list[Reading], arabizi: str | None = None, links: Links | None = None) -> State:
-    """The outcome of a completed lookup. Of several words only the first is looked up, and a notice says so.
-    An Arabizi query is looked up as the Arabic it was read as, given in arabizi. Entries link to
-    their root and related forms with links."""
-    words = query.split()
-    latin = bool(re.search("[A-Za-z]", query)) and not ARABIC.search(query)
+def looked_up(text: str, found: Lookup, links: Links | None = None) -> State:
+    """The outcome of a completed lookup of the typed text. Of several words only the first is looked
+    up, and a notice says so. An Arabizi word is looked up as the Arabic it stands for, which the
+    page shows. Entries link to their root and related forms with links."""
+    words = text.split()
+    latin = bool(re.search("[A-Za-z]", text)) and not ARABIC.search(text)
     notice = p(class_="notice")[
         "Only the first word, ", _arabizi(words[0]) if latin else ar(words[0]), ", was looked up.",
         # The Text view reads Arabic script only.
-        not latin and [" ", a(href=f"/text?{urlencode({'q': query})}")["Read them all in the Text view"], "."],
-    ] if len(words) > 1 else None
-    if readings:
-        return State([f"{_count(readings)} for ", ar(arabizi or words[0])], [notice, LEGEND, _entries(readings, h2, links)], arabizi)
+        not latin and [" ", a(href=f"/text?{urlencode({'q': text})}")["Read them all in the Text view"], "."],
+    ] if not found.complete else None
+    if found.readings:
+        arabizi = found.query if found.mode == "arabizi" else None
+        return State([f"{_count(found.readings)} for ", ar(found.query)], [notice, LEGEND, _entries(found.readings, h2, links)], arabizi)
     if latin:
         return State(["No Arabic word for ", _arabizi(words[0])], [notice, div(class_="empty")[
             p["AraDict read this as Arabic in Latin letters (Arabizi), but found no word it could stand for. You could:"],
@@ -209,7 +210,7 @@ def looked_up(query: str, readings: list[Reading], arabizi: str | None = None, l
                     ar("خ"), ", 7 for ", ar("ح"), " and 9 for ", ar("ق"), ". ", a(href="/about#typing")["More about Arabizi"],
                 ],
                 li["Type it in Arabic script."],
-                li["Looking for an English word? ", a(href=f"/?{urlencode({'q': query, 'lang': 'en'})}")["Look it up in English → Arabic"]],
+                li["Looking for an English word? ", a(href=f"/?{urlencode({'q': text, 'lang': 'en'})}")["Look it up in English → Arabic"]],
             ],
         ]])
     return State(["No entry for ", ar(words[0])], [notice, div(class_="empty")[
@@ -234,12 +235,13 @@ INITIAL_EN = State(body=[
 ])
 
 
-def looked_up_en(query: str, readings: list[Reading], links: Links | None = None) -> State:
+def looked_up_en(found: Lookup, links: Links | None = None) -> State:
     """The outcome of a completed English → Arabic lookup, with the coverage note. Entries link to
     their root and related forms with links."""
-    if readings:
-        n = len(readings)
-        return State(f"{n} Arabic word{'s' if n != 1 else ''} for “{query}”", [COVERAGE, LEGEND, _entries(readings, h2, links)])
+    query = found.query
+    if found.readings:
+        n = len(found.readings)
+        return State(f"{n} Arabic word{'s' if n != 1 else ''} for “{query}”", [COVERAGE, LEGEND, _entries(found.readings, h2, links)])
     # Arabic typed here is meant the other way round, so switching direction keeps it.
     arabic = bool(ARABIC.search(query))
     back = f"/?{urlencode({'q': query})}" if arabic else "/"
