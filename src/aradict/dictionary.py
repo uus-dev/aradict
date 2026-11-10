@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import itertools
 import re
 import unicodedata
 from dataclasses import dataclass
@@ -10,7 +11,35 @@ from pathlib import Path
 LOOK_ALIKES = str.maketrans({"ی": "ي", "ک": "ك", "ـ": None})  # Persian/Urdu letters; tatweel
 MARK = re.compile("[\u064b-\u065f\u0670]")  # tanween, short vowels, shadda, sukun, dagger alif
 # The database leaves the fatha before a long ا unwritten (كِتاب): a letter, maybe a shadda, then ا.
+# It also leaves out the fatha a dagger alif implies (اللّٰه).
 IMPLIED_FATHA = re.compile("(?<=[\u0621-\u064a])(\u0651?)(?=\u0627)")
+
+# Arabizi: Arabic in Latin letters and digits. Each token stands for one or more Arabic spellings,
+# the likelier first.
+ARABIZI_CONSONANTS = {
+    "b": "ب", "p": "ب", "t": "تط", "th": "ثذ", "j": "ج", "g": "جغق", "7": "ح", "h": "هح", "kh": "خ", "5": "خ",
+    "d": "دض", "dh": "ذظض", "r": "ر", "z": "زظ", "s": "سص", "sh": "ش", "3": "ع", "gh": "غ", "f": "ف", "v": "ف",
+    "q": "ق", "9": "ق", "k": "ك", "l": "ل", "m": "م", "n": "ن", "w": "و", "y": "ي", "2": "أإءئؤ",
+}
+FATHA, KASRA, DAMMA, SHADDA = "\u064e", "\u0650", "\u064f", "\u0651"
+# A vowel is short, written as a vowel mark that filters readings like a typed one, or long,
+# written as a letter; at the end of a word, a letter first. A word-initial vowel is always ا.
+ARABIZI_VOWELS = {  # token: (inside a word, at its end)
+    "a": ([FATHA, "ا"], ["ة", "ا", FATHA, "ى"]),
+    "i": ([KASRA, KASRA + "ي"], [KASRA + "ي", KASRA]),
+    "u": ([DAMMA, DAMMA + "و"], [DAMMA + "و", DAMMA]),
+    "o": ([DAMMA, "و"], ["و", DAMMA]),
+    "e": (["", "ي"], ["ة", "ي", ""]),
+    "aa": (["ا"], ["ا"]), "ee": (["ي"], ["ي"]), "ii": (["ي"], ["ي"]), "oo": (["و"], ["و"]), "uu": (["و"], ["و"]),
+    "ei": ([FATHA + "ي"], [FATHA + "ي"]),
+    "an": ([], ["اً", FATHA + "ن", "ان"]),  # only at the end of a word, where it may be tanween (shukran)
+}
+ARABIZI_TOKEN = re.compile("(?<=.)an$|" + "|".join(sorted(ARABIZI_CONSONANTS.keys() | ARABIZI_VOWELS.keys() - {"an"}, key=len, reverse=True)))
+SPELLING_LIMIT = 2048  # spellings tried per word, at most about 0.3 s for the longest word
+ARABIZI_LONGEST = 24  # letters; wabimudarrisatihim has 18
+# Every mark but tanween fath, which a spelling must match (شكراً), so a final ا isn't a case ending.
+UNSPELLED = re.compile("[\u064c-\u065f\u0670]")
+ALIFS = str.maketrans("أإآٱ", "اااا")
 
 
 @dataclass(frozen=True)
@@ -57,11 +86,36 @@ def _letters(word: str) -> list[tuple[str, set[str]]]:
 def _agrees(typed: list[tuple[str, set[str]]], form: str, check_marks: bool) -> bool:
     """A hamza the user typed is the analysis's hamza (bare ا matches any), and, when
     check_marks is on, every mark the user typed is on the same letter of the analysis."""
-    letters = _letters(IMPLIED_FATHA.sub("\u064e\\1", form))
+    letters = _letters(IMPLIED_FATHA.sub("\u064e\\1", form).replace("\u0670", "\u064e\u0670"))
     return len(letters) == len(typed) and all(
         (letter not in "أإآ" or letter == other) and (not check_marks or marks <= other_marks)
         for (letter, marks), (other, other_marks) in zip(typed, letters)
     )
+
+
+def _spelled(form: str) -> str:
+    """The letters of a form, with alif and its hamza forms alike."""
+    return UNSPELLED.sub("", form).translate(ALIFS)
+
+
+def _arabizi_spellings(word: str) -> list[str]:
+    """The Arabic spellings an Arabizi word may stand for, likeliest first; [] if it isn't Arabizi."""
+    word = word.lower().replace("-", "")  # al-kitab
+    tokens = ARABIZI_TOKEN.findall(word)
+    if not tokens or "".join(tokens) != word or len(word) > ARABIZI_LONGEST:
+        return []
+    options = []
+    for i, token in enumerate(tokens):
+        if token in ARABIZI_VOWELS:
+            spellings = ["ا"] if i == 0 else ARABIZI_VOWELS[token][i == len(tokens) - 1]
+        else:
+            spellings = list(ARABIZI_CONSONANTS[token])
+            if i and tokens[i - 1] == token:  # a doubled consonant is a shadda (mudarris) or two letters (allah)
+                spellings.insert(0, SHADDA)
+        options.append(list(enumerate(spellings)))
+    # ponytail: a long word tries only the first SPELLING_LIMIT combinations; prune with the stem index if that bites.
+    combinations = itertools.islice(itertools.product(*options), SPELLING_LIMIT)
+    return ["".join(spelling for _, spelling in combination) for combination in sorted(combinations, key=lambda c: sum(rank for rank, _ in c))]
 
 
 class Dictionary:
@@ -74,6 +128,19 @@ class Dictionary:
         from camel_tools.morphology.database import MorphologyDB
 
         self._analyzer = Analyzer(MorphologyDB(str(db_path), "a"), backoff="NONE")
+
+    def arabizi(self, text: str) -> str | None:
+        """The Arabic an Arabizi word (the first, if several) stands for: of the spellings it may
+        stand for, the one with the most frequent lemma. None if the text isn't Arabizi or no
+        spelling is a known word."""
+        words = text.split()
+        # Only readings with exactly the spelling's letters count; a lookup also finds ة as ه and ى as ي.
+        found = [
+            (spelling, readings) for spelling in (_arabizi_spellings(words[0]) if words else [])
+            if (readings := [r for r in self.lookup_ar(spelling) if _spelled(r.form) == _spelled(spelling)])
+        ]
+        # max keeps the likelier spelling of equally frequent ones; readings come most frequent first.
+        return max(found, key=lambda f: -99 if f[1][0].frequency is None else f[1][0].frequency)[0] if found else None
 
     def lookup_ar(self, word: str, filter_diacritics: bool = True) -> list[Reading]:
         """Readings for an Arabic word (the first, if several), most frequent lemma first.

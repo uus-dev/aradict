@@ -1,5 +1,7 @@
 """The dictionary contract, checked against the real pinned database."""
 
+import re
+import time
 import unicodedata
 
 import pytest
@@ -113,3 +115,56 @@ def test_fixture_database_matches_real_for_its_lemmas(real, fixture_db):
 def test_missing_database_fails_loudly(tmp_path):
     with pytest.raises(RuntimeError, match="No morphology database"):
         Dictionary(tmp_path / "missing.db")
+
+
+def letters(arabic: str) -> str:
+    return re.sub("[ً-ٰٟ]", "", arabic)
+
+
+def test_arabizi_without_vowels_reads_as_the_bare_letters(real):
+    assert real.arabizi("ktb") == "كتب"
+
+
+def test_arabizi_vowels_are_marks_or_long_letters_as_the_database_confirms(real):
+    # The reference leaves "i" in Latin and always writes "a" as ا.
+    assert real.arabizi("kitab") == "كِتاب"
+    assert real.arabizi("katab") == "كَتَب"
+
+
+def test_arabizi_digits_stand_for_letters_and_final_vowels_for_letters(real):
+    assert letters(real.arabizi("mar7aba")) == "مرحبا"
+    assert letters(real.arabizi("3arabi")) == "عربي"
+
+
+@pytest.mark.parametrize("arabizi, arabic", [
+    ("shams", "شمس"), ("khubz", "خبز"), ("5ubz", "خبز"), ("ghurfa", "غرفة"), ("thaqafa", "ثقافة"), ("dhikr", "ذكر"),
+    ("9alb", "قلب"), ("su2al", "سؤال"), ("2akl", "أكل"),  # 2 is a hamza
+    ("mudarris", "مدرس"), ("allah", "الله"),  # a doubled consonant is a shadda or two letters
+    ("kbeer", "كبير"), ("saa3a", "ساعة"), ("beit", "بيت"), ("mustashfa", "مستشفى"),
+    ("shukran", "شكرا"),  # a final "an" may be tanween: شُكْراً
+    ("al-kitab", "الكتاب"),
+])
+def test_arabizi_spelling_conventions(real, arabizi, arabic):
+    assert letters(real.arabizi(arabizi)) == arabic
+
+
+def test_arabizi_picks_the_spelling_with_the_most_frequent_lemma(real):
+    # s may be س or ص, h ه or ح: صَباح "morning" outranks سَبّاح "swimmer".
+    assert letters(real.arabizi("sabah")) == "صباح"
+
+
+def test_arabizi_needs_a_known_word(real):
+    assert real.arabizi("zzz") is None  # Arabizi letters, but no Arabic word
+    assert real.arabizi("xbox") is None  # x stands for no Arabic letter
+    assert real.arabizi("كتب") is None  # Arabic script is not Arabizi
+    assert real.arabizi(" ") is None
+
+
+def test_arabizi_reads_the_first_word(real):
+    assert real.arabizi(" kitab  kabir ") == real.arabizi("kitab")
+
+
+def test_arabizi_answers_quickly_however_long_the_word(real):
+    start = time.perf_counter()
+    real.arabizi("kitab" * 20)
+    assert time.perf_counter() - start < 2
