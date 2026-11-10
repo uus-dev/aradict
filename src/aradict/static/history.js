@@ -66,7 +66,7 @@ const span = (text) => {
 
 // What an entry says: the query; that it was English (book is also Arabizi), or else that
 // diacritics were ignored where that changes the result, which is only when the query has vowel
-// marks (the same marks as dictionary.py's MARK); and the root's words or the lemma's forms shown
+// marks (the same marks as readable.py's MARK); and the root's words or the lemma's forms shown
 // in place of its results, so that they read differently from the lookup itself. Entries that say
 // the same are one view, so a sorted root view is too.
 const label = (url) => {

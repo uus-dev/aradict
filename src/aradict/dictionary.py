@@ -12,10 +12,9 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from . import readable
-from .readable import Segment
+from .readable import ALIFS, MARK, SHADDA, VOWEL, Segment
 
 LOOK_ALIKES = str.maketrans({"ی": "ي", "ک": "ك", "ـ": None})  # Persian/Urdu letters; tatweel
-MARK = re.compile("[\u064b-\u065f\u0670]")  # tanween, short vowels, shadda, sukun, dagger alif
 # The database leaves the fatha before a long ا unwritten (كِتاب): a letter, maybe a shadda, then ا.
 # It also leaves out the fatha a dagger alif implies (اللّٰه).
 IMPLIED_FATHA = re.compile("(?<=[\u0621-\u064a])(\u0651?)(?=\u0627)")
@@ -27,7 +26,7 @@ TOKEN = re.compile(
     re.S,
 )
 # The database keys stems by their bare letters: أ, إ, آ and ٱ as ا, ى as ي, and ة as ه.
-STEM_KEY = str.maketrans("أإآٱىة", "اااايه")
+STEM_KEY = ALIFS | str.maketrans("ىة", "يه")
 SUGGESTIONS = 25
 
 # Arabizi: Arabic in Latin letters and digits. Each token stands for one or more Arabic spellings,
@@ -37,7 +36,7 @@ ARABIZI_CONSONANTS = {
     "d": "دض", "dh": "ذظض", "r": "ر", "z": "زظ", "s": "سص", "sh": "ش", "3": "ع", "gh": "غ", "f": "ف", "v": "ف",
     "q": "ق", "9": "ق", "k": "ك", "l": "ل", "m": "م", "n": "ن", "w": "و", "y": "ي", "2": "أإءئؤ",
 }
-FATHA, KASRA, DAMMA, SHADDA = "\u064e", "\u0650", "\u064f", "\u0651"
+FATHA, KASRA, DAMMA = "\u064e", "\u0650", "\u064f"
 # A vowel is short, written as a vowel mark that filters readings like a typed one, or long,
 # written as a letter; at the end of a word, a letter first. A word-initial vowel is always ا.
 ARABIZI_VOWELS = {  # token: (inside a word, at its end)
@@ -54,8 +53,7 @@ ARABIZI_TOKEN = re.compile("(?<=.)an$|" + "|".join(sorted(ARABIZI_CONSONANTS.key
 SPELLING_LIMIT = 2048  # spellings tried per word, at most about 0.3 s for the longest word
 ARABIZI_LONGEST = 24  # letters; wabimudarrisatihim has 18
 # Every mark but tanween fath, which a spelling must match (شكراً), so a final ا isn't a case ending.
-UNSPELLED = re.compile("[\u064c-\u065f\u0670]")
-ALIFS = str.maketrans("أإآٱ", "اااا")
+UNSPELLED = re.compile(f"(?!\u064b){MARK.pattern}")
 
 # Verb measures as the consonants of the lemma (the perfect "he" form), vowels left out and
 # shadda kept. Digits stand for the root's letters in order (1 2 3 are ف ع ل), so a template
@@ -87,7 +85,6 @@ TEMPLATES = [
 ]
 WEAK = "اأإءؤئوىي"
 ROOT = re.compile("[\u0621-\u064a#](\\.[\u0621-\u064a#])+")  # letters joined by dots; a few stored roots are junk ("لس", "NTWS")
-VOWELS = re.compile("[\u064b-\u0650\u0652\u0670]")  # everything but shadda
 # The database's categories for the short imperfect stem of hollow, doubled and weak-final verbs,
 # which stands before consonant endings and in the jussive: قُل (يَقُلْنَ, لَمْ يَقُلْ) beside قُول.
 # ponytail: relies on calima-msa-r13's category names; check them when the database changes.
@@ -152,7 +149,7 @@ def _representative(analyses: list[dict]) -> dict:
     return min(analyses, key=lambda a: (a["prc2"] not in ("0", "wa_conj"), a["cas"] not in ("u", "na")))
 
 
-def _letters(word: str) -> list[tuple[str, set[str]]]:
+def _marked_letters(word: str) -> list[tuple[str, set[str]]]:
     """Each letter with the marks written on it."""
     letters: list[tuple[str, set[str]]] = []
     for char in word:
@@ -164,14 +161,14 @@ def _letters(word: str) -> list[tuple[str, set[str]]]:
 
 
 def _typed(word: str) -> list[tuple[str, set[str]]]:
-    return _letters(word.replace("\u064b\u0627", "\u0627\u064b"))  # the database puts tanween fath on the ا
+    return _marked_letters(word.replace("\u064b\u0627", "\u0627\u064b"))  # the database puts tanween fath on the ا
 
 
 def _agrees(typed: list[tuple[str, set[str]]], form: str, check_marks: bool, whole: bool = True) -> bool:
     """A hamza the user typed is the analysis's hamza (bare ا matches any), and, when
     check_marks is on, every mark the user typed is on the same letter of the analysis.
     Unless whole is set, the typed letters need only begin the form."""
-    letters = _letters(IMPLIED_FATHA.sub("\u064e\\1", form).replace("\u0670", "\u064e\u0670"))
+    letters = _marked_letters(IMPLIED_FATHA.sub("\u064e\\1", form).replace("\u0670", "\u064e\u0670"))
     return (len(letters) == len(typed) if whole else len(letters) >= len(typed)) and all(
         (letter not in "أإآ" or letter == other) and (not check_marks or marks <= other_marks)
         for (letter, marks), (other, other_marks) in zip(typed, letters)
@@ -232,7 +229,7 @@ def _arabizi_spellings(word: str) -> list[str]:
 def _doubled(word: str) -> int:
     """How many letters word doubles with a shadda that Arabizi would write twice (mudarris). Not
     a ي or و, which Arabizi seldom doubles: wataniya for وَطَنِيَّة."""
-    return sum(SHADDA in marks and letter not in "يو" for letter, marks in _letters(word))
+    return sum(SHADDA in marks and letter not in "يو" for letter, marks in _marked_letters(word))
 
 
 def _by_frequency(r: Reading) -> tuple:
@@ -342,7 +339,7 @@ class Dictionary:
         slots. Three-letter measures go before the quadriliteral ones. None when no template
         fits or the lemma fits two."""
         radicals = root.split(".")
-        word = VOWELS.sub("", lemma).replace("ٱ", "ا").replace("آ", "أا")
+        word = VOWEL.sub("", lemma).replace("ٱ", "ا").replace("آ", "أا")
         found = list(dict.fromkeys(
             name for name, template, slots in TEMPLATES
             if (m := template.fullmatch(word)) and all(

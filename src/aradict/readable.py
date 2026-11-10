@@ -12,12 +12,15 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 
-# Harakat, tanween, sukun, hamza marks and the dagger alif. Shadda is not among them: it
-# doubles a letter, so it counts as one.
-MARKS = "\u064b-\u0650\u0652-\u0655\u0670"
+# The marks written on Arabic letters, defined once for AraDict. VOWELS are harakat, tanween,
+# sukun, hamza marks and the dagger alif; shadda is not among them: it doubles a letter, so a
+# doubled letter counts as one.
+VOWELS = "\u064b-\u0650\u0652-\u065f\u0670"
 SHADDA = "\u0651"
-_MARK = re.compile(f"[{MARKS}]")
-_LETTER_VARIANTS = str.maketrans("ٱأإآىة", "اااايت")  # one letter, however CAMeL's parts and spelling write it
+VOWEL = re.compile(f"[{VOWELS}]")
+MARK = re.compile(f"[{VOWELS}{SHADDA}]")  # every mark, shadda too
+ALIFS = str.maketrans("أإآٱ", "اااا")  # alif's hamza forms and wasla, as a bare ا
+_LETTER_VARIANTS = ALIFS | str.maketrans("ىة", "يت")  # one letter, however CAMeL's parts and spelling write it
 
 # Words for attached particles, keyed by tag and bare letters (a tag alone where it is unambiguous).
 # The last row is for function words a few stored stems carry at their end (مِمّا, بَعْدَما).
@@ -109,7 +112,8 @@ def parts(a: dict) -> list[tuple[str, str]]:
 
 
 def _letters(text: str) -> str:
-    return _MARK.sub("", text).translate(_LETTER_VARIANTS)
+    """The letters of text, shadda kept and letter variants folded, to match CAMeL's parts to its spelling."""
+    return VOWEL.sub("", text).translate(_LETTER_VARIANTS)
 
 
 def _particle(text: str, tag: str) -> str | None:
@@ -188,13 +192,13 @@ def segments(a: dict) -> tuple[Segment, ...]:
     pcs = parts(a)
     k, _ = _stem(pcs, a)
     # Put each shadda straight after its letter (letter, shadda, vowel), so a doubled letter is one unit.
-    form = re.sub(f"([{MARKS}]+){SHADDA}", lambda m: SHADDA + m.group(1), a["diac"])
+    form = re.sub(f"([{VOWELS}]+){SHADDA}", lambda m: SHADDA + m.group(1), a["diac"])
     starts, merged, pos, last, used = [], [], 0, -1, -1
     for i, (text, _) in enumerate(pcs):
         starts.append(pos)
         merged.append(False)
-        for letter in _MARK.sub("", text):
-            while pos < len(form) and _MARK.match(form[pos]):
+        for letter in VOWEL.sub("", text):
+            while pos < len(form) and VOWEL.match(form[pos]):
                 pos += 1
             if pos < len(form) and _letters(letter) == _letters(form[pos]):
                 last, pos = pos, pos + 1
@@ -205,8 +209,8 @@ def segments(a: dict) -> tuple[Segment, ...]:
                     starts[i], merged[i] = last, True
                 used, pos = last, pos + (form[pos:pos + 1] == SHADDA)
             # Otherwise the spelling leaves this letter out.
-        next_starts_with_mark = i + 1 < len(pcs) and _MARK.match(pcs[i + 1][0])
-        while pos < len(form) and _MARK.match(form[pos]) and not next_starts_with_mark:
+        next_starts_with_mark = i + 1 < len(pcs) and VOWEL.match(pcs[i + 1][0])
+        while pos < len(form) and VOWEL.match(form[pos]) and not next_starts_with_mark:
             pos += 1  # vowels after this part's last letter, such as a case ending, belong to it
     cuts = [form[start:end] for start, end in zip(starts, starts[1:] + [len(form)])]
     shares = [merged[i] or merged[i + 1:i + 2] == [True] for i in range(len(pcs))]
