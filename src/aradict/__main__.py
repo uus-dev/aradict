@@ -12,7 +12,8 @@ from .data import ensure_db
 def main() -> None:
     if "ARADICT_DB_PATH" not in os.environ:  # a custom path is the caller's responsibility
         ensure_db()
-    uvicorn.run("aradict.app:app", host=os.environ.get("HOST", "127.0.0.1"), port=int(os.environ.get("PORT", "8000")))
+    # No access log: its request lines would record every looked-up word (PRD: no query text in telemetry).
+    uvicorn.run("aradict.app:app", host=os.environ.get("HOST", "127.0.0.1"), port=int(os.environ.get("PORT", "8000")), access_log=False)
 
 
 if __name__ == "__main__":
