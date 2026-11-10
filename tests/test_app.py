@@ -132,3 +132,13 @@ def test_latin_letters_get_a_hint_towards_english(client):
 
 def test_one_word_has_no_multi_word_notice(client):
     assert "Only the first word" not in client.get("/", params={"q": "كتب"}).text
+
+
+def test_server_does_not_log_looked_up_words(monkeypatch):
+    import aradict.__main__ as entry
+
+    options = {}
+    monkeypatch.setenv("ARADICT_DB_PATH", "unused")
+    monkeypatch.setattr(entry.uvicorn, "run", lambda *args, **kwargs: options.update(kwargs))
+    entry.main()
+    assert options["access_log"] is False
