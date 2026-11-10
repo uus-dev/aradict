@@ -121,8 +121,10 @@ class Token:
 def _reading_key(analysis: dict) -> tuple:
     # Ignoring case (cas), state (stt) and mood (mod) folds case and mood endings into one
     # reading. Treating every وَ reading (and, while, particle) as one folds the proclitic.
+    # Only analyses that share a gloss merge: a lemma stored twice with different senses
+    # (كاتِب "clerk" and "writer;author") gives two readings.
     wa = "wa" if analysis["prc2"].startswith("wa_") else analysis["prc2"]
-    return tuple(analysis[f] for f in ("lex", "pos", "prc3")) + (wa,) + tuple(
+    return tuple(analysis[f] for f in ("lex", "pos", "stemgloss", "prc3")) + (wa,) + tuple(
         analysis[f] for f in ("prc1", "prc0", "enc0", "vox", "asp", "per", "gen", "num")
     )
 
