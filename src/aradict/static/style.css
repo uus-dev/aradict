@@ -236,6 +236,7 @@ a.root-tab:hover .rt-go { background: rgb(255 255 255 / .15); text-decoration-th
 .family td { padding: 6px 12px; vertical-align: baseline; overflow-wrap: break-word }
 .family tbody tr + tr td { border-block-start: 1px solid var(--line) }
 .family .ar { white-space: nowrap }
+.family .grammar li { white-space: nowrap }  /* wrap between tags, not inside one */
 .family td:first-child .ar { font-size: 21px; line-height: 1.6 }
 @media (max-width: 640px) {
   .family, .family :is(thead, tbody, tr, td) { display: block }
@@ -250,7 +251,7 @@ a.root-tab:hover .rt-go { background: rgb(255 255 255 / .15); text-decoration-th
   .family tbody tr + tr td { border: 0 }
   .family td { display: grid; grid-template-columns: 70px minmax(0, 1fr); gap: 10px; padding: 1px 14px }
   .family td::before { content: attr(data-label) / ""; font-size: 13px; font-weight: 600; color: var(--ink-3) }  /* the header already names it */
-  .family td > .ar { justify-self: start }
+  .family td > :is(.ar, .badge) { place-self: start }
   .family td:empty { display: none }
 }
 

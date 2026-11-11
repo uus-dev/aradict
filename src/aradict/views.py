@@ -336,8 +336,8 @@ def _family(label: str, name: Node, status: Node, rows: list[Reading], lookup: d
                 tr[
                     td(data_label="Form")[ar(r.form)],
                     td(data_label="Meaning")[r.gloss],
-                    td(data_label="Part of speech")[r.tags[0]],
-                    td(data_label="Grammar")[", ".join(r.tags[1:] + ((r.grammar,) if r.grammar else ()))],
+                    td(data_label="Part of speech")[span(class_="badge")[r.tags[0]]],
+                    td(data_label="Grammar")[_grammar(r)],
                     td(data_label="Root")[_root(r.root)],
                     td(data_label="Measure")[r.measure or ("unavailable" if r.pos == "verb" else "")],
                 ]

@@ -503,9 +503,9 @@ def test_no_root_or_related_forms_means_no_link(client):
 
 
 def table(page: str) -> list[list[str]]:
-    """The rows of the page's table, each as the text of its cells."""
+    """The rows of the page's table, each as the text of its cells. Grammar tags read as a comma list."""
     body = re.search(r"<tbody>(.*?)</tbody>", page, re.S).group(1)
-    return [[text(cell) for cell in re.findall(r"<td[^>]*>(.*?)</td>", row, re.S)] for row in re.findall(r"<tr>(.*?)</tr>", body, re.S)]
+    return [[text(re.sub(r"</li><li>", ", ", cell)) for cell in re.findall(r"<td[^>]*>(.*?)</td>", row, re.S)] for row in re.findall(r"<tr>(.*?)</tr>", body, re.S)]
 
 
 def context(page: str) -> str:
@@ -555,6 +555,9 @@ def test_root_view_lists_verbs_by_measure_then_nouns_and_adjectives(client):
     assert column(page, "Measure") == ["I"] * 4 + ["IV"] * 3 + [""] * 9
     assert column(page, "Form")[7:] == ["كاتِب", "كاتِب", "كاتِب", "كُتّاب", "كَتَبَة", "كُتّاب", "كَتاتِيب", "كِتاب", "كُتُب"]
     assert set(column(page, "Root")) == {"ك ت ب"}
+    # Part of speech and grammar are boxed as in the Word entries.
+    assert '<td data-label="Part of speech"><span class="badge">verb</span></td>' in page
+    assert '<td data-label="Grammar"><ul class="grammar"><li>active</li><li>3rd person masculine singular</li><li>perfect (past)</li></ul></td>' in page
     assert "16 forms from the root" in page and text(context(page)).startswith("Root: ك ت ب")
     assert links(context(page)) == {"Back to your lookup": {"q": ["كتب"]}}
     # In family order no column is sorted, and each header sorts by its column.
