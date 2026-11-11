@@ -28,7 +28,7 @@ from urllib.request import Request, urlopen
 from . import views
 from .data import EXPECTED, db_path
 from .dictionary import ROOT, Dictionary, Reading
-from .readable import IRREGULAR_PLURALS, MARK, SHADDA, is_participle
+from .readable import IRREGULAR_PLURALS, MARK, SHADDA, head_noun, is_participle
 
 REPO = Path(__file__).resolve().parents[2]
 LETTERS = "\u0621-\u063a\u0641-\u064a\u0671"  # Arabic's letters, ٱ included; no tatweel
@@ -51,12 +51,13 @@ def malformed(text: str) -> str | None:
 
 
 def singular_after_two(sense: str) -> bool:
-    """The "two school" defect: a singular noun after "two". The noun is the word before "of" in a
-    phrase (two period of time), else the last word before any bracketed note."""
-    found = re.search(r"\btwo (.+?)(?: \(|$)", sense)
+    """The "two school" defect: a singular noun after "two", the noun found as readable.plural
+    finds it (two period of time). A participle ("two wounded") is not counted, as English leaves
+    it bare."""
+    found = re.search(r"\btwo (.+)", sense)
     if not found:
         return False
-    word = re.fullmatch(r"(.*?)(?: of\b.*)?", found.group(1)).group(1).split(" ")[-1]
+    _, word, _ = head_noun(found.group(1))
     # ponytail: a word ending in s counts as plural, so "two walrus" passes; list such words if they turn up.
     return not (word.endswith("s") or word in IRREGULAR_PLURALS.values() or is_participle(word))
 

@@ -355,19 +355,26 @@ def _verb(sense: str, a: dict, future: bool) -> str:
     return be + sense[2:]
 
 
-def plural(sense: str) -> str:
-    """English plural of a noun sense, inflecting the word before any bracketed note, or before
-    "of" in a phrase like "period of time" (periods of time)."""
+def head_noun(sense: str) -> tuple[str, str, str]:
+    """A noun sense cut round the word that shows its number: what comes before that word, the
+    word, and what follows it. The word is the last before any bracketed note, or before "of" in
+    a phrase like "period of time": ("", "period", " of time")."""
     head, paren, note = sense.partition(" (")
     head, tail = re.fullmatch(r"(.*?)((?: of\b.*)?)", head).groups()  # "eve of" too: the eves of
-    *rest, word = head.split(" ")
+    before, space, word = head.rpartition(" ")
+    return before + space, word, tail + paren + note
+
+
+def plural(sense: str) -> str:
+    """English plural of a noun sense, inflecting its head noun: "period of time" gives "periods of time"."""
+    before, word, after = head_noun(sense)
     if word in IRREGULAR_PLURALS:
         word = IRREGULAR_PLURALS[word]
     elif is_participle(word):
         pass  # the data glosses many participles as nouns: "two wounded", as English says "the wounded"
     elif not word.endswith("s") or word.endswith("ss"):  # CAMeL often glosses a singular stem with a plural sense ("law;statutes")
         word = _s(word)  # ponytail: regular rules plus a few irregulars; extend IRREGULAR_PLURALS as glosses need
-    return " ".join(rest + [word]) + tail + paren + note
+    return before + word + after
 
 
 def _noun(sense: str, a: dict, suffixes: list[str]) -> str:
