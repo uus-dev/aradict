@@ -28,7 +28,7 @@ from urllib.request import Request, urlopen
 from . import views
 from .data import EXPECTED, db_path
 from .dictionary import ROOT, Dictionary, Reading
-from .readable import IRREGULAR_PLURALS, MARK, SHADDA, participle
+from .readable import IRREGULAR_PLURALS, MARK, SHADDA, is_participle
 
 REPO = Path(__file__).resolve().parents[2]
 LETTERS = "\u0621-\u063a\u0641-\u064a\u0671"  # Arabic's letters, ٱ included; no tatweel
@@ -58,7 +58,7 @@ def singular_after_two(sense: str) -> bool:
         return False
     word = re.fullmatch(r"(.*?)(?: of\b.*)?", found.group(1)).group(1).split(" ")[-1]
     # ponytail: a word ending in s counts as plural, so "two walrus" passes; list such words if they turn up.
-    return not (word.endswith("s") or word in IRREGULAR_PLURALS.values() or participle(word))
+    return not (word.endswith("s") or word in IRREGULAR_PLURALS.values() or is_participle(word))
 
 
 # A participle (established) or a phrasal verb's particle (taking over) with a plural -s.

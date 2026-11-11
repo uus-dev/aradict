@@ -6,7 +6,7 @@ from unicodedata import normalize
 import pytest
 
 from aradict.dictionary import Dictionary
-from aradict.readable import IRREGULAR_PAST, plural
+from aradict.readable import IRREGULAR_PAST, is_participle, past, plural, third_person
 
 
 @pytest.fixture(scope="module")
@@ -118,8 +118,20 @@ def test_a_participle_used_as_a_noun_takes_no_plural_ending(real):
     # "two wounded", as English says "the wounded", not "two woundeds" (#17). A short noun in -ed still takes one.
     assert glosses(real, "مجروحان") == {"two wounded; two injured"}
     assert glosses(real, "سريران") == {"two beds; two couches"}
+    # Short participles too: "two led", "two dyed".
+    assert glosses(real, "مهتديان") == {"two guided; two led"}
+    assert glosses(real, "خضيبان") == {"two dyed"}
     # The data's few countable nouns in -ed that are not participles keep their ending.
-    assert [plural(w) for w in ("shred", "hundred")] == ["shreds", "hundreds"]
+    assert [plural(w) for w in ("bed", "red", "shed", "shred", "sled", "hundred")] == ["beds", "reds", "sheds", "shreds", "sleds", "hundreds"]
+
+
+def test_one_rule_tells_a_word_in_ed_glossed_in_the_past_from_a_base_form(real):
+    # The rule that keeps "two wounded" bare also keeps a verb glossed in the past from a second -ed.
+    assert [w for w in ("wounded", "blurred", "aged", "led", "need", "exceed", "shed", "shred", "hundred") if is_participle(w)] == [
+        "wounded", "blurred", "aged", "led",
+    ]
+    assert [past(v) for v in ("blurred", "shed", "shred")] == ["blurred", "shed", "shredded"]
+    assert [third_person(v) for v in ("blurred", "shed", "shred")] == ["blurred", "sheds", "shreds"]
 
 
 def test_senses_already_plural_are_not_pluralized_again(real):
