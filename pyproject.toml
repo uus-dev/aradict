@@ -39,6 +39,7 @@ filterwarnings = ["ignore:invalid escape sequence:SyntaxWarning"]
 
 [dependency-groups]
 dev = [
+    "axe-playwright-python>=0.1.8",
     "httpx2>=2.16.0",
     "playwright>=1.65.0",
     "pytest>=9.2.0",

@@ -331,8 +331,9 @@ class Dictionary:
                 lemmas[f["lex"], f["pos"]] = _logprob(f)
                 if f["pos"] == "verb" and f["lex"].startswith("آ") and f["asp"] == "i":
                     self._hamza_measures.setdefault(f["lex"], set()).add("III" if f["diac"].startswith("ؤا") else "IV")
-        # Each root's stems, for its family.
+        # Each root's stems, for its family, and the family's size once counted.
         self._root_stems: dict[str, list[tuple[str, dict]]] = {}
+        self._family_sizes: dict[str, int] = {}
         for stems in self._lemma_stems.values():
             for key, f in stems.values():
                 if ROOT.fullmatch(f.get("root", "")):
@@ -466,6 +467,13 @@ class Dictionary:
         """Every form from a root, such as "ك.ت.ب" or, with an unresolved radical, "ق.#.ل", one
         reading each, in family order."""
         return self._family(self._root_stems.get(root, ()))
+
+    def family_size(self, root: str) -> int:
+        """How many forms root_family lists for a root. Each root is counted once, then remembered."""
+        # ponytail: unbounded, but there are only about 4,500 roots, an int each.
+        if root not in self._family_sizes:
+            self._family_sizes[root] = len(self.root_family(root))
+        return self._family_sizes[root]
 
     def _family(self, stems: Iterable[tuple[str, dict]]) -> list[Reading]:
         readings = dict.fromkeys(r for key, f in stems if (r := self._stem_form(key, f)))  # each once, in order

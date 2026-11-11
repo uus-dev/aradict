@@ -460,10 +460,11 @@ def test_word_parts_are_marked_without_colour_and_open_without_javascript(base_u
             "e => getComputedStyle(e).textDecorationLine + ' ' + getComputedStyle(e).textDecorationStyle"
         )
 
-    # Prefix, stem and suffix differ in line style as well as colour.
+    # Prefix, stem and suffix differ in line style and weight as well as colour.
     assert decoration(".form .prefix") == "underline dotted"
-    assert decoration(".form .suffix") == "underline solid"
+    assert decoration(".form .suffix") == "underline dashed"
     assert decoration(".form .stem").startswith("none")
+    assert reading.locator(".form .stem").first.evaluate("e => getComputedStyle(e).fontWeight") == "700"
 
     chips = reading.locator(".chips")
     expect(chips).to_be_hidden()
@@ -671,7 +672,7 @@ def test_related_forms_and_back_to_the_lookup_with_back_forward_and_reload(base_
 def test_root_view_sorts_and_returns_without_javascript_on_a_phone(base_url, browser):
     page = browser.new_context(java_script_enabled=False, viewport={"width": 390, "height": 844}).new_page()
     page.goto(f"{base_url}/?q={quote('كتب')}")
-    page.get_by_role("link", name="Words from the root ك ت ب").first.click()
+    page.get_by_role("link", name="Root ك ت ب").first.click()
     status = page.get_by_role("status")
     expect(status).to_have_text("16 forms from the root ك ت ب")
     assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")  # rows stack, nothing scrolls sideways

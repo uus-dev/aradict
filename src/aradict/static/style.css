@@ -1,188 +1,379 @@
-/* Layout follows the approved Word layout from #14 (one entry per lemma). Colours and the
-   interface font are placeholders until the visual identity round; the Arabic font is decided. */
+/* Design M1 Cloth Tab (#14): framed entry boxes with labelled fields, grammar in small boxes, and
+   the root on a bookcloth tab with gilt lettering above each entry. Cloth and gilt are kept for
+   the root and the brand; everything else is quiet grey-green. Text and controls stay compact. */
+@font-face { font-family: "Source Sans 3"; src: url("vendor/SourceSans3-latin.woff2") format("woff2"); font-weight: 200 900; font-display: swap }
+/* Arabic has Regular and Bold only: weights 500 and 600 of the design are set as 400 and 700. */
 @font-face { font-family: "Scheherazade New"; src: url("vendor/ScheherazadeNew-Regular.ttf") format("truetype"); font-weight: 400; font-display: swap }
 @font-face { font-family: "Scheherazade New"; src: url("vendor/ScheherazadeNew-Bold.ttf") format("truetype"); font-weight: 700; font-display: swap }
 
+/* Colours follow the system's light or dark setting: light here, every token redefined below. */
 :root {
-  color-scheme: light dark;
-  --bg: #f5f6f8; --surface: #ffffff; --fg: #18202b; --muted: #556070; --line: #dce0e6; --accent: #1d5bb8;
-  --pre: #0b7566; --suf: #9a3a8a; --chip-pre: #e3f3f0; --chip-suf: #f5e6f2; --chip-stem: #e9eef6;
-  --f-ui: system-ui, -apple-system, "Segoe UI", sans-serif;
-  --f-ar: "Scheherazade New", "Geeza Pro", serif;
+  color-scheme: light;
+  --paper: #eef2f0; --leaf: #ffffff; --tray: #f6f8f7; --tray-2: #e7ece9;
+  --ink: #16211e; --ink-2: #3c4845; --ink-3: #5b6763;
+  --line: #d6ddd9; --line-2: #c4cdc9; --edge: #7c8783;
+  --cloth: #14463f; --cloth-hi: #1c5a51; --gilt: #ebd596; --gilt-2: #d6c893; --fillet: rgb(235 213 150 / .34);
+  --link: #0d5d52; --focus: #0d6d60;
+  --pre: #2b4c99; --pre-bg: #eef2fb; --suf: #8f2f5d; --suf-bg: #fbeff5;
+  --btn: #16211e; --btn-ink: #ffffff; --btn-hover: #2c3935;
+  --hl-bg: #14463f; --hl-ink: #ffffff;
+  --shadow: 0 1px 2px rgb(20 40 35 / .05);
+  --pop-shadow: 0 18px 44px -14px rgb(16 40 34 / .32), 0 2px 8px rgb(16 40 34 / .10);
+  --scrim: rgb(8 16 14 / .38);
+  --f-ar: "Scheherazade New", "Noto Naskh Arabic", "Geeza Pro", serif;
+  --f-ui: "Source Sans 3", "Source Sans Pro", system-ui, sans-serif;
 }
 @media (prefers-color-scheme: dark) {
-  :root { --bg: #10141a; --surface: #171e27; --fg: #e5e9ef; --muted: #9ba6b5; --line: #2a3441; --accent: #82b1ff;
-    --pre: #4fcfb9; --suf: #e58ed6; --chip-pre: #143a35; --chip-suf: #3d1f39; --chip-stem: #1f2a38 }
+  :root {
+    color-scheme: dark;
+    --paper: #0e1513; --leaf: #151d1b; --tray: #1a2321; --tray-2: #232e2b;
+    --ink: #e5ece9; --ink-2: #bac6c2; --ink-3: #97a4a0;
+    --line: #28332f; --line-2: #37443f; --edge: #717e7a;
+    --cloth: #1e5047; --cloth-hi: #245c52; --gilt: #edd892; --gilt-2: #dacb93; --fillet: rgb(237 216 146 / .36);
+    --link: #86cdbd; --focus: #8ad3c2;
+    --pre: #a8bbf3; --pre-bg: #1b2340; --suf: #efa6c6; --suf-bg: #35202a;
+    --btn: #e5ece9; --btn-ink: #0e1513; --btn-hover: #c9d3cf;
+    --hl-bg: #86cdbd; --hl-ink: #0e1513;
+    --shadow: 0 0 transparent;  /* none, but still valid in a list of shadows */
+    --pop-shadow: 0 18px 44px -10px rgb(0 0 0 / .6), 0 0 0 1px rgb(255 255 255 / .03);
+    --scrim: rgb(0 0 0 / .5);
+  }
 }
 
-* { box-sizing: border-box }
-body { margin: 0; background: var(--bg); color: var(--fg); font: 16px/1.5 var(--f-ui) }
-a { color: var(--accent) }
-:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px }
-.wrap { max-width: 60rem; margin-inline: auto; padding-inline: max(16px, env(safe-area-inset-left, 0px)) max(16px, env(safe-area-inset-right, 0px)) }
+*, *::before, *::after { box-sizing: border-box }
+[hidden] { display: none !important }
+html { background: var(--paper); -webkit-text-size-adjust: 100% }
+body { margin: 0; background: var(--paper); color: var(--ink); font: 400 15px/1.5 var(--f-ui); -webkit-font-smoothing: antialiased }
+button, input, textarea { font: inherit; color: inherit }
+button, summary { cursor: pointer }
+a { color: var(--link); text-decoration-thickness: 1px; text-underline-offset: 3px }
+a:hover { text-decoration-thickness: 2px }
+:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px }
+[lang="ar"] { font-family: var(--f-ar) }
+.ar { font-family: var(--f-ar); font-size: 1.3em }
+.wrap { max-width: 768px; margin-inline: auto; padding-inline: max(24px, env(safe-area-inset-left, 0px)) max(24px, env(safe-area-inset-right, 0px)) }
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap }
-.ar { font-family: var(--f-ar); font-size: 1.45em; line-height: 1.6 }
-.muted, .pos, .intro { color: var(--muted) }
+.muted, .nil { color: var(--ink-3) }
+main.wrap { padding-block: 28px 48px }
 
-.site { background: var(--surface); border-block-end: 1px solid var(--line) }
-.site .wrap { display: flex; align-items: baseline; gap: 24px; padding-block: 12px }
-.brand { font-weight: 600; font-size: 1.15rem; color: var(--fg); text-decoration: none }
-.site nav { display: flex; gap: 18px }
-.site nav a { color: var(--muted); text-decoration: none }
-.site nav a[aria-current="page"] { color: var(--fg); font-weight: 500 }
+/* Header: the brand with its cloth stamp, and the views as quiet tabs. */
+.site { background: var(--leaf); border-block-end: 1px solid var(--line) }
+.site .wrap { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 56px }
+.brand { display: inline-flex; align-items: center; gap: 10px; border-radius: 6px; color: var(--ink); text-decoration: none; font: 700 19px/1 var(--f-ui); letter-spacing: -.005em }
+.stamp { padding: 4px 9px 8px; border-radius: 5px; background: var(--cloth); color: var(--gilt); box-shadow: inset 0 0 0 1px var(--fillet); font: 700 17px/1 var(--f-ar); letter-spacing: 0 }
+.site nav { display: flex; gap: 2px }
+.site nav a { display: inline-flex; align-items: center; height: 34px; padding-inline: 12px; border: 1px solid transparent; border-radius: 7px; color: var(--ink-2); text-decoration: none; font-weight: 500 }
+.site nav a:hover { color: var(--ink); background: var(--tray) }
+.site nav a[aria-current="page"] { color: var(--ink); border-color: var(--line-2); background: var(--tray); font-weight: 600 }
 
-/* The search stays in view while results scroll, so the query is always visible. */
-.search { position: sticky; inset-block-start: 0; z-index: 1; display: flex; flex-wrap: wrap; gap: 8px; margin-block-start: 12px; padding-block: 8px; background: var(--bg) }
-.search input { flex: 1; min-width: 0; font: 1.6rem/1.4 var(--f-ar); padding: 4px 14px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); color: var(--fg) }
-.search button, .retry button, .text-in button { padding-inline: 18px; border: 0; border-radius: 8px; background: var(--accent); color: var(--surface); font: 500 1rem var(--f-ui); cursor: pointer }
-.search .clear { align-self: center; padding: 8px 4px }
-.search .option { flex-basis: 100%; font-size: .9rem; color: var(--muted) }
+/* Boxes, labels and buttons */
+:is(.search, .text-in, .passage-box, .intro, .empty, .about) { background: var(--leaf); border: 1px solid var(--line); border-radius: 12px; box-shadow: var(--shadow) }
+.lbl { display: block; margin: 0; font-size: 13.5px; font-weight: 600; color: var(--ink-2) }
+:is(.search, .text-in) [type="submit"], .tp-foot :is(a, button), .retry button, .history .tools button {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px; height: 40px; padding-inline: 16px; border-radius: 8px;
+  border: 1px solid var(--edge); background: var(--leaf); color: var(--ink); font: 600 14.5px/1 var(--f-ui); white-space: nowrap; text-decoration: none;
+}
+:is(.search, .text-in) [type="submit"], .tp-foot button { background: var(--btn); border-color: var(--btn); color: var(--btn-ink) }
+:is(.search, .text-in) [type="submit"]:hover, .tp-foot button:hover { background: var(--btn-hover); border-color: var(--btn-hover) }
+.tp-foot a:hover, .retry button:hover, .history .tools button:hover { background: var(--tray) }
+
+/* Word lookup. The search stays in view while results scroll, so the query is always visible;
+   a band of the page colour around it hides the results passing underneath. */
+.search { position: sticky; inset-block-start: 8px; z-index: 2; display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: 8px; padding: 16px 18px 14px; box-shadow: var(--shadow), 0 0 0 8px var(--paper) }
+.search:has(.clear[hidden]) { grid-template-columns: minmax(0, 1fr) auto }
+.search .lbl, .search .arabizi, .search .opts { grid-column: 1 / -1 }
+#q { grid-row: 2; grid-column: 1; width: 100%; min-width: 0; height: 40px; padding: 0 12px; border: 1px solid var(--edge); border-radius: 8px; background: var(--leaf); color: var(--ink); font: 400 21px/1.5 var(--f-ar) }
+#q:focus-visible { outline-offset: 1px; border-color: var(--focus) }
+/* The keyboard button sits inside the field on its left, the page's start; the field's own text may run either way, so its padding is physical. */
+.search:has([data-keyboard]:not([hidden])) #q { padding-left: 44px }
+.search [data-keyboard] { grid-row: 2; grid-column: 1; justify-self: start; z-index: 1; display: grid; place-items: center; width: 32px; height: 32px; margin-inline-start: 4px; padding: 0; border: 1px solid transparent; border-radius: 6px; background: transparent; color: var(--ink-2) }
+.search [data-keyboard]:hover { background: var(--tray-2); color: var(--ink) }
+:is(.search, .text-in) [data-keyboard][aria-expanded="true"] { background: var(--tray-2); border-color: var(--edge); color: var(--ink) }
+.search .clear { grid-row: 2; grid-column: 2; display: inline-flex; align-items: center; min-height: 40px; padding-inline: 4px }
+.search [type="submit"] { grid-row: 2; grid-column: -2 }
 /* English → Arabic: an English field, and none of the Arabic-only controls. */
-.search input[lang="en"] { font-family: var(--f-ui); font-size: 1.25rem; line-height: 1.85 }
+#q[lang="en"] { font: 400 17px/1.5 var(--f-ui) }
 .search:has(#q[lang="en"]) :is([data-keyboard], .option:has([name="diacritics"], [name="autocomplete"])),
 .search:has(#q[lang="en"]) ~ .osk { display: none }
-/* The Arabic an Arabizi query was looked up as, on its own line under the input. */
-.search .arabizi { flex-basis: 100%; margin: 0; font-size: .9rem; color: var(--muted) }
-.arabizi .ar { margin-inline-start: 4px; padding-inline: 10px; line-height: 1.3; border: 1px solid var(--line); border-radius: 999px; background: var(--surface); color: var(--fg) }
-.status { color: var(--muted); font-size: .9rem; margin-block: 8px; min-height: 1.5em }
-.retry button { min-height: 44px }
+.search:has(#q[lang="en"]) #q { padding-left: 12px }
+.opts { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 20px; margin-block-start: 4px }
+.option { display: inline-flex; align-items: center; gap: 8px; min-height: 24px; font-size: 14px; color: var(--ink-2); cursor: pointer }
+.option input { width: 16px; height: 16px; margin: 0; accent-color: var(--cloth) }
+/* The Arabic an Arabizi query was looked up as, on its own line under the field. */
+.arabizi { margin: 0; font-size: 14px; color: var(--ink-2) }
+.arabizi .ar { display: inline-block; margin-inline-start: 6px; padding: 0 9px; border: 1px solid var(--edge); border-radius: 6px; background: var(--tray); color: var(--ink); font-size: 19px; line-height: 1.5 }
+
+.status-row { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 4px 16px; margin: 22px 2px 0 }
+.status { min-height: 1.5em; margin: 22px 2px 0; font-size: 14px; color: var(--ink-2) }
+.status-row .status { margin: 0 }
+.status .ar { font-size: 19px; font-weight: 700; color: var(--ink) }
+/* How word parts are marked, beside the status while there are entries to read it against. */
+.legend { display: none; gap: 4px 14px; margin: 0; font-size: 13px; color: var(--ink-2) }
+.status-row:has(~ #results .entries) .legend { display: flex }
 /* While a lookup runs, the previous results fade so they don't read as current. The delay keeps fast lookups from flickering. */
 #results, .arabizi { transition: opacity .15s }
 .search.htmx-request ~ #results, .search.htmx-request .arabizi { opacity: .4; transition-delay: .2s }
 
-/* Recent lookups: one line under the search until opened. history.js shows it. */
-.history { font-size: .9rem; color: var(--muted) }
-.history summary { width: fit-content; padding-block: 4px; cursor: pointer }
-.history ol { display: flex; flex-wrap: wrap; gap: 0 20px; margin: 4px 0; padding: 0; list-style: none }
-.history ol a { display: inline-block; padding-block: 2px; text-decoration: none }
+.intro, .empty { margin: 12px 0 0; padding: 18px 20px; color: var(--ink-2) }
+.empty p { margin: 0 }
+.empty ul { margin: 10px 0 0; padding-inline-start: 20px; line-height: 1.7; color: var(--ink) }
+.empty li::marker { color: var(--ink-3) }
+.notice { margin: 12px 0 0; padding: 10px 14px; border: 1px solid var(--line); border-inline-start: 3px solid var(--edge); border-radius: 8px; background: var(--leaf); color: var(--ink-2); font-size: 14px }
+.retry { margin: 12px 0 0 }
+
+/* Recent lookups: one small button under the search until opened. history.js shows it. */
+.history { margin-block-start: 14px; font-size: 14px; color: var(--ink-2) }
+.history ol { display: flex; flex-wrap: wrap; gap: 6px; margin: 10px 0; padding: 0; list-style: none }
+.history ol a { display: inline-flex; align-items: center; min-height: 30px; padding-inline: 9px; border: 1px solid var(--edge); border-radius: 6px; background: var(--leaf); color: var(--ink); text-decoration: none; font-size: 13.5px }
+.history ol a:hover { background: var(--tray-2) }
+.history ol a .ar { font-size: 18px; line-height: 1.5 }
+.history .none { margin: 10px 0 }
 .history ol:not(:empty) + .none { display: none }
-.history .tools { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px }
-.history .tools input { width: 5em; font: inherit; padding: 4px 6px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); color: var(--fg) }
-.history .tools button { min-height: 32px; padding-inline: 12px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); color: var(--fg); font: inherit; cursor: pointer }
+.history .tools { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; margin: 0 }
+.history .tools input { width: 4.5em; height: 30px; padding: 0 6px; border: 1px solid var(--edge); border-radius: 6px; background: var(--leaf); color: var(--ink) }
+.history .tools button { height: 30px; padding-inline: 10px; font-size: 13.5px }
 
-/* About and help */
-.notice { margin-inline: 0; padding-inline-start: 14px; border-inline-start: 3px solid var(--line); color: var(--muted); font-size: .9rem }
-.placeholder { padding: 8px 12px; border: 1px dashed var(--muted); border-radius: 6px }
+/* A small button that opens and closes, with a chevron that turns: recent lookups and word parts. */
+:is(.history, .parts) summary { display: inline-flex; align-items: center; gap: 7px; width: fit-content; height: 30px; padding: 0 10px 0 9px; border: 1px solid var(--edge); border-radius: 6px; background: var(--leaf); color: var(--ink-2); font: 600 13.5px/1 var(--f-ui); list-style: none }
+:is(.history, .parts) summary::-webkit-details-marker { display: none }
+:is(.history, .parts) summary::before { content: ""; width: 6px; height: 6px; border: solid currentColor; border-width: 1.6px 1.6px 0 0; rotate: 45deg; translate: -1px 0 }
+:is(.history, .parts) summary:hover { background: var(--tray-2); color: var(--ink) }
+:is(.history, .parts)[open] summary { border-color: var(--ink-2); color: var(--ink) }
+:is(.history, .parts)[open] summary::before { rotate: 135deg; translate: 0 -2px }
 
-.entries, .empty { background: var(--surface); border: 1px solid var(--line); border-radius: 10px }
-.empty { padding: 20px; margin-block-start: 8px }
-.empty p { margin-block-start: 0 }
-.empty ul { margin-block-end: 0 }
-.entry { display: grid; grid-template-columns: minmax(10rem, 15rem) 1fr; gap: 8px 28px; padding: 18px 20px }
-.entry + .entry { border-block-start: 1px solid var(--line) }
-.head :is(h2, h3) { margin: 0; font-weight: 400; line-height: 1.2 }
-.head :is(h2, h3) .ar { font-size: 2.1rem; font-weight: 700 }
-.head .pos { margin: 2px 0 6px; font-size: .9rem }
-.head dl { margin: 0; display: grid; grid-template-columns: auto 1fr; gap: 2px 10px; font-size: .9rem }
-.head dt { color: var(--muted) }
-.head dd { margin: 0 }
-.readings { list-style: none; margin: 0; padding: 0 }
-.reading { display: grid; grid-template-columns: auto 1fr; gap: 16px; align-items: baseline; padding-block: 6px }
-.reading + .reading { border-block-start: 1px dashed var(--line) }
-.reading p { margin: 0 }
-.sense { min-width: 0; overflow-wrap: anywhere }
-.gloss { font-weight: 500 }
-.grammar { font-size: .85rem; color: var(--muted) }
-.tag { display: inline-block; border: 1px solid var(--line); border-radius: 999px; padding-inline: 8px; margin-inline-end: 4px }
+/* Entries: the root's cloth tab, then a framed box with the headword and its labelled facts, then the readings on a tray. */
+.entries { display: grid; gap: 12px; margin-block-start: 12px }
+.tabs { position: relative; z-index: 1; display: flex; flex-wrap: wrap-reverse; justify-content: flex-end; gap: 4px 24px; padding-inline: 20px; margin-block-end: -1px }
+.root-tab { position: relative; display: inline-flex; align-items: center; gap: 0; height: 32px; padding: 0 6px 0 11px; border-radius: 8px 8px 0 0; background: var(--cloth); color: var(--gilt); box-shadow: inset 0 1px 0 var(--fillet); text-decoration: none; font: 600 12.5px/1 var(--f-ui); white-space: nowrap }
+/* Concave feet, so the tab grows out of the box's edge instead of sitting on it. */
+.root-tab::before, .root-tab::after { content: ""; position: absolute; inset-block-end: 0; width: 8px; height: 8px; pointer-events: none }
+.root-tab::before { inset-inline-end: 100%; background: radial-gradient(circle at 0 0, transparent 7.5px, var(--cloth) 8px) }
+.root-tab::after { inset-inline-start: 100%; background: radial-gradient(circle at 100% 0, transparent 7.5px, var(--cloth) 8px) }
+a.root-tab:hover { --cloth: var(--cloth-hi) }
+.root-tab:focus-visible { outline-offset: 3px }
+.rt-k { color: var(--gilt-2) }
+.root-tab .ar, .root-tab .muted { padding: 0 9px 5px; color: var(--gilt); font: 700 20px/1 var(--f-ar); word-spacing: 3px }
+.root-tab .muted { padding-block-end: 0; font: inherit }
+span.root-tab { padding-inline-end: 2px }
+.rt-go { display: inline-flex; align-items: center; gap: 4px; height: 24px; padding: 0 6px 0 9px; border-radius: 5px; background: rgb(255 255 255 / .09); box-shadow: inset 0 0 0 1px var(--fillet); text-decoration: underline 1px rgb(235 213 150 / .7); text-underline-offset: 3px }
+.rt-go::after { content: ""; display: inline-block; width: 5px; height: 5px; margin-inline: 1px 2px; border: solid currentColor; border-width: 1.5px 1.5px 0 0; rotate: 45deg }
+a.root-tab:hover .rt-go { background: rgb(255 255 255 / .15); text-decoration-thickness: 2px }
 
-/* Root and related forms: a chip that says which, then a table. On a phone each row stacks its cells, each with its column's name. */
-.context { display: flex; align-items: center; gap: 6px; width: fit-content; margin-block: 0 8px; padding-inline: 14px 2px; border: 1px solid var(--line); border-radius: 999px; background: var(--surface) }
-.context .ar { line-height: 1.3 }
-.dismiss { display: grid; place-items: center; min-width: 36px; min-height: 36px; border-radius: 999px; font-size: 1.3rem; line-height: 1; text-decoration: none; color: var(--muted) }
-.dismiss:hover { color: var(--fg) }
-.family { width: 100%; border-collapse: collapse; background: var(--surface); border: 1px solid var(--line) }
-.family th { padding: 8px 12px; text-align: start; font-weight: 500; font-size: .85rem; color: var(--muted); border-block-end: 1px solid var(--line) }
-.family th a { color: inherit }
-.family th[aria-sort] a { color: var(--fg) }
+.entry .head { display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "facts lemma"; align-items: center; gap: 8px 28px; padding: 14px 18px; background: var(--leaf); border: 1px solid var(--line); border-block-end: 0; border-radius: 12px 12px 0 0 }
+.lemma { grid-area: lemma; display: flex; flex-direction: row-reverse; align-items: center; gap: 12px }
+.lemma :is(h2, h3) { margin: 0; font-size: inherit; font-weight: inherit }
+.lemma .ar { display: block; color: var(--ink); font: 700 30px/1.55 var(--f-ar) }
+.pos { display: flex; flex-wrap: wrap; gap: 5px; margin: 0 }
+.badge { display: inline-block; padding-inline: 9px; border: 1px solid var(--ink-2); border-radius: 6px; color: var(--ink); font: 600 13px/22px var(--f-ui); white-space: nowrap }
+.badge::first-letter, .band::first-letter, .grammar li::first-letter { text-transform: uppercase }
+.badge.measure { border-color: var(--edge); color: var(--ink-2); font-weight: 500 }
+.badge.na { border-style: dashed }
+
+/* Facts: each piece of information has a labelled row, its label in a fixed gutter. */
+.facts { display: grid; grid-template-columns: 76px minmax(0, 1fr); gap: 6px 10px; align-items: baseline; margin: 0 }
+.facts dt { font-size: 13px; font-weight: 600; line-height: 22px; color: var(--ink-3) }
+.facts dd { min-width: 0; margin: 0; line-height: 22px; overflow-wrap: anywhere }
+.facts a { font-weight: 500 }
+.head .facts { grid-area: facts }
+.freq { display: flex; flex-wrap: wrap; align-items: baseline; column-gap: 6px }
+.bars { display: inline-flex; align-items: flex-end; gap: 2px; height: 12px; margin-inline-end: 2px; translate: 0 1px }
+.bars span { width: 3px; border-radius: 1px; background: var(--line-2) }
+.bars span:nth-child(1) { height: 5px } .bars span:nth-child(2) { height: 7px } .bars span:nth-child(3) { height: 10px } .bars span:nth-child(4) { height: 12px }
+.bars .on { background: var(--ink-2) }
+.band { display: inline-block; font-weight: 600; color: var(--ink) }
+.pct { font-size: 14px; color: var(--ink-3) }
+
+/* Readings: the form on the right, its meaning and grammar labelled on the left, its parts on demand below. */
+.readings { margin: 0; padding: 0; list-style: none; background: var(--tray); border: 1px solid var(--line); border-radius: 0 0 12px 12px; box-shadow: var(--shadow) }
+.reading + .reading { border-block-start: 1px solid var(--line) }
+.rd { display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "facts form" "facts btn" "parts parts"; grid-template-rows: auto 1fr auto; column-gap: 28px; padding: 12px 18px 14px }
+.rd + .rd { border-block-start: 1px dashed var(--line-2) }
+.rd .facts { grid-area: facts; align-self: start; padding-block-start: 4px }
+.rd .form { grid-area: form; font-size: 25px; line-height: 1.6; text-align: start; color: var(--ink) }
+.gloss { font-size: 16px; color: var(--ink) }
+.grammar { display: flex; flex-wrap: wrap; gap: 4px; margin: 0; padding: 1px 0 0; list-style: none }
+.grammar li { padding-inline: 7px; border: 1px solid var(--line-2); border-radius: 5px; background: var(--leaf); font-size: 13px; line-height: 20px; color: var(--ink-2) }
+
+/* Word parts: colour, and a line and weight that do not rely on colour (prefix dotted, stem bold, suffix dashed). */
+:is(.form, .legend) .prefix { color: var(--pre); text-decoration: underline 2px dotted; text-underline-offset: .5em; text-decoration-skip-ink: none }
+:is(.form, .legend) .stem { font-weight: 700; color: var(--ink) }
+:is(.form, .legend) .suffix { color: var(--suf); text-decoration: underline 1.5px dashed; text-underline-offset: .5em; text-decoration-skip-ink: none }
+.legend :is(.prefix, .suffix) { text-underline-offset: 4px }
+.parts { grid-column: 1 / -1 }
+.parts summary { margin-inline-start: auto }
+/* Where the disclosure's content can be placed on its own, the button sits under the form and the parts span the reading. */
+@supports selector(::details-content) {
+  .rd .parts { display: contents }
+  .rd .parts summary { grid-area: btn; justify-self: end; align-self: start; margin-block-start: 4px }
+  .rd .parts::details-content { grid-area: parts }
+}
+.chips { display: flex; flex-wrap: wrap; gap: 6px 22px; margin: 12px 0 0; padding: 12px 0 0; border-block-start: 1px dashed var(--line-2); list-style: none }
+.chip { position: relative; display: flex; flex-direction: column; align-items: center; min-width: 60px; padding: 6px 10px 8px; border: 1.5px solid var(--ink-2); border-radius: 7px; background: var(--leaf) }
+.chip + .chip::before { content: "+" / ""; position: absolute; inset-inline-end: calc(100% + 7px); inset-block-start: 50%; translate: 0 -50%; color: var(--ink-3); font: 400 14px/1 var(--f-ui) }
+.chip .kind { font: 600 11.5px/1 var(--f-ui); color: var(--ink-2); text-transform: capitalize }
+.chip .ar { font-size: 23px; line-height: 1.7; color: var(--ink) }
+.chip.stem .ar { font-weight: 700 }
+.chip .label { max-width: 140px; font-size: 13px; line-height: 1.3; text-align: center; color: var(--ink-2) }
+.chip.prefix { border: 2px dotted var(--pre); background: var(--pre-bg) }
+.chip.suffix { border: 1.5px dashed var(--suf); background: var(--suf-bg) }
+.chip.prefix :is(.ar, .kind) { color: var(--pre) }
+.chip.suffix :is(.ar, .kind) { color: var(--suf) }
+.note { margin: 8px 0 0; font-size: 13px; color: var(--ink-2) }
+
+/* Root and related forms: a cloth chip that says which, then a table. On a phone each row stacks its cells, each with its column's name. */
+.context { display: inline-flex; align-items: center; gap: 8px; margin: 14px 0 10px; padding: 0 4px 0 12px; min-height: 36px; border-radius: 8px; background: var(--cloth); color: var(--gilt-2); box-shadow: inset 0 0 0 1px var(--fillet); font: 600 13px/1 var(--f-ui) }
+.context .ar { color: var(--gilt); font: 700 20px/1.4 var(--f-ar); word-spacing: 3px }
+.dismiss { display: grid; place-items: center; width: 28px; height: 28px; border-radius: 6px; background: rgb(255 255 255 / .09); box-shadow: inset 0 0 0 1px var(--fillet); color: var(--gilt); font-size: 18px; line-height: 1; text-decoration: none }
+.dismiss:hover { background: rgb(255 255 255 / .18) }
+.family { width: 100%; border-collapse: separate; border-spacing: 0; background: var(--leaf); border: 1px solid var(--line); border-radius: 12px; box-shadow: var(--shadow) }
+.family th { padding: 8px 12px; text-align: start; vertical-align: bottom; background: var(--tray); border-block-end: 1px solid var(--line); font-size: 13px; font-weight: 600; color: var(--ink-3) }
+.family th:first-child { border-start-start-radius: 11px }
+.family th:last-child { border-start-end-radius: 11px }
+.family th a { color: var(--ink-2) }
+.family th[aria-sort] a { color: var(--ink) }
 .family th[aria-sort="ascending"] a::after { content: "\a0▲" / "" }
 .family th[aria-sort="descending"] a::after { content: "\a0▼" / "" }
-.family td { padding: 4px 12px; vertical-align: baseline; overflow-wrap: anywhere }
+.family td { padding: 6px 12px; vertical-align: baseline; overflow-wrap: break-word }
 .family tbody tr + tr td { border-block-start: 1px solid var(--line) }
 .family .ar { white-space: nowrap }
+.family .grammar li { white-space: nowrap }  /* wrap between tags, not inside one */
+.family td:first-child .ar { font-size: 21px; line-height: 1.6 }
 @media (max-width: 640px) {
   .family, .family :is(thead, tbody, tr, td) { display: block }
-  .family thead tr { display: flex; flex-wrap: wrap; gap: 4px 16px; padding: 8px 12px; border-block-end: 1px solid var(--line) }
-  .family th { padding: 0; border: 0 }
+  .family thead tr { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 10px 14px; background: var(--tray); border-block-end: 1px solid var(--line); border-radius: 11px 11px 0 0 }
+  .family thead tr::before { content: "Sort by" / ""; margin-inline-end: 4px; font-size: 13px; font-weight: 600; color: var(--ink-3) }  /* each header already says it sorts */
+  .family th { padding: 0; border: 0; background: none }
+  .family th:not(:has(a)) { display: none }  /* a column that doesn't sort has nothing to offer here */
+  .family th a { display: inline-flex; align-items: center; min-height: 28px; padding-inline: 8px; border: 1px solid var(--line-2); border-radius: 6px; background: var(--leaf); text-decoration: none }
+  .family th[aria-sort] a { border-color: var(--ink-2) }
   .family tbody tr { padding-block: 8px }
   .family tbody tr + tr { border-block-start: 1px solid var(--line) }
   .family tbody tr + tr td { border: 0 }
-  .family td { display: grid; grid-template-columns: 7.5rem 1fr; gap: 8px; padding: 0 12px }
-  .family td::before { content: attr(data-label) / ""; color: var(--muted); font-size: .85rem }  /* the header already names it */
+  .family td { display: grid; grid-template-columns: 70px minmax(0, 1fr); gap: 10px; padding: 1px 14px }
+  .family td::before { content: attr(data-label) / ""; font-size: 13px; font-weight: 600; color: var(--ink-3) }  /* the header already names it */
+  .family td > :is(.ar, .badge) { place-self: start }
   .family td:empty { display: none }
 }
 
-/* Word parts: colour, and a line style that does not rely on colour (prefix dotted, suffix solid). */
-.prefix, .suffix { text-decoration-line: underline; text-underline-offset: .35em; text-decoration-thickness: 1.5px; text-decoration-skip-ink: none }
-.prefix { color: var(--pre); text-decoration-style: dotted }
-.suffix { color: var(--suf); text-decoration-style: solid }
-.legend { font-size: .85rem; color: var(--muted); margin-block: 0 8px }
-.parts summary { width: fit-content; margin-block-start: 2px; color: var(--accent); font-size: .9rem; cursor: pointer }
-.chips { list-style: none; display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0 0; padding: 0 }
-.chip { display: grid; justify-items: center; min-width: 3rem; padding: 0 10px 6px; border: 1px solid transparent; border-radius: 8px; background: var(--chip-stem) }
-.chip.prefix { background: var(--chip-pre); border: 1.5px dotted var(--pre); text-decoration: none }
-.chip.suffix { background: var(--chip-suf); border: 1.5px solid var(--suf); text-decoration: none }
-.chip .label { color: var(--muted); font-size: .8rem; text-align: center; max-width: 11rem }
-.note { font-size: .85rem; color: var(--muted); margin-block-start: 6px }
-
-/* Text: the passage as typed, each word a button that opens its details. An unknown word is
-   dashed and muted, and its accessible name says so, so colour is never the only sign. */
-.text-in { display: grid; gap: 8px; margin-block-start: 12px }
-.text-in label, .text-in .hint { color: var(--muted); font-size: .9rem }
-.text-in .hint { margin: 0 }
-.text-in textarea { width: 100%; font: 1.4rem/1.8 var(--f-ar); padding: 8px 14px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); color: var(--fg); resize: vertical }
+/* Text: the passage as typed, each word a key that opens its details. An unknown word is dashed
+   and muted, and its accessible name says so, so colour is never the only sign. */
+.text-in { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 8px 12px; padding: 16px 18px }
+.text-in .lbl, .text-in textarea { grid-column: 1 / -1 }
+.text-in textarea { display: block; width: 100%; min-height: 104px; padding: 8px 12px; border: 1px solid var(--edge); border-radius: 8px; background: var(--leaf); color: var(--ink); font: 400 22px/1.8 var(--f-ar); resize: vertical }
+.text-in textarea:focus-visible { outline-offset: 1px; border-color: var(--focus) }
+.text-in .hint { margin: 0; font-size: 13.5px; color: var(--ink-3) }
 .text-in .actions { display: flex; gap: 8px }
-.text-in button { min-height: 44px }
-.passage { white-space: pre-wrap; overflow-wrap: anywhere; margin: 0; padding: 20px; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; font: 1.8rem/2.3 var(--f-ar) }
-.tok { font: inherit; line-height: 1.5; color: inherit; background: none; border: 0; margin: 0; padding: 0 .12em; border-radius: 3px; cursor: pointer;
-  text-decoration: underline dotted var(--muted) 1px; text-underline-offset: .55em; text-decoration-skip-ink: none }
-.tok.on { background: var(--chip-stem) }
-.tok.unknown { color: var(--muted); text-decoration: none; outline: 1.5px dashed var(--muted); outline-offset: -1px }
-.tok.unknown:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px }
+.text-in [data-keyboard] { display: grid; place-items: center; width: 40px; height: 40px; padding: 0; border: 1px solid var(--edge); border-radius: 8px; background: var(--leaf); color: var(--ink-2) }
+.passage-box { margin-block-start: 20px }
+.pb-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 16px; padding: 12px 18px; border-block-end: 1px solid var(--line) }
+.pb-head h2 { margin: 0; font: 600 15px/1.4 var(--f-ui) }
+.key-legend { display: flex; flex-wrap: wrap; gap: 4px 14px; margin: 0; font-size: 13px; color: var(--ink-2) }
+.key-legend span { display: inline-flex; align-items: center; gap: 6px }
+.key-legend span::before { content: ""; width: 18px; height: 13px; border: 1px solid var(--edge); border-block-end-width: 2px; border-radius: 3px; background: var(--tray) }
+.key-legend .unknown::before { border: 1.5px dashed var(--edge); background: transparent }
+.passage { margin: 0; padding: 18px 20px 22px; white-space: pre-wrap; overflow-wrap: anywhere; color: var(--ink); font: 400 27px/2.35 var(--f-ar) }
+.tok { margin: 0; padding: 0 6px; border: 1px solid var(--edge); border-block-end-width: 2px; border-radius: 6px; background: var(--tray); color: inherit; font: inherit; line-height: 1.55 }
+.tok:hover { background: var(--tray-2) }
+.tok.unknown { border: 1.5px dashed var(--edge); background: transparent; color: var(--ink-2) }
+.tok.on, .tok.on:hover { border-color: var(--hl-bg); background: var(--hl-bg); color: var(--hl-ink) }
 
 /* Token details: a native popover. Centred without script; text.js puts it under the word on wide screens. */
-.tok-pop { width: min(28rem, calc(100vw - 32px)); max-height: min(70vh, 34rem); padding: 0; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); color: var(--fg); box-shadow: 0 10px 30px rgb(0 0 0 / .18) }
-.tp-head, .tp-foot { position: sticky; display: flex; align-items: baseline; gap: 10px; margin: 0; padding: 8px 14px; background: var(--surface) }
-.tp-head { inset-block-start: 0; border-block-end: 1px solid var(--line) }
-.tp-head h2 { margin: 0; font-size: 1rem }
-.tp-head p { flex: 1; margin: 0; font-size: .9rem }
-.tp-head button { min-height: 32px; padding: 4px 10px; border: 1px solid var(--line); border-radius: 8px; background: none; color: inherit; font: inherit; cursor: pointer }
-.tp-foot { inset-block-end: 0; border-block-start: 1px solid var(--line) }
-.tp-msg { margin: 0; padding: 12px 14px }
-.tok-pop .entries { border: 0 }
-.tok-pop .entry { grid-template-columns: 1fr; padding: 10px 14px }
-
-@media (max-width: 640px) {
-  .entry { grid-template-columns: 1fr; padding: 14px }
-  .passage { padding: 12px; font-size: 1.5rem }
-  /* A bottom sheet, with room below the passage to scroll the chosen word above it. */
-  .tok-pop { inset: auto 0 0; width: 100%; max-width: 100%; max-height: 60dvh; margin: 0; border-width: 1px 0 0; border-radius: 10px 10px 0 0; padding-block-end: env(safe-area-inset-bottom, 0px) }
-  body:has(.tok-pop:popover-open) { padding-block-end: 60dvh }
-  .tok { scroll-margin-block-end: calc(60dvh + 16px) }
-}
+/* The whole panel scrolls, so the keyboard reaches it from its buttons; its heading and buttons stay in view. */
+.tok-pop { width: min(420px, calc(100vw - 32px)); max-height: min(72vh, 640px); padding: 0; overflow: auto; overscroll-behavior: contain; border: 1px solid var(--line-2); border-radius: 12px; background: var(--tray); color: var(--ink); box-shadow: var(--pop-shadow) }
+.tp-head, .tp-foot { position: sticky; z-index: 2; display: flex; gap: 8px; background: var(--leaf) }
+.tp-head { inset-block-start: 0; flex-direction: row-reverse; align-items: center; justify-content: space-between; padding: 6px 18px; border-block-end: 1px solid var(--line) }
+.tp-head h2 { margin: 0; font-size: inherit }
+.tp-head h2 .ar { font: 700 28px/1.55 var(--f-ar) }
+.tp-head p { margin: 0; font-size: 14px; font-weight: 600 }
+.tp-body { padding: 4px 14px 14px }
+.tp-msg { margin: 0; padding: 12px 4px; color: var(--ink-2) }
+.tp-foot { inset-block-end: 0; justify-content: flex-end; padding: 12px 18px; border-block-start: 1px solid var(--line) }
+.tp-foot :is(a, button) { height: 36px; padding-inline: 13px; font-size: 14px }
+/* Inside the details each entry is brief: the headword and its badges, then each reading's meaning and grammar beside its form. */
+.tok-pop .entries { gap: 10px }
+.tok-pop .entry .head { grid-template-columns: minmax(0, 1fr); grid-template-areas: "lemma"; padding: 4px 14px; border-radius: 10px 10px 0 0 }
+.tok-pop .readings { border-radius: 0 0 10px 10px; background: var(--leaf) }
+.tok-pop .lemma { justify-content: space-between }
+.tok-pop .lemma .ar { font-size: 25px }
+.tok-pop .tabs { padding-inline: 12px }
+.tok-pop .root-tab { height: 28px; font-size: 12px }
+.tok-pop .root-tab .ar { font-size: 18px; padding-block-end: 4px }
+.tok-pop .rd { grid-template-areas: "facts form"; grid-template-rows: auto; column-gap: 14px; padding: 8px 14px 10px }
+.tok-pop .rd .facts { display: block; padding: 0 }
+.tok-pop .rd .facts dt { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap }
+.tok-pop .gloss { margin-block-end: 5px; font-size: 15px; line-height: 1.4 }
+.tok-pop .rd .form { font-size: 22px; line-height: 1.5 }
 
 /* On-screen keyboard: the Arabic (101) layout in physical key order, so it keeps left to right. */
-:is(.search, .text-in) [data-keyboard] { padding-inline: 10px; border: 1px solid var(--line); background: var(--surface); color: var(--fg) }
-:is(.search, .text-in) [data-keyboard][aria-expanded="true"] { border-color: var(--accent); color: var(--accent) }
-.osk { max-width: 46rem; padding: 6px; background: var(--line); border-radius: 10px; direction: ltr; user-select: none; -webkit-user-select: none; touch-action: manipulation }
-.osk .row { display: grid; grid-template-columns: repeat(26, minmax(0, 1fr)); gap: 5px }
+.osk { margin-block-start: 12px; padding: 10px; background: var(--tray); border: 1px solid var(--line); border-radius: 10px; direction: ltr; user-select: none; -webkit-user-select: none; touch-action: manipulation }
+.osk .row { display: flex; justify-content: center; gap: 5px; max-width: 620px; margin-inline: auto }
 .osk .row + .row { margin-block-start: 5px }
-.osk .row:nth-child(2) .key:first-child { grid-column: 3 / span 2 }
-.key { grid-column: span 2; position: relative; min-height: 48px; padding: 0; border: 0; border-radius: 6px; background: var(--surface); color: var(--fg); font: 24px/1 var(--f-ar); cursor: pointer }
-.key:active { background: var(--accent); color: var(--surface) }
-.key.fn { grid-column: span 3; font: 500 .9rem var(--f-ui) }
-.key.space { grid-column: span 23 }
-.key[aria-pressed="true"] { background: var(--fg); color: var(--bg) }
-.key[data-cap]::after { content: attr(data-cap); position: absolute; inset-block-start: 3px; inset-inline-start: 5px; font: 10px/1 var(--f-ui); color: var(--muted) }
-@media (max-width: 640px) {
-  .osk { margin-inline: -16px; padding: 4px; border-radius: 0 }
-  .osk .row { gap: 3px }
-  .osk .row + .row { margin-block-start: 3px }
-  .key { min-height: 44px; font-size: 21px }
-  .key[data-cap]::after { display: none }
-}
+.key { flex: 0 1 calc((100% - 60px) / 13); min-width: 0; height: 40px; padding: 0 0 4px; display: grid; place-items: center; border: 1px solid var(--edge); border-block-end-width: 2px; border-radius: 6px; background: var(--leaf); color: var(--ink); font: 400 21px/1 var(--f-ar) }
+.key:hover { background: var(--tray-2) }
+.key:active { translate: 0 1px; border-block-end-width: 1px }
+.key.fn { padding: 0; color: var(--ink-2); font: 600 13.5px/1 var(--f-ui) }
+.osk .row:nth-child(3) .fn { flex-basis: calc((100% - 60px) / 13 * 1.5) }  /* Shift and Delete */
+.osk .row:nth-child(4) .fn { flex-basis: calc((100% - 60px) / 13 * 2 + 5px) }  /* Hide */
+.key.space { flex: 1 1 auto }
+.key[aria-pressed="true"] { border-color: var(--btn); background: var(--btn); color: var(--btn-ink) }
 
 /* Autocomplete suggestions, placed under the field by autocomplete.js */
-.suggestions { position: absolute; z-index: 2; margin: 0; padding: 4px 0; list-style: none; max-height: min(20rem, 50vh); overflow-y: auto; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; box-shadow: 0 6px 16px rgb(0 0 0 / .15) }
-.suggestions [role="option"] { padding: 2px 14px; font: 1.45rem/1.6 var(--f-ar); cursor: pointer }
-.suggestions [role="option"]:hover { background: var(--bg) }
-.suggestions [aria-selected="true"], .suggestions [aria-selected="true"]:hover { background: var(--accent); color: var(--surface) }
+.suggestions { position: absolute; z-index: 3; margin: 4px 0 0; padding: 4px 0; list-style: none; max-height: min(20rem, 50vh); overflow-y: auto; background: var(--leaf); border: 1px solid var(--line-2); border-radius: 10px; box-shadow: var(--pop-shadow) }
+.suggestions [role="option"] { padding: 2px 14px; font: 400 21px/1.6 var(--f-ar); cursor: pointer }
+.suggestions [role="option"]:hover { background: var(--tray) }
+.suggestions [aria-selected="true"], .suggestions [aria-selected="true"]:hover { background: var(--hl-bg); color: var(--hl-ink) }
+
+/* About and help */
+.about { padding: 22px 24px 24px }
+.about h1 { margin: 0 0 10px; font: 600 20px/1.3 var(--f-ui) }
+.about h2 { margin: 26px 0 8px; font: 600 17px/1.4 var(--f-ui) }
+.about :is(p, li) { max-width: 62ch; font-size: 15.5px; line-height: 1.6; color: var(--ink-2) }
+.about p { margin: 0 }
+.about p + p { margin-block-start: 10px }
+.about ul { margin: 0; padding-inline-start: 20px }
+.about blockquote.notice { margin-block: 10px; max-width: 62ch }
+.about .notice p { font-size: 14px }
+.placeholder { margin-block-start: 10px !important; padding: 8px 12px; border: 1px dashed var(--edge); border-radius: 8px }
+
+@media (max-width: 640px) {
+  .wrap { padding-inline: max(16px, env(safe-area-inset-left, 0px)) max(16px, env(safe-area-inset-right, 0px)) }
+  .site .wrap { min-height: 54px }
+  .brand { font-size: 18px }
+  .site nav a { height: 40px; padding-inline: 10px }
+  main.wrap { padding-block-start: 16px }
+  .search { padding: 14px 14px 12px }
+  #q, :is(.search, .text-in) [type="submit"] { height: 44px }
+  .search [data-keyboard] { width: 36px; height: 36px }
+  .facts { grid-template-columns: 70px minmax(0, 1fr) }
+  .entry .head { grid-template-columns: minmax(0, 1fr); grid-template-areas: "lemma" "facts"; gap: 6px; padding: 8px 14px 14px }
+  .lemma { justify-content: space-between }
+  .lemma .ar { font-size: 28px }
+  .tabs { padding-inline: 14px }
+  .rd { grid-template-areas: "btn form" "facts facts" "parts parts"; grid-template-rows: auto; column-gap: 14px; padding: 8px 14px 14px }
+  .rd .form { font-size: 24px }
+  @supports selector(::details-content) {
+    .rd .parts summary { justify-self: start; align-self: center; height: 36px; margin: 0 }
+  }
+  .chips { display: grid; grid-template-columns: repeat(auto-fill, minmax(72px, 1fr)); align-items: stretch; gap: 6px }
+  .chip { min-width: 0; padding: 5px 6px 7px }
+  .chip + .chip::before { display: none }
+  .text-in { padding: 14px }
+  .text-in textarea { min-height: 92px; font-size: 21px }
+  .passage { padding: 14px 14px 18px; font-size: 25px }
+  .osk { margin-inline: -16px; padding: 8px 4px; border-radius: 0; border-inline: 0 }
+  .osk .row { gap: 3px }
+  .osk .row + .row { margin-block-start: 6px }
+  .key { flex-basis: calc((100% - 36px) / 13); height: 44px; border-radius: 5px; font-size: 19px }
+  .osk .row:nth-child(3) .fn { flex-basis: calc((100% - 36px) / 13 * 1.5) }
+  .osk .row:nth-child(4) .fn { flex-basis: calc((100% - 36px) / 13 * 2.4) }
+  /* Token details: a bottom sheet, with room below the passage to scroll the chosen word above it. */
+  .tok-pop { inset: auto 0 0; width: 100%; max-width: 100%; max-height: 64dvh; margin: 0; border-width: 1px 0 0; border-radius: 16px 16px 0 0 }
+  .tok-pop::backdrop { background: var(--scrim) }
+  .tp-foot { padding-block-end: max(12px, env(safe-area-inset-bottom, 0px)) }
+  .tp-foot :is(a, button) { flex: 1; height: 40px }
+  body:has(.tok-pop:popover-open) { padding-block-end: 66dvh }
+  .tok { scroll-margin-block-end: calc(66dvh + 16px) }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { transition: none !important; animation: none !important }
+}

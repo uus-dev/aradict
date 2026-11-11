@@ -3,8 +3,7 @@
 // names the field the keys type into, and aria-controls the empty panel the keys are drawn in.
 // A key inserts at the caret and fires an input event, so live lookup runs just as for typing.
 
-// The letter and Latin cap of each key, row by row in physical order from the left.
-const CAPS = ["`QWERTYUIOP[]", "ASDFGHJKL;'", "ZXCVBNM,./"];
+// The letter of each key, row by row in physical order from the left.
 const BASE = [
   ["ذ", "ض", "ص", "ث", "ق", "ف", "غ", "ع", "ه", "خ", "ح", "ج", "د"],
   ["ش", "س", "ي", "ب", "ل", "ا", "ت", "ن", "م", "ك", "ط"],
@@ -58,9 +57,8 @@ for (const toggle of document.querySelectorAll("[data-keyboard]")) {
     field.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: text ? "insertText" : "deleteContentBackward", data: text || null }));
   };
 
-  const letters = BASE.map((row, r) => row.map((_, i) => {
+  const letters = BASE.map((row) => row.map(() => {
     const button = key("key", "");
-    button.dataset.cap = CAPS[r][i];
     button.addEventListener("click", () => {
       type(button.value);
       if (shifted) shift(false); // one key from the shift layer, then back to the letters
