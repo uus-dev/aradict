@@ -222,9 +222,9 @@ a.root-tab:hover .rt-go { background: none; text-decoration-thickness: 2px }
 .note { margin: 8px 0 0; font-size: 13px; color: var(--ink-2) }
 
 /* Root and related forms: a cloth chip that says which, then a table. On a phone each row stacks its cells, each with its column's name. */
-.context { display: inline-flex; align-items: center; gap: 8px; margin: 14px 0 10px; padding-block: 0; padding-inline: 12px 4px; min-height: 36px; border-radius: 8px; background: var(--cloth); color: var(--gilt-2); box-shadow: inset 0 0 0 1px var(--fillet); font: 600 13px/1 var(--f-ui) }
+.context { display: inline-flex; align-items: center; gap: 8px; margin: 14px 0 10px; padding-block: 4px; padding-inline: 12px 4px; border-radius: 8px; background: var(--cloth); color: var(--gilt-2); box-shadow: inset 0 0 0 1px var(--fillet); font: 600 13px/1 var(--f-ui) }
 .context .ar { color: var(--gilt); font: 700 20px/1.4 var(--f-ar); word-spacing: 3px }
-.dismiss { display: grid; place-items: center; width: 28px; height: 28px; border-radius: 6px; background: rgb(255 255 255 / .09); box-shadow: inset 0 0 0 1px var(--fillet); color: var(--gilt); font-size: 18px; line-height: 1; text-decoration: none }
+.dismiss { display: grid; place-items: center; width: 36px; height: 36px; border-radius: 6px; background: rgb(255 255 255 / .09); box-shadow: inset 0 0 0 1px var(--fillet); color: var(--gilt); font-size: 18px; line-height: 1; text-decoration: none }
 .dismiss:hover { background: rgb(255 255 255 / .18) }
 .family { width: 100%; border-collapse: separate; border-spacing: 0; background: var(--leaf); border: 1px solid var(--line); border-radius: 12px; box-shadow: var(--shadow) }
 .family th { padding: 8px 12px; text-align: start; vertical-align: bottom; background: var(--tray); border-block-end: 1px solid var(--line); font-size: 13px; font-weight: 600; color: var(--ink-3) }
