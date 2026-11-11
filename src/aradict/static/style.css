@@ -134,7 +134,7 @@ main.wrap { padding-block: 28px 48px }
 .history .tools button { height: 30px; padding-inline: 10px; font-size: 13.5px }
 
 /* A small button that opens and closes, with a chevron that turns: recent lookups and word parts. */
-:is(.history, .parts) summary { display: inline-flex; align-items: center; gap: 7px; width: fit-content; height: 30px; padding: 0 10px 0 9px; border: 1px solid var(--edge); border-radius: 6px; background: var(--leaf); color: var(--ink-2); font: 600 13.5px/1 var(--f-ui); list-style: none }
+:is(.history, .parts) summary { display: inline-flex; align-items: center; gap: 7px; width: fit-content; height: 30px; padding-block: 0; padding-inline: 9px 10px; border: 1px solid var(--edge); border-radius: 6px; background: var(--leaf); color: var(--ink-2); font: 600 13.5px/1 var(--f-ui); list-style: none }
 :is(.history, .parts) summary::-webkit-details-marker { display: none }
 :is(.history, .parts) summary::before { content: ""; width: 6px; height: 6px; border: solid currentColor; border-width: 1.6px 1.6px 0 0; rotate: 45deg; translate: -1px 0 }
 :is(.history, .parts) summary:hover { background: var(--tray-2); color: var(--ink) }
@@ -144,7 +144,7 @@ main.wrap { padding-block: 28px 48px }
 /* Entries: the root's cloth tab, then a framed box with the headword and its labelled facts, then the readings on a tray. */
 .entries { display: grid; gap: 12px; margin-block-start: 12px }
 .tabs { position: relative; z-index: 1; display: flex; flex-wrap: wrap-reverse; justify-content: flex-end; gap: 4px 24px; padding-inline: 20px; margin-block-end: -1px }
-.root-tab { position: relative; display: inline-flex; align-items: center; gap: 0; height: 32px; padding: 0 6px 0 11px; border-radius: 8px 8px 0 0; background: var(--cloth); color: var(--gilt); box-shadow: inset 0 1px 0 var(--fillet); text-decoration: none; font: 600 12.5px/1 var(--f-ui); white-space: nowrap }
+.root-tab { position: relative; display: inline-flex; align-items: center; gap: 0; height: 32px; padding-block: 0; padding-inline: 11px 6px; border-radius: 8px 8px 0 0; background: var(--cloth); color: var(--gilt); box-shadow: inset 0 1px 0 var(--fillet); text-decoration: none; font: 600 12.5px/1 var(--f-ui); white-space: nowrap }
 /* Concave feet, so the tab grows out of the box's edge instead of sitting on it. */
 .root-tab::before, .root-tab::after { content: ""; position: absolute; inset-block-end: 0; width: 8px; height: 8px; pointer-events: none }
 .root-tab::before { inset-inline-end: 100%; background: radial-gradient(circle at 0 0, transparent 7.5px, var(--cloth) 8px) }
@@ -155,7 +155,7 @@ a.root-tab:hover { --cloth: var(--cloth-hi) }
 .root-tab .ar, .root-tab .muted { padding: 0 9px 5px; color: var(--gilt); font: 700 20px/1 var(--f-ar); word-spacing: 3px }
 .root-tab .muted { padding-block-end: 0; font: inherit }
 span.root-tab { padding-inline-end: 2px }
-.rt-go { display: inline-flex; align-items: center; gap: 4px; height: 24px; padding: 0 6px 0 9px; border-radius: 5px; background: rgb(255 255 255 / .09); box-shadow: inset 0 0 0 1px var(--fillet); text-decoration: underline 1px color-mix(in srgb, var(--gilt) 70%, transparent); text-underline-offset: 3px }
+.rt-go { display: inline-flex; align-items: center; gap: 4px; height: 24px; padding-block: 0; padding-inline: 9px 6px; border-radius: 5px; background: rgb(255 255 255 / .09); box-shadow: inset 0 0 0 1px var(--fillet); text-decoration: underline 1px color-mix(in srgb, var(--gilt) 70%, transparent); text-underline-offset: 3px }
 .rt-go::after { content: ""; display: inline-block; width: 5px; height: 5px; margin-inline: 1px 2px; border: solid currentColor; border-width: 1.5px 1.5px 0 0; rotate: 45deg }
 /* Hovered, the count drops its tint: gilt on the lighter cloth with a tint is below 4.5:1. */
 a.root-tab:hover .rt-go { background: none; text-decoration-thickness: 2px }
@@ -222,7 +222,7 @@ a.root-tab:hover .rt-go { background: none; text-decoration-thickness: 2px }
 .note { margin: 8px 0 0; font-size: 13px; color: var(--ink-2) }
 
 /* Root and related forms: a cloth chip that says which, then a table. On a phone each row stacks its cells, each with its column's name. */
-.context { display: inline-flex; align-items: center; gap: 8px; margin: 14px 0 10px; padding: 0 4px 0 12px; min-height: 36px; border-radius: 8px; background: var(--cloth); color: var(--gilt-2); box-shadow: inset 0 0 0 1px var(--fillet); font: 600 13px/1 var(--f-ui) }
+.context { display: inline-flex; align-items: center; gap: 8px; margin: 14px 0 10px; padding-block: 0; padding-inline: 12px 4px; min-height: 36px; border-radius: 8px; background: var(--cloth); color: var(--gilt-2); box-shadow: inset 0 0 0 1px var(--fillet); font: 600 13px/1 var(--f-ui) }
 .context .ar { color: var(--gilt); font: 700 20px/1.4 var(--f-ar); word-spacing: 3px }
 .dismiss { display: grid; place-items: center; width: 28px; height: 28px; border-radius: 6px; background: rgb(255 255 255 / .09); box-shadow: inset 0 0 0 1px var(--fillet); color: var(--gilt); font-size: 18px; line-height: 1; text-decoration: none }
 .dismiss:hover { background: rgb(255 255 255 / .18) }
