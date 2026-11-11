@@ -124,9 +124,7 @@ def _analyse(text: str, hx_request: str | None = None) -> HTMLResponse:
         state = views.State(f"Your text has {len(text):,} characters. Analyse at most {views.MAX_TEXT:,} at a time: shorten it and try again.")
     else:
         try:
-            tokens = dictionary().analyze_text(text)
-            roots = {r.root for t in tokens for r in t.readings if r.root}
-            state = views.analysed(tokens, {root: dictionary().family_size(root) for root in roots})
+            state = views.analysed(dictionary().analyze_text(text))
         except Exception as error:
             _log_failure("Text analysis failed", error)
             state, status_code = views.TEXT_FAILURE, 500

@@ -316,10 +316,10 @@ def test_word_details_show_its_readings_and_open_in_word_lookup(client):
     assert vocalized[:vocalized.index('id="w1"')].count('class="reading"') == 1  # only the vocalized reading
     assert bare[:bare.index('id="w2"')].count('class="entry"') == 2 and bare[:bare.index('id="w2"')].count('class="reading"') == 3
     assert '<dd class="gloss">he/it wrote</dd>' in vocalized
-    # The root links to its words, with how many there are, as on the Word page (#14); closing the
-    # root view returns to the word's lookup.
+    # The root links to its words as on the Word page (#14), without the count, which is too slow
+    # to work out for every root of a long passage; closing the root view returns to the word's lookup.
     assert links(vocalized[:vocalized.index('id="w1"')]) == {
-        "Root ك ت ب 16 words": {"q": ["كَتَبَ"], "root": ["ك.ت.ب"]},
+        "Root ك ت ب words": {"q": ["كَتَبَ"], "root": ["ك.ت.ب"]},
         "Open in Word lookup": {"q": ["كَتَبَ"]},
     }
     assert "not in the dictionary" in unknown and 'class="reading"' not in unknown
