@@ -108,6 +108,12 @@ def test_wa_reads_as_and_even_when_every_analysis_has_a_case_ending(real):
     assert glosses(real, "ومدرستي") >= {"and the two schools of", "and my two schools"}
 
 
+def test_an_of_phrase_takes_its_plural_on_the_noun_before_of(real):
+    # Not "two period of times": that is the "two school" defect again (#17).
+    assert glosses(real, "مدتان") == {"two periods of time; two intervals"}
+    assert "two points of view; two angles" in glosses(real, "وجهتان")
+
+
 def test_senses_already_plural_are_not_pluralized_again(real):
     assert "my two laws; my two statutes; my two regulations" in glosses(real, "قانوني")
 

@@ -347,14 +347,16 @@ def _verb(sense: str, a: dict, future: bool) -> str:
 
 
 def plural(sense: str) -> str:
-    """English plural of a noun sense, inflecting the word before any bracketed note."""
+    """English plural of a noun sense, inflecting the word before any bracketed note, or before
+    "of" in a phrase like "period of time" (periods of time)."""
     head, paren, note = sense.partition(" (")
+    head, tail = re.fullmatch(r"(.*?)((?: of\b.*)?)", head).groups()  # "eve of" too: the eves of
     *rest, word = head.split(" ")
     if word in IRREGULAR_PLURALS:
         word = IRREGULAR_PLURALS[word]
     elif not word.endswith("s") or word.endswith("ss"):  # CAMeL often glosses a singular stem with a plural sense ("law;statutes")
         word = _s(word)  # ponytail: regular rules plus a few irregulars; extend IRREGULAR_PLURALS as glosses need
-    return " ".join(rest + [word]) + paren + note
+    return " ".join(rest + [word]) + tail + paren + note
 
 
 def _noun(sense: str, a: dict, suffixes: list[str]) -> str:

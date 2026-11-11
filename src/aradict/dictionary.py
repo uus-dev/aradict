@@ -272,7 +272,7 @@ def _english_keys(gloss: str, pos: str) -> set[str]:
         keys.add(sense := _english_key(sense))
         first, _, rest = sense.partition(" ")
         if pos == "noun":
-            keys.add(readable.plural(sense))  # ponytail: inflects the last word, so "pieces of writing" isn't found
+            keys.add(readable.plural(sense))  # "pieces of writing" too
         elif pos == "verb" and first != "be":
             for inflected in (readable.past(first), readable.third_person(first)):
                 keys.add(f"{inflected} {rest}".strip())
