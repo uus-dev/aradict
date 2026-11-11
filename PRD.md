@@ -220,7 +220,7 @@ Launch as a web application whose home view opens directly on Word lookup, with 
     - the on-screen Arabic keyboard;
     - local history and preferences;
     - text-token details using the native Popover API.
-  - **Styling:** plain CSS with logical properties for RTL/LTR, light and dark themes from system settings, and no CSS build step. Arabic text uses self-hosted Scheherazade New (regular and bold) under the SIL Open Font License. Diacritics must remain legible at mobile sizes.
+  - **Styling:** plain CSS with logical properties for RTL/LTR, light and dark themes from system settings, and no CSS build step. Arabic text uses self-hosted Scheherazade New (regular and bold) under the SIL Open Font License. Diacritics must remain legible at mobile sizes. Latin text uses self-hosted Source Sans 3, also under the SIL Open Font License. No font or asset is loaded from a third party. The visual identity is design M1 Cloth Tab from #14: framed entry boxes, labelled fields, grammar as small boxed tags, the root on a green tab above each entry, and compact text and controls. Theme colours are plain tokens redefined in a dark-scheme media query; the CSS `light-dark()` function is not used.
   - **Trade-off accepted:** the accessible combobox and popovers are hand-built rather than taken from a component library. In return there is one language, one deployable, and no frontend build chain. Revisit only if the interactive parts outgrow small modules.
 - **Coverage claim:** The reference site advertises more than 80,000 stems. AraDict must state its own measured coverage. Do not reuse that number unless the selected AraDict corpus supports it.
 - **Shared dictionary boundary:**

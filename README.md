@@ -39,7 +39,7 @@ This program is distributed in the hope that it will be useful, but WITHOUT ANY 
 
 Dictionary data is not stored in this repository and keeps its own licenses:
 
-- The CAMeL Tools MSA morphology database (`calima-msa-r13`) is licensed under GPL version 2. It is derived from the Buckwalter Arabic Morphological Analyzer 1.0, portions (c) 2002 QAMUS LLC and (c) 2002 Trustees of the University of Pennsylvania.
+- The CAMeL Tools MSA morphology database (`calima-msa-r13`) is licensed under GPL version 2. It is derived from the Buckwalter Arabic Morphological Analyzer 1.0, portions (c) 2002 QAMUS LLC, (c) 2002 Trustees of the University of Pennsylvania, and portions (c) 2006 Jon Dehdari.
 - English Wiktionary content (planned for Milestone 2) is licensed under CC BY-SA 4.0 and GFDL. It is kept as a separate dataset and credited wherever it is shown.
 
 Bundled assets keep their own licenses: [htmx](https://htmx.org/) 2.0.11 under the Zero-Clause BSD license, and the [Scheherazade New](https://software.sil.org/scheherazade/) font by SIL under the SIL Open Font License. Their license texts are in `src/aradict/static/vendor/`.
