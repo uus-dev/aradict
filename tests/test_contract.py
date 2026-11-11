@@ -390,6 +390,7 @@ def test_english_phrase_matches_whole_not_its_first_word(real):
 
 def test_english_inflected_forms_find_their_base_form(real):
     assert {"كِتاب", "سِفْر"} <= set(lemmas(real.lookup_en("books")))
+    assert "كِتابَة" in lemmas(real.lookup_en("pieces of writing"))
     # The plural كُتُب is glossed "books" itself; the lemma's own form comes first.
     assert [r.form for r in real.lookup_en("books") if r.lemma == "كِتاب"] == ["كِتاب", "كُتُب"]
     assert [r.form for r in real.lookup_en("wrote")] == ["كَتَبَ"]

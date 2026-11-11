@@ -88,9 +88,12 @@ def test_home_intro_follows_the_search_box_until_a_word_is_looked_up(client):
 
 def test_about_answers_what_a_visitor_needs_before_trusting_a_result(client):
     about = client.get("/about").text
-    # Coverage: the language variety, the corpus, and a marked slot for the measured numbers (#17).
+    # Coverage: the language variety, the corpus, and its measured size (#17; tests/test_acceptance.py checks the numbers).
     assert "Modern Standard Arabic" in about and "calima-msa-r13" in about
-    assert 'class="placeholder"' in about
+    coverage = about[about.index('id="coverage"'):about.index('id="typing"')]
+    for measure in ("entries", "headwords", "roots", "measure", "no root"):
+        assert measure in coverage, measure
+    assert "placeholder" not in about.lower()
     # Typing Arabic: hamza, diacritics, the on-screen keyboard, phone keyboards, Arabizi.
     typing = about[about.index('id="typing"'):]
     for topic in ("hamza", "vowel marks", "on-screen keyboard", "phone", "Arabizi", "mar7aba", "kitab"):

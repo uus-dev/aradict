@@ -226,7 +226,10 @@ def segments(a: dict) -> tuple[Segment, ...]:
 # --- Gloss ---------------------------------------------------------------------------------
 
 TAG_WORDS = {"masc": "m.", "fem": "f.", "pl": "pl.", "du": "dual", "Egy": "Egyptian"}
-IRREGULAR_PLURALS = {"man": "men", "woman": "women", "child": "children", "person": "people", "foot": "feet", "tooth": "teeth"}
+IRREGULAR_PLURALS = {
+    "man": "men", "woman": "women", "child": "children", "person": "people", "foot": "feet", "tooth": "teeth",
+    "shred": "shreds", "hundred": "hundreds",  # nouns in -ed that the participle rule would leave bare
+}
 
 
 def _tag_note(match: re.Match) -> str:
@@ -346,15 +349,24 @@ def _verb(sense: str, a: dict, future: bool) -> str:
     return be + sense[2:]
 
 
+def participle(word: str) -> bool:
+    """A past participle such as "wounded" or "spotted". Short words in -ed are nouns (bed, shed)."""
+    return len(word) > 4 and word.endswith("ed") and not word.endswith("eed")
+
+
 def plural(sense: str) -> str:
-    """English plural of a noun sense, inflecting the word before any bracketed note."""
+    """English plural of a noun sense, inflecting the word before any bracketed note, or before
+    "of" in a phrase like "period of time" (periods of time)."""
     head, paren, note = sense.partition(" (")
+    head, tail = re.fullmatch(r"(.*?)((?: of\b.*)?)", head).groups()  # "eve of" too: the eves of
     *rest, word = head.split(" ")
     if word in IRREGULAR_PLURALS:
         word = IRREGULAR_PLURALS[word]
+    elif participle(word):
+        pass  # the data glosses many participles as nouns: "two wounded", as English says "the wounded"
     elif not word.endswith("s") or word.endswith("ss"):  # CAMeL often glosses a singular stem with a plural sense ("law;statutes")
         word = _s(word)  # ponytail: regular rules plus a few irregulars; extend IRREGULAR_PLURALS as glosses need
-    return " ".join(rest + [word]) + paren + note
+    return " ".join(rest + [word]) + tail + paren + note
 
 
 def _noun(sense: str, a: dict, suffixes: list[str]) -> str:
