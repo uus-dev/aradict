@@ -11,7 +11,7 @@ from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from pathlib import Path
 
-from . import readable
+from . import readable, wiktionary
 from .readable import ALIFS, MARK, SHADDA, VOWEL, Segment
 
 LOOK_ALIKES = str.maketrans({"ی": "ي", "ک": "ك", "ـ": None})  # Persian/Urdu letters; tatweel
@@ -304,7 +304,8 @@ def _english_index(stems) -> dict[str, tuple[tuple[str, str, str, str], ...]]:
 
 
 class Dictionary:
-    def __init__(self, db_path: Path):
+    def __init__(self, db_path: Path, wiktionary_path: Path | None = None):
+        """The CAMeL database at db_path, and Wiktionary's entries if a dataset is at wiktionary_path."""
         if not db_path.is_file():
             raise RuntimeError(
                 f"No morphology database at {db_path}. Run `uv run aradict` or `uv run python -m aradict.data` to download it."
@@ -340,6 +341,12 @@ class Dictionary:
                     self._root_stems.setdefault(f["root"], []).append((key, f))
         self._frequencies = sorted(logprob for logprob in lemmas.values() if logprob > NO_FREQUENCY)
         self._english = _english_index(analysis for stems in self._db.stem_hash.values() for _, analysis in stems)
+        self._wiktionary = wiktionary_path if wiktionary_path and wiktionary_path.is_file() else None
+
+    def wiktionary(self, lemma: str, pos: str) -> list[wiktionary.Entry]:
+        """A lemma's Wiktionary entries for this part of speech: several when Wiktionary has
+        homographs from different etymologies. [] for a lemma Wiktionary doesn't have, or with no dataset."""
+        return wiktionary.entries(self._wiktionary, lemma, pos) if self._wiktionary else []
 
     def measure(self, lemma: str, root: str) -> str | None:
         """A verb's measure: the one template the lemma fits with the root's letters in its

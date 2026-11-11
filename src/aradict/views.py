@@ -11,8 +11,10 @@ from htpy import Element, Node, a, blockquote, body, br, button, caption, code, 
 
 from .dictionary import MEASURES, Lookup, Reading, Segment, Token, alphabetical
 from .readable import OBJECT, POS, POSSESSIVE
+from .wiktionary import Entry as WiktionaryEntry
 
 ARABIC = re.compile("[\u0600-\u06ff]")  # Arabic script
+ARABIC_RUN = re.compile("([\u0600-\u06ff]+(?:\\s+[\u0600-\u06ff]+)*)")  # Arabic words, with the spaces between them
 PRONOUNS = {*POSSESSIVE.values(), *OBJECT.values()}  # what an attached pronoun's part is labelled
 PAGES = [("word", "/", "Word"), ("text", "/text", "Text"), ("about", "/about", "About")]
 
@@ -138,11 +140,13 @@ def _reading(group: list[Reading], brief: bool = False) -> Node:
 class Links(NamedTuple):
     """What a Word entry links its root and related forms with: the lookup's own URL parameters,
     which every link keeps so that its view can return to the lookup, how many forms each lemma
-    (with its part of speech) has, and how many words each root has."""
+    (with its part of speech) has, and how many words each root has. Also each lemma's Wiktionary
+    entries, which link to their source."""
 
     lookup: dict[str, str]
     form_counts: dict[tuple[str, str], int]
     root_counts: dict[str, int]
+    wiktionary: dict[tuple[str, str], list[WiktionaryEntry]] = {}
 
 
 def _url(params: dict[str, str]) -> str:
@@ -161,8 +165,8 @@ def _root_tab(root: str | None, links: Links | None) -> Node:
 
 def _entry(lemma: str, glosses: dict[str, list[Reading]], heading: Element, links: Links | None, brief: bool) -> Node:
     """A lemma's heading, said once, then its readings, one result per gloss. With links, the
-    root opens the root's words, and a lemma with more than one form links to all of them.
-    Brief leaves out how common the lemma is, its forms, and the readings' parts."""
+    root opens the root's words, a lemma with more than one form links to all of them, and the
+    lemma's Wiktionary senses follow its readings. Brief leaves out how common the lemma is, its forms, and the readings' parts."""
     first = next(iter(glosses.values()))[0]
     forms = links.form_counts.get((first.lemma, first.pos), 0) if links else 0
     # A lemma's senses may be stored under different roots (إِجارَة "rent" and "protection"): each is offered.
@@ -180,6 +184,24 @@ def _entry(lemma: str, glosses: dict[str, list[Reading]], heading: Element, link
             ],
         ],
         ul(class_="readings")[(_reading(group, brief) for group in glosses.values())],
+        links and _wiktionary(links.wiktionary.get((first.lemma, first.pos), ())),
+    ]
+
+
+def _english(text: str) -> Node:
+    """English that may quote Arabic: each Arabic run in its own language and direction."""
+    return [ar(part) if i % 2 else part for i, part in enumerate(ARABIC_RUN.split(text))]
+
+
+def _wiktionary(entries: Iterable[WiktionaryEntry]) -> Node:
+    """Each Wiktionary entry's senses, numbered, with its credit linked to the source entry."""
+    # ponytail: a plain list in the notice style; the design (#21) places the senses, and #22 applies it.
+    return [
+        div(class_="notice wiktionary")[
+            ol(class_="senses")[(li[_english(": ".join(sense))] for sense in entry.senses)],
+            p[a(href=entry.url)["From Wiktionary, CC BY-SA 4.0"]],
+        ]
+        for entry in entries
     ]
 
 

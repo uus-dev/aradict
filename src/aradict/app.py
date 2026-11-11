@@ -14,7 +14,7 @@ from fastapi import FastAPI, Header, Request
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 
-from . import views
+from . import views, wiktionary
 from .data import db_path
 from .dictionary import Dictionary
 
@@ -42,7 +42,7 @@ def _log_failure(what: str, error: Exception) -> None:
 
 @lru_cache(maxsize=1)
 def dictionary() -> Dictionary:
-    return Dictionary(db_path())
+    return Dictionary(db_path(), wiktionary.dataset_path())
 
 
 @asynccontextmanager
@@ -95,10 +95,12 @@ def word(
             state = views.State("Type a word: letters, not only numbers or symbols.")
         else:
             found = dictionary().lookup(q, english, filter_diacritics)
+            lemmas = {(r.lemma, r.pos) for r in found.readings}
             links = views.Links(
                 lookup,
-                {lemma: len(dictionary().related(*lemma)) for lemma in {(r.lemma, r.pos) for r in found.readings}},
+                {lemma: len(dictionary().related(*lemma)) for lemma in lemmas},
                 {root: dictionary().family_size(root) for root in {r.root for r in found.readings if r.root}},
+                {lemma: dictionary().wiktionary(*lemma) for lemma in lemmas},
             )
             state = views.looked_up_en(found, links) if english else views.looked_up(q, found, links)
     except Exception as error:

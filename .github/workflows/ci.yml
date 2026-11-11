@@ -21,5 +21,25 @@ jobs:
           key: calima-msa-r13-0.4.0-195bc25a
       - name: Download and verify the database
         run: uv run python -m aradict.data
+      - name: Read the Wiktionary pin
+        id: pin
+        run: echo "sha256=$(uv run python -c 'from aradict.wiktionary import SHA256; print(SHA256)')" >> "$GITHUB_OUTPUT"
+      # The dataset is rebuilt when the pin or the build changes. The extraction is cached on its own,
+      # because kaikki.org replaces it at the same URL: a rebuild can't always download it again.
+      - name: Cache the Wiktionary dataset
+        id: dataset
+        uses: actions/cache@v4
+        with:
+          path: data/wiktionary/wiktionary.db
+          key: wiktionary-${{ steps.pin.outputs.sha256 }}-${{ hashFiles('src/aradict/wiktionary.py') }}
+      - name: Cache the pinned kaikki.org extraction
+        if: steps.dataset.outputs.cache-hit != 'true'
+        uses: actions/cache@v4
+        with:
+          path: data/wiktionary/kaikki.org-dictionary-Arabic.jsonl
+          key: kaikki-arabic-${{ steps.pin.outputs.sha256 }}
+      - name: Download, verify and build the Wiktionary dataset
+        if: steps.dataset.outputs.cache-hit != 'true'
+        run: uv run python -m aradict.wiktionary
       - run: uv run playwright install --with-deps chromium
       - run: uv run pytest
