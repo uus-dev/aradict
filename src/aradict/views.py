@@ -10,9 +10,10 @@ from urllib.parse import urlencode
 from htpy import Element, Node, a, blockquote, body, br, button, caption, code, dd, details, div, dl, dt, form, fragment, h1, h2, h3, head, header, html, i, input, label, li, link, main, meta, nav, ol, p, path, rect, script, section, span, summary, svg, table, tbody, td, template, textarea, th, thead, title, tr, ul
 
 from .dictionary import MEASURES, Lookup, Reading, Segment, Token, alphabetical
-from .readable import POS
+from .readable import OBJECT, POS, POSSESSIVE
 
 ARABIC = re.compile("[\u0600-\u06ff]")  # Arabic script
+PRONOUNS = {*POSSESSIVE.values(), *OBJECT.values()}  # what an attached pronoun's part is labelled
 PAGES = [("word", "/", "Word"), ("text", "/text", "Text"), ("about", "/about", "About")]
 
 
@@ -102,9 +103,13 @@ def _parts(r: Reading) -> Node:
 
 
 def _grammar(r: Reading) -> Node:
-    """Voice, agreement and the rest of the grammar, each in its own box. The part of speech heads the entry."""
+    """Voice, agreement, the rest of the grammar and any attached pronoun ("attached: their"), each in
+    its own box. The part of speech heads the entry."""
     # ponytail: readable.grammar joins its details with ", ", and none has a comma of its own.
-    details = [*r.tags[1:], *filter(None, r.grammar.split(", "))]
+    details = [
+        *r.tags[1:], *filter(None, r.grammar.split(", ")),
+        *(f"attached: {s.label}" for s in r.segments if s.role == "suffix" and s.label in PRONOUNS),
+    ]
     return ul(class_="grammar")[(li[d] for d in details)] if details else span(class_="nil")["None marked"]
 
 

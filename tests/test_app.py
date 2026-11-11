@@ -25,7 +25,8 @@ def test_reading_shows_marked_parts_gloss_grammar_and_word_parts(client):
     assert ('<span class="ar form" lang="ar" dir="rtl"><span class="prefix">وَ</span><span class="prefix">بِ</span>'
             '<span class="stem">كِتاب</span><span class="suffix">هم</span></span>') in reading
     assert '<dd class="gloss">and by/with their book</dd>' in reading
-    assert '<ul class="grammar"><li>masculine singular</li><li>construct state</li></ul>' in reading
+    # The attached pronoun is part of the grammar too, as in the M1 design (#14).
+    assert '<ul class="grammar"><li>masculine singular</li><li>construct state</li><li>attached: their</li></ul>' in reading
     # Word parts: a native disclosure, closed by default, one labelled chip per part, right to left.
     assert '<details class="parts"><summary>Word parts</summary><ol class="chips" dir="rtl">' in reading
     assert ('<li class="chip prefix"><span class="kind" dir="ltr">prefix<span class="sr-only">: </span></span>'
