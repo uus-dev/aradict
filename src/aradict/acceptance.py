@@ -3,8 +3,8 @@
     uv run python -m aradict.acceptance > ACCEPTANCE.md
 
 checks the pinned database as users see it, through the dictionary contract; checks the
-provenance and license notices; times a real server on this machine; and prints the report.
-It takes a few minutes. Run it again whenever the database pin, the readable layer or the
+provenance and license notices, the privacy statement and the support destination; times a
+real server on this machine; and prints the report. It takes a few minutes. Run it again whenever the database pin, the readable layer or the
 About page changes, and commit the new report.
 """
 
@@ -26,7 +26,7 @@ from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
 from . import views
-from .data import EXPECTED, db_path
+from .data import EXPECTED, VERSION, db_path
 from .dictionary import ROOT, Dictionary, Reading
 from .readable import IRREGULAR_PLURALS, MARK, SHADDA, head_noun, is_participle
 
@@ -53,7 +53,7 @@ def malformed(text: str) -> str | None:
 def singular_after_two(sense: str) -> bool:
     """The "two school" defect: a singular noun after "two", the noun found as readable.plural
     finds it (two period of time). A participle ("two wounded") is not counted, as English leaves
-    it bare."""
+    it bare; that exempts what the fix exempts, so the report lists the words it exempts."""
     found = re.search(r"\btwo (.+)", sense)
     if not found:
         return False
@@ -117,12 +117,12 @@ def coverage(d: Dictionary, db) -> dict:
     }
 
 
-def _sample_words(db, every: int = 20) -> list[str]:
-    """Words to look up: every nth stem, bare and with common attached parts, and the dual of
+def _sample_words(db) -> list[str]:
+    """Words to look up: every 20th stem, bare and with common attached parts, and the dual of
     every noun stem, which the "two school" check needs."""
     keys = sorted(db.stem_hash)
     nouns = [key for key in keys if any(f["pos"] == "noun" for _, f in db.stem_hash[key])]
-    return [w for k in keys[::every] for w in (k, "و" + k, "بال" + k, k + "ها", "سي" + k)] + [k + end for k in nouns for end in ("ان", "تان")]
+    return [w for k in keys[::20] for w in (k, "و" + k, "بال" + k, k + "ها", "سي" + k)] + [k + end for k in nouns for end in ("ان", "تان")]
 
 
 def _example(r: Reading) -> str:
@@ -189,6 +189,10 @@ def data_pass(d: Dictionary, db) -> dict:
     plurals = duals + [r for r in looked_up if r.pos == "noun" and r.tags[-1].endswith("plural") and "broken plural" not in r.grammar]
     two_school = [r for r in duals if any(singular_after_two(s) for s in r.gloss.split("; "))]
     overplural = [r for r in plurals if overpluralized(r.gloss)]
+    # Readings whose noun is a participle in -ed, which takes no plural ending, and so the "two
+    # school" check passes too: the words, by how many dual and sound plural readings show each bare.
+    bare = {r: [w for s in r.gloss.split("; ") if is_participle(w := head_noun(s)[1])] for r in plurals}
+    bare = {r: words for r, words in bare.items() if words}
     entry_roots = {e: sorted({r.root for r in rs if r.root}) for e, rs in related.items()}
     alternatives = [(e, rs) for e, rs in entry_roots.items() if len(rs) > 1]
     proper_rootless = [e for e in _rootless(stems, entries) if e[1] == "noun_prop"]
@@ -199,6 +203,7 @@ def data_pass(d: Dictionary, db) -> dict:
         "checks": checks, "found": found,
         "misspelled": [(word, sum(word in t for t in visible), sum(word in g for g in raw)) for word in ("genetive", "possesive")],
         "two_school": (len(two_school), len(duals), _first(map(_example, two_school))),
+        "participles": (len(bare), sum(r in bare for r in duals), Counter(w for words in bare.values() for w in set(words))),
         "overplural": (len(overplural), len(plurals), _first(map(_example, overplural))),
         "alternatives": (len(alternatives), sum("/" in root for root in stored_roots),
                          _first(f"{lemma} ({pos}): {' and '.join(rs)}" for (lemma, pos), rs in alternatives)),
@@ -208,15 +213,22 @@ def data_pass(d: Dictionary, db) -> dict:
     }
 
 
-# --- Provenance and license notices ----------------------------------------------------------
+# --- Provenance, licenses, privacy and support -----------------------------------------------
 
-def notices(db: Path) -> list[tuple[str, bool]]:
-    """Each check of the About page's credits and the shipped license files against
-    DATA-SOURCES.md and the database's own LICENSE, with whether it holds."""
+def notices(db: Path, digest: str) -> list[tuple[str, bool]]:
+    """Each check, with whether it holds: of the database, whose SHA-256 digest is given, against
+    its pin; of the About page's credits and the shipped license files against DATA-SOURCES.md
+    and the database's own LICENSE; and of the privacy statement and support destination the
+    release gate asks for."""
     about = str(views.about_page())
     sources = (REPO / "DATA-SOURCES.md").read_text(encoding="utf-8")
     data_license = (db.parent / "LICENSE").read_bytes()
-    digest = sha256(db.read_bytes()).hexdigest()
+
+    def section(name: str) -> str:
+        found = re.search(f'<section id="{name}">(.*?)</section>', about, re.S)
+        return found.group(1) if found else ""
+
+    pages = [str(views.word_page("", views.INITIAL)), str(views.text_page("", views.State())), about]
     # The same facts, worded as DATA-SOURCES.md and the About page word them.
     facts = [
         ("calima-msa-r13", "calima-msa-r13"), ("2022.03.21", "2022.03.21"), ("GPL v2", "General Public License version 2"),
@@ -238,6 +250,12 @@ def notices(db: Path) -> list[tuple[str, bool]]:
         ("About links a license for each bundled asset (htmx and the two fonts)", len(shipped) == 3),
         *((f"About's link to `/static/{path}` reaches a shipped file", (Path(views.__file__).parent / "static" / path).is_file())
           for path in shipped),
+        ("About has a privacy statement: no accounts, history and settings kept in the browser, what lookups and passages send "
+         "to the server, and that passages are not logged (`tests/test_app.py` checks that no lookup or passage is logged)",
+         all(claim in section("privacy") for claim in ("no accounts", "stay in this browser", "is sent there", "are not logged"))),
+        ("About gives a support destination: the GitHub Issues of AraDict's repository, the one README.md links",
+         f'href="{views.REPO}/issues"' in section("support") and views.REPO in (REPO / "README.md").read_text(encoding="utf-8")),
+        ("Every page links to About and help from its main navigation", all('href="/about"' in page for page in pages)),
     ]
 
 
@@ -355,14 +373,15 @@ def _percent(part: int, whole: int) -> str:
     return f"{part:,} ({part / whole:.0%})" if whole else f"{part:,}"
 
 
-def report(db: Path, data: dict, checked: list[tuple[str, bool]], perf: dict) -> str:
-    digest = sha256(db.read_bytes()).hexdigest()
+def report(digest: str, data: dict, checked: list[tuple[str, bool]], perf: dict) -> str:
+    """The report, for the database with this SHA-256 digest."""
     m = data["measures"]
     three, four = (m[3, True], m[3, False]), (m[4, True], m[4, False])
     other = (sum(n for (k, ok), n in m.items() if k not in (3, 4) and ok), sum(n for (k, ok), n in m.items() if k not in (3, 4) and not ok))
     rootless = dict(data["rootless_by_pos"])
     rootless_other = data["rootless"] - rootless["noun_prop"] - rootless["noun"] - rootless["adj"]
     two, duals, two_example = data["two_school"]
+    bare, bare_duals, bare_words = data["participles"]
     over, plurals, over_example = data["overplural"]
     alternatives, slashed, alternative_example = data["alternatives"]
     proper, proper_total, proper_example, ntws = data["proper"]
@@ -382,7 +401,7 @@ def report(db: Path, data: dict, checked: list[tuple[str, bool]], perf: dict) ->
         "# Release acceptance: data and performance",
         "",
         f"Generated by `uv run python -m aradict.acceptance` on {date.today():%Y-%m-%d}, against the CAMeL Tools database "
-        f"`calima-msa-r13` 0.4.0, SHA-256 `{digest}`.",
+        f"`calima-msa-r13` {VERSION}, SHA-256 `{digest}`.",
         "",
         "The data pass reads the database as users see it, through the dictionary contract (`Dictionary`): the related-forms list "
         f"of every entry ({data['entries']:,} lists) and the word list of every root ({data['roots']:,} lists), {data['listed']:,} rows in all, "
@@ -399,7 +418,7 @@ def report(db: Path, data: dict, checked: list[tuple[str, bool]], perf: dict) ->
         "",
         "Every non-zero finding is explained under Known defects and limits.",
         "",
-        "## Provenance and license notices",
+        "## Provenance, licenses, privacy and support",
         "",
         "| Check | Result |",
         "|---|---|",
@@ -450,12 +469,13 @@ def report(db: Path, data: dict, checked: list[tuple[str, bool]], perf: dict) ->
           for word, shown, raw in data["misspelled"]),
         f"| Dual glosses such as “two school” | {two:,} of {duals:,} dual noun readings | {cell(two_example)} | Fixed in `readable.py`. "
         "A dual or sound plural puts the English plural on its noun (“two schools”), and since 2026-11-11 on the noun before “of” "
-        "(“two periods of time”, which read “two period of times”). The check counts a singular noun after “two”; a participle "
-        "(“two wounded”) is correct English and not counted. |",
+        "(“two periods of time”, which read “two period of times”). The check counts a singular noun after “two”. It does not count "
+        f"a participle in -ed (“two wounded”), which English and the fix both leave bare, so it cannot catch a noun the fix wrongly "
+        f"takes for one: it exempts {bare_duals:,} dual readings, with {len(bare_words):,} distinct words, all listed below the table. |",
         f"| Adjective-like senses given a plural ending (found by this pass) | at least {over:,} of {plurals:,} dual and sound plural "
         f"noun readings | {cell(over_example)} | Partly fixed in `readable.py` on 2026-11-11. The data glosses many participles and "
-        "adjectives as nouns; a participle in -ed now takes no plural ending (“two wounded”, which read “two woundeds”, about "
-        "1,200 readings). Left as a known limit: phrasal senses (“two ruling outs”) and adjectives in -ing (“two pantings”), which "
+        "adjectives as nouns; a participle in -ed now takes no plural ending (“two wounded”, which read “two woundeds”: "
+        f"{bare:,} of these readings). Left as a known limit: phrasal senses (“two ruling outs”) and adjectives in -ing (“two pantings”), which "
         "no rule can tell from real nouns (“two buildings”) without a word list. The count is a heuristic and misses the -ing kind. |",
         f"| Root alternatives such as “الو/الي” | {slashed:,} root fields with alternatives; {alternatives:,} entries whose stems carry "
         f"different roots | {cell(alternative_example)} | Handled. The data writes no alternatives into one root field. An entry whose "
@@ -476,6 +496,14 @@ def report(db: Path, data: dict, checked: list[tuple[str, bool]], perf: dict) ->
         f"| Malformed Arabic in the data (found by this pass) | {bad_arabic[0]:,} distinct forms and lemmas | {cell(bad_arabic[1])} | Known limit, "
         "shown as stored. These are errors in the data itself. A fix would go in AraDict's own data file with a dated change note "
         "(GPL v2 §2(a)); AraDict has no such file yet, so whether to start one is the owner's call. |",
+        "",
+        "### Words in -ed left without a plural ending",
+        "",
+        "`readable.is_participle` takes these for participles, so dual and sound plural glosses leave them bare and the “two school” "
+        "check exempts them. A noun among them that should take an -s belongs in `NOT_PARTICIPLES`. Each word is followed by the "
+        "number of dual and sound plural readings that show it:",
+        "",
+        ", ".join(f"{word} {n:,}" for word, n in sorted(bare_words.items(), key=lambda item: (-item[1], item[0]))) + ".",
         "",
         "## Performance (this machine only)",
         "",
@@ -544,8 +572,9 @@ def main() -> None:
     path = db_path()
     from camel_tools.morphology.database import MorphologyDB
 
+    digest = sha256(path.read_bytes()).hexdigest()
     data = data_pass(Dictionary(path), MorphologyDB(str(path), "a"))
-    print(report(path, data, notices(path), performance(path)))
+    print(report(digest, data, notices(path, digest), performance(path)))
 
 
 if __name__ == "__main__":

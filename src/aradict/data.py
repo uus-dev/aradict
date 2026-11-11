@@ -13,7 +13,8 @@ from pathlib import Path
 from urllib.request import urlopen
 from zipfile import ZipFile
 
-URL = "https://github.com/CAMeL-Lab/camel-tools-data/releases/download/2022.03.21/morphology_db_calima-msa-r13-0.4.0.zip"
+VERSION = "0.4.0"  # of the calima-msa-r13 package in the camel-tools-data release
+URL = f"https://github.com/CAMeL-Lab/camel-tools-data/releases/download/2022.03.21/morphology_db_calima-msa-r13-{VERSION}.zip"
 EXPECTED = {
     "morphology.db": "195bc25a333237a2126470da888d7936b59ed3729f9210e0a4194ba43497dd70",
     "LICENSE": "7a71f85f07e46759dcc1c16dba64352d9932447759cf71ca3deae3729d85d23e",

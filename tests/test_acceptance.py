@@ -1,6 +1,8 @@
 """The release gate's data acceptance checks (#17)."""
 
-from aradict.acceptance import approx, coverage, malformed, overpluralized, singular_after_two
+from hashlib import sha256
+
+from aradict.acceptance import approx, coverage, malformed, notices, overpluralized, singular_after_two
 from aradict.dictionary import Dictionary
 from aradict.views import about_page
 
@@ -25,6 +27,12 @@ def test_about_states_the_measured_coverage(real_db):
         f"{approx(rootless['noun'])} other nouns, {approx(rootless['adj'])} adjectives and {approx(other)} of other parts of speech.",
     ):
         assert figure in stated
+
+
+def test_attribution_privacy_statement_and_support_are_in_place(real_db):
+    # The release gate (#17): every provenance, license, privacy and support check holds.
+    failing = [what for what, holds in notices(real_db, sha256(real_db.read_bytes()).hexdigest()) if not holds]
+    assert failing == []
 
 
 def test_counts_are_rounded_to_two_figures_for_a_learner():
