@@ -556,7 +556,10 @@ def report(digest: str, data: dict, checked: list[tuple[str, bool]], perf: dict)
         "Why these: lookup runs while the user types, debounced at about 150 ms, so its server share should stay well under that, "
         "leaving room for a mobile network and a production CPU several times slower than this one. The first lookup of a word "
         "also counts each of its roots' words once, then remembers the count, so it may take longer. Text analysis runs once per "
-        "pause and shows a loading state, so up to 1 s for the largest passage the Text view accepts is acceptable. Startup only "
+        "pause and shows a loading state, so up to 1 s for the largest passage the Text view accepts is acceptable. Text analysis "
+        "also counts the words of every root it has not counted before, for the root links in its token details: the first "
+        f"analysis of the 2,000-character passage took {perf['text'][2000][0]:,.0f} ms, and later ones "
+        f"{statistics.median(perf['text'][2000][1:]):,.0f} ms at the median. Startup only "
         "matters on deploy and restart. The memory budget leaves headroom on a 1 GB instance, the size the CAMeL spike suggested. "
         "The owner should confirm the budgets on the production host, and the whole experience on a mid-range phone, before they "
         "become pass/fail.",

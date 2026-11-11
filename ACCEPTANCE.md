@@ -22,7 +22,7 @@ Not covered here, because they are the owner's to decide or need a person (#17):
 
 Every non-zero finding is explained under Known defects and limits.
 
-## Provenance and license notices
+## Provenance, licenses, privacy and support
 
 | Check | Result |
 |---|---|
@@ -42,6 +42,9 @@ Every non-zero finding is explained under Known defects and limits.
 | About's link to `/static/vendor/LICENSE-htmx` reaches a shipped file | pass |
 | About's link to `/static/vendor/OFL-ScheherazadeNew.txt` reaches a shipped file | pass |
 | About's link to `/static/vendor/OFL-SourceSans3.txt` reaches a shipped file | pass |
+| About has a privacy statement: no accounts, history and settings kept in the browser, what lookups and passages send to the server, and that passages are not logged (`tests/test_app.py` checks that no lookup or passage is logged) | pass |
+| About gives a support destination: the GitHub Issues of AraDict's repository, the one README.md links | pass |
+| Every page links to About and help from its main navigation | pass |
 
 ## Coverage
 
@@ -56,7 +59,7 @@ Every non-zero finding is explained under Known defects and limits.
 | Stem entries with an unresolved root | 27,805 (38%) |
 | Entries with no root | 4,954 (13%) |
 
-Entries with no root, by part of speech: noun_prop 2,673, noun 1,531, adj 546.
+Entries with no root, by part of speech: noun_prop 2,673, noun 1,531, adj 546, adv 78, abbrev 58, prep 32, conj 12, interj 6, pron 5, pron_dem 4, verb_pseudo 2, part_interrog 2, punc 1, pron_rel 1, verb 1, adv_interrog 1, conj_sub 1.
 
 Measure derivation for verbs, by the number of letters in the verb's root:
 
@@ -69,7 +72,7 @@ Measure derivation for verbs, by the number of letters in the verb's root:
 
 The three-letter verbs without a measure are listed one by one, with the reason, in `UNMAPPED_VERBS` in `tests/test_contract.py`: the data merges a Form III and a Form IV verb into one lemma, spells Forms VIII and IX alike, gives a root that does not fit the lemma, or tags a non-verb as a verb.
 
-The About page states these, rounded for a learner: about 38,000 entries, 35,000 headwords and 4,500 roots.
+The About page states these, rounded for a learner, and `tests/test_acceptance.py` checks each against the database: about 38,000 entries, 35,000 headwords and 4,500 roots; a measure for all but 46 of about 9,000 verbs; an unresolved radical in about 1 root in 4; and about 5,000 entries with no root: about 2,700 proper nouns, 1,500 other nouns, 550 adjectives and 200 of other parts of speech.
 
 ## Known defects and limits
 
@@ -77,14 +80,20 @@ The About page states these, rounded for a learner: about 38,000 entries, 35,000
 |---|---|---|---|
 | “genetive” | 0 in what AraDict shows; 0 in the data's glosses | — | Not present. AraDict writes its own grammar and part labels in `readable.py` (“genitive case”, “my”, “their”); the data carries no such label. |
 | “possesive” | 0 in what AraDict shows; 0 in the data's glosses | — | Not present. AraDict writes its own grammar and part labels in `readable.py` (“genitive case”, “my”, “their”); the data carries no such label. |
-| Dual glosses such as “two school” | 0 of 14,562 dual noun readings | — | Fixed in `readable.py`. A dual or sound plural puts the English plural on its noun (“two schools”), and since 2026-11-11 on the noun before “of” (“two periods of time”, which read “two period of times”). The check counts a singular noun after “two”; a participle (“two wounded”) is correct English and not counted. |
-| Adjective-like senses given a plural ending (found by this pass) | at least 89 of 14,801 dual and sound plural noun readings | اِنْشِقاقَيَّ “my two secessions; my two splitting offs; my two dissensions” (ٱِنْشِقاق, noun) | Partly fixed in `readable.py` on 2026-11-11. The data glosses many participles and adjectives as nouns; a participle in -ed now takes no plural ending (“two wounded”, which read “two woundeds”, about 1,200 readings). Left as a known limit: phrasal senses (“two ruling outs”) and adjectives in -ing (“two pantings”), which no rule can tell from real nouns (“two buildings”) without a word list. The count is a heuristic and misses the -ing kind. |
+| Dual glosses such as “two school” | 0 of 14,562 dual noun readings | — | Fixed in `readable.py`. A dual or sound plural puts the English plural on its noun (“two schools”), and since 2026-11-11 on the noun before “of” (“two periods of time”, which read “two period of times”). The check counts a singular noun after “two”. It does not count a participle in -ed (“two wounded”), which English and the fix both leave bare, so it cannot catch a noun the fix wrongly takes for one: it exempts 1,284 dual readings, with 572 distinct words, all listed below the table. |
+| Adjective-like senses given a plural ending (found by this pass) | at least 89 of 14,801 dual and sound plural noun readings | اِنْشِقاقَيَّ “my two secessions; my two splitting offs; my two dissensions” (ٱِنْشِقاق, noun) | Partly fixed in `readable.py` on 2026-11-11. The data glosses many participles and adjectives as nouns; a participle in -ed now takes no plural ending (“two wounded”, which read “two woundeds”: 1,319 of these readings). Left as a known limit: phrasal senses (“two ruling outs”) and adjectives in -ing (“two pantings”), which no rule can tell from real nouns (“two buildings”) without a word list. The count is a heuristic and misses the -ing kind. |
 | Root alternatives such as “الو/الي” | 0 root fields with alternatives; 47 entries whose stems carry different roots | أَخْيَر (noun): #.خ.ر and خ.#.ر | Handled. The data writes no alternatives into one root field. An entry whose stems carry different roots, usually one root with its unresolved radical in another place, shows each root as its own tab, each opening its own list. |
 | Proper nouns without roots | 2,673 of 4,294 proper-noun entries | آب “August” (آب, noun_prop) | Known limit, shown as the data has it: the root tab reads “unavailable” and links nowhere. Most are foreign names, which the data marks NTWS (3,010 stems). |
 | The same row twice in one list (found by this pass) | 1 | هٰؤُلاءِ “these” (هٰذا, pron_dem), in the list for هٰذا (pron_dem) | Known limit. The data stores the form twice for the lemma, once with agreement features and once without, so the related list shows two rows with the same form and gloss. |
 | Entries with no stand-alone form (found by this pass) | 65 | آمِين (verb) | Known limit. These entries' stems occur only with an ending or a clitic, so related and root lists have no citation form to show. Word lookup finds them, and no link opens an empty list. |
 | Stored roots that are not dotted letters (found by this pass) | 6,643 stems | NTWS ×5,866, ل ×17, ه ×17, ب ×13 | Known limit: the root shows as unavailable. Most are NTWS (no root). The rest are consonant strings such as رضن for أَرْض that do not match the word's root, so adding dots would invent wrong roots. |
 | Malformed Arabic in the data (found by this pass) | 24 distinct forms and lemmas | other characters: جاتُوراباتارابُونغ “Jatupatarapong” (اًپ, noun_prop); clashing marks on one letter: وَتَرَِيها “and you (f.) see her/it; you (f.) think her/it; you (f.) believe her/it” (راوَنْد, verb) | Known limit, shown as stored. These are errors in the data itself. A fix would go in AraDict's own data file with a dated change note (GPL v2 §2(a)); AraDict has no such file yet, so whether to start one is the owner's call. |
+
+### Words in -ed left without a plural ending
+
+`readable.is_participle` takes these for participles, so dual and sound plural glosses leave them bare and the “two school” check exempts them. A noun among them that should take an -s belongs in `NOT_PARTICIPLES`. Each word is followed by the number of dual and sound plural readings that show it:
+
+exhausted 16, deferred 14, dispersed 14, salaried 14, tired 14, bribed 12, crooked 12, unlimited 12, biased 10, concerned 10, established 10, experienced 10, filled 10, skilled 10, spotted 10, blessed 9, guided 9, naked 9, scattered 9, speckled 9, afflicted 8, annoyed 8, drenched 8, soaked 8, uncovered 8, advanced 7, deep-rooted 7, disorganized 7, enriched 7, inclined 7, populated 7, qualified 7, twisted 7, agitated 6, attracted 6, burdened 6, contaminated 6, crippled 6, curled 6, delayed 6, distracted 6, disturbed 6, doubled 6, educated 6, elevated 6, emaciated 6, exalted 6, expected 6, exposed 6, followed 6, heated 6, ill-fated 6, infested 6, limited 6, loaded 6, located 6, oxidized 6, restricted 6, shortened 6, spilled 6, spoiled 6, starved 6, suspected 6, worried 6, bowed 5, compelled 5, deceased 5, deformed 5, forced 5, hunchbacked 5, prepared 5, rooted 5, satisfied 5, variegated 5, withered 5, wretched 5, abrogated 4, accomplished 4, accursed 4, addressed 4, aimed 4, allied 4, arched 4, astonished 4, authorized 4, bereaved 4, bewildered 4, bored 4, borrowed 4, burnished 4, called 4, carded 4, characterized 4, charged 4, clipped 4, commissioned 4, concealed 4, concluded 4, confined 4, confused 4, consigned 4, corroded 4, crushed 4, damaged 4, debilitated 4, decorated 4, defeated 4, dejected 4, deposited 4, deputized 4, derived 4, despised 4, detested 4, discarded 4, disguised 4, disgusted 4, domesticated 4, dust-colored 4, effaced 4, embellished 4, embodied 4, engraved 4, entitled 4, eroded 4, esteemed 4, excavated 4, excused 4, exempted 4, famished 4, finished 4, galvanized 4, granted 4, imported 4, ingrained 4, injured 4, insured 4, intoxicated 4, ionized 4, licensed 4, mild-tempered 4, misguided 4, mutilated 4, mystified 4, nominated 4, obliterated 4, oppressed 4, parched 4, paved 4, pock-marked 4, pointed 4, polished 4, pustulated 4, rarefied 4, rejected 4, related 4, rented 4, required 4, respected 4, retired 4, ruined 4, scribbled 4, selected 4, sheltered 4, slandered 4, startled 4, tattered 4, teased 4, terminated 4, transmitted 4, twinned 4, uncooked 4, unhurried 4, unpromoted 4, vaulted 4, veiled 4, weighted 4, well-bred 4, westernized 4, wicked 4, wounded 4, wrinkled 4, accustomed 3, acquired 3, beloved 3, broad-nosed 3, caused 3, composed 3, determined 3, dilapidated 3, displeased 3, dissatisfied 3, distorted 3, furnished 3, grieved 3, informed 3, multicolored 3, red-lipped 3, rigged 3, rugged 3, sacred 3, secluded 3, stuffed 3, synthesized 3, thin-haired 3, trained 3, unrestrained 3, warped 3, Europeanized 2, Ramadan-related 2, Shah-related 2, abandoned 2, acclimated 2, accredited 2, accused 2, adhered 2, adjusted 2, adopted 2, advised 2, affiliated 2, aged 2, alarmed 2, aligned 2, altered 2, amplified 2, anchored 2, arcaded 2, armored 2, arranged 2, asphalted 2, assigned 2, awarded 2, bad-tempered 2, bandaged 2, bearded 2, bestowed 2, blamed 2, bloodshed 2, booked 2, braided 2, brocaded 2, bronzed 2, calcified 2, camouflaged 2, canceled 2, candied 2, carried 2, carved 2, censured 2, chagrined 2, chanted 2, chapped 2, chilled 2, civilized 2, classified 2, clouded 2, collected 2, colored 2, combined 2, committed 2, completed 2, compounded 2, compressed 2, conditioned 2, confirmed 2, confiscated 2, contented 2, controlled 2, cooked 2, cooled 2, counseled 2, covered 2, cracked 2, cross-eyed 2, crowned 2, crystallized 2, cultivated 2, cultured 2, cured 2, customized 2, dated 2, decayed 2, decomposed 2, defiled 2, degraded 2, delegated 2, delighted 2, demanded 2, deported 2, described 2, desiccated 2, desired 2, devoted 2, directed 2, discharged 2, discredited 2, disemboweled 2, disfigured 2, dismayed 2, disrupted 2, dissected 2, disseminated 2, distressed 2, divulged 2, domiciled 2, donated 2, dragged 2, dried 2, drowned 2, dyed 2, elapsed 2, electrified 2, emancipated 2, embarrassed 2, embossed 2, emphasized 2, employed 2, empowered 2, empty-handed 2, enamored 2, encrusted 2, enslaved 2, entangled 2, entrusted 2, erected 2, excepted 2, excited 2, excluded 2, exited 2, expired 2, exploited 2, extended 2, extinguished 2, fabricated 2, faded 2, fated 2, fatted 2, favored 2, fermented 2, fixed 2, flattened 2, framed 2, freckled 2, frightened 2, fucked 2, fused 2, gathered 2, gilded 2, grated 2, gratified 2, gray-haired 2, grounded 2, hardened 2, hoarded 2, hooked 2, ill-tempered 2, imbalanced 2, immersed 2, indicted 2, indisposed 2, induced 2, infatuated 2, infected 2, influenced 2, inherited 2, intended 2, intercalated 2, interpolated 2, introverted 2, inverted 2, invested 2, isolated 2, jaundiced 2, jerked 2, jet-propelled 2, leaked 2, led 2, left-handed 2, lined 2, lion-related 2, loaned 2, lobed 2, lodged 2, mandated 2, manned 2, marbled 2, married 2, masked 2, mentioned 2, merged 2, middle-aged 2, mistreated 2, modernized 2, moored 2, mortgaged 2, mosquito-infested 2, mounded 2, mourned 2, musk-scented 2, named 2, naturalized 2, nauseated 2, needed 2, neglected 2, nicknamed 2, obligated 2, observed 2, old-fashioned 2, one-eyed 2, operated 2, orphaned 2, overfilled 2, overstuffed 2, packaged 2, partitioned 2, pasteurized 2, patronised 2, perfumed 2, perplexed 2, pickled 2, plated 2, pleased 2, plugged 2, polluted 2, postponed 2, prejudiced 2, preoccupied 2, preserved 2, prized 2, programmed 2, pronounced 2, provided 2, pulled 2, purified 2, quick-witted 2, quilted 2, rabbit-related 2, raised 2, ratified 2, ravaged 2, recovered 2, reinforced 2, renewed 2, reported 2, requisitioned 2, reserved 2, resigned 2, revered 2, reversed 2, revived 2, rubbed 2, safeguarded 2, saved 2, scheduled 2, scrawled 2, sculptured 2, sealed 2, seated 2, seized 2, settled 2, severed 2, shaded 2, sharp-eyed 2, shredded 2, shrouded 2, sifted 2, signed 2, silver-plated 2, smashed 2, smuggled 2, soft-skinned 2, soiled 2, soled 2, sophisticated 2, spiced 2, sticky-eyed 2, stranded 2, strengthened 2, striped 2, subdued 2, submitted 2, sullied 2, summoned 2, supported 2, surprised 2, suspended 2, sustained 2, sweetened 2, tapered 2, tested 2, tiled 2, toasted 2, tracked 2, translated 2, trimmed 2, unattended 2, uncircumcised 2, uncultivated 2, underdeveloped 2, undersigned 2, unemployed 2, unidentified 2, uninterrupted 2, uniterrupted 2, unoccupied 2, unweaned 2, upholstered 2, uprooted 2, uttered 2, vacated 2, vaccinated 2, valued 2, velarized 2, well-informed 2, well-mannered 2, white-striped 2, widowed 2, worsened 2, worshipped 2, wrecked 2, acquainted 1, adapted 1, adorned 1, bandy-legged 1, black-eyed 1, book-related 1, broad-mouthed 1, broad-shouldered 1, brown-skinned 1, bushy-browed 1, circulated 1, coagulated 1, complicated 1, conceited 1, concentrated 1, coveted 1, curved 1, dark-colored 1, dark-complectioned 1, dazzled 1, depopulated 1, depressed 1, died 1, dim-witted 1, distinguished 1, fair-skinned 1, foul-breathed 1, handicapped 1, harelipped 1, hatred 1, horned 1, humidified 1, humped 1, long-bearded 1, loud-mouthed 1, loud-voiced 1, newlywed 1, one-armed 1, paralyzed 1, pigeon-breasted 1, pot-bellied 1, pug-nosed 1, small-nosed 1, snub-nosed 1, sore-eyed 1, tanned 1, unarmed 1, uncivilized 1, uncorrupted 1, weak-sighted 1, white-footed 1, wide-eyed 1, wooded 1.
 
 ## Performance (this machine only)
 
@@ -96,13 +105,13 @@ Measured on macOS-26.6.2-arm64-arm-64bit-Mach-O, 12 cores, Python 3.13.13. A rea
 
 | Kind | Words | p50 (ms) | p95 (ms) | First, worst (ms) |
 |---|---|--:|--:|--:|
-| bare | كتب, مدرسة, قال, علم, الى, من | 4 | 9 | 93 |
-| marked | كَتَبَ, كُتُب, مَدْرَسَةٌ, عِلْم | 3 | 4 | 4 |
-| clitics | وبكتابهم, سيكتبون, مدرستي, والكتاب, فقالوا, بالمدرسة | 5 | 7 | 8 |
-| Arabizi | ktb, mar7aba, kitab, 3arabi, shukran, madrasa | 4 | 7 | 14 |
-| English | book, write, school, piece of writing, eat, go | 5 | 9 | 90 |
-| not found | قخغثص, qxzv, xyzzy | 1 | 2 | 2 |
-| **All** | | **4** | **9** | **93** |
+| bare | كتب, مدرسة, قال, علم, الى, من | 4 | 10 | 96 |
+| marked | كَتَبَ, كُتُب, مَدْرَسَةٌ, عِلْم | 3 | 4 | 3 |
+| clitics | وبكتابهم, سيكتبون, مدرستي, والكتاب, فقالوا, بالمدرسة | 5 | 8 | 8 |
+| Arabizi | ktb, mar7aba, kitab, 3arabi, shukran, madrasa | 5 | 7 | 16 |
+| English | book, write, school, piece of writing, eat, go | 5 | 10 | 93 |
+| not found | قخغثص, qxzv, xyzzy | 1 | 2 | 1 |
+| **All** | | **4** | **9** | **96** |
 
 ### Text analysis
 
@@ -110,29 +119,29 @@ Our own news-style passage, cut at each size, analysed 10 times.
 
 | Characters | Words | Median (ms) | Worst (ms) |
 |--:|--:|--:|--:|
-| 100 | 18 | 19 | 20 |
-| 500 | 81 | 66 | 67 |
-| 2,000 | 323 | 247 | 251 |
+| 100 | 18 | 21 | 207 |
+| 500 | 81 | 71 | 818 |
+| 2,000 | 323 | 261 | 2179 |
 
 ### Startup and memory
 
 | Measure | Value |
 |---|--:|
-| Startup, from process start to the first answer (median of 3) | 3.0 s |
+| Startup, from process start to the first answer (median of 3) | 3.9 s |
 | Resident memory after startup | 543 MB |
-| Resident memory after the timings above | 549 MB |
+| Resident memory after the timings above | 545 MB |
 
 ### Proposed budgets
 
 | Budget | Proposed | Measured here | Within |
 |---|--:|--:|---|
-| Word lookup, server time, p95 | ≤ 50 ms | 9.0 ms | yes |
-| Word lookup, first time a word is looked up after start, worst | ≤ 500 ms | 93.3 ms | yes |
-| Text analysis of 2,000 characters, worst | ≤ 1,000 ms | 250.7 ms | yes |
-| Startup to the first answer | ≤ 10 s | 3.0 s | yes |
-| Resident memory after use | ≤ 768 MB | 548.8 MB | yes |
+| Word lookup, server time, p95 | ≤ 50 ms | 9.5 ms | yes |
+| Word lookup, first time a word is looked up after start, worst | ≤ 500 ms | 95.9 ms | yes |
+| Text analysis of 2,000 characters, worst | ≤ 1,000 ms | 2,179.0 ms | **no** |
+| Startup to the first answer | ≤ 10 s | 3.9 s | yes |
+| Resident memory after use | ≤ 768 MB | 545.4 MB | yes |
 
-Why these: lookup runs while the user types, debounced at about 150 ms, so its server share should stay well under that, leaving room for a mobile network and a production CPU several times slower than this one. The first lookup of a word also counts each of its roots' words once, then remembers the count, so it may take longer. Text analysis runs once per pause and shows a loading state, so up to 1 s for the largest passage the Text view accepts is acceptable. Startup only matters on deploy and restart. The memory budget leaves headroom on a 1 GB instance, the size the CAMeL spike suggested. The owner should confirm the budgets on the production host, and the whole experience on a mid-range phone, before they become pass/fail.
+Why these: lookup runs while the user types, debounced at about 150 ms, so its server share should stay well under that, leaving room for a mobile network and a production CPU several times slower than this one. The first lookup of a word also counts each of its roots' words once, then remembers the count, so it may take longer. Text analysis runs once per pause and shows a loading state, so up to 1 s for the largest passage the Text view accepts is acceptable. Text analysis also counts the words of every root it has not counted before, for the root links in its token details: the first analysis of the 2,000-character passage took 2,179 ms, and later ones 260 ms at the median. Startup only matters on deploy and restart. The memory budget leaves headroom on a 1 GB instance, the size the CAMeL spike suggested. The owner should confirm the budgets on the production host, and the whole experience on a mid-range phone, before they become pass/fail.
 
 Checked by a test: none of these. CI runs on shared runners whose speed varies by several times, so a test tight enough to catch a regression would be flaky, and a loose one would catch nothing. `tests/test_contract.py` already bounds the one input with an unbounded cost, a very long Arabizi word (under 2 s). Rerun this script before a release instead.
 
