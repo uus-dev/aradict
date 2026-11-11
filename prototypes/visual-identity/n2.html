@@ -1,0 +1,849 @@
+<!doctype html>
+<html lang="en" data-theme="auto">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AraDict</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400..600&family=Literata:ital,opsz,wght@0,7..72,400..600;1,7..72,400..500&family=Scheherazade+New:wght@400;500;600;700&display=swap">
+<style>
+/* Clothbound: a bilingual dictionary rethought for the screen.
+   Bookcloth green + gilt is reserved for the root (and the brand stamp). */
+:root {
+  color-scheme: light;
+  --paper: #F0F3F1; --leaf: #FFFFFF; --tray: #F4F7F5; --tray-2: #E9EEEB;
+  --ink: #15201D; --ink-2: #3B4744; --ink-3: #5A6662;
+  --line: #D6DDD9; --line-2: #C3CCC8; --edge: #7F8A86;
+  --cloth: #14463F; --gilt: #EBD596; --fillet: rgb(235 213 150 / .38);
+  --link: #0D5D52; --focus: #0D6D60;
+  --pre: #2B4C99; --pre-bg: #EDF1FB; --suf: #8F2F5D; --suf-bg: #FBEEF4;
+  --btn: #15201D; --btn-ink: #FFFFFF; --btn-hover: #2C3935;
+  --hl-bg: #14463F; --hl-ink: #FFFFFF;
+  --shadow: 0 1px 2px rgb(20 40 35 / .05);
+  --pop-shadow: 0 18px 44px -14px rgb(16 40 34 / .32), 0 2px 8px rgb(16 40 34 / .10);
+  --f-ar: "Scheherazade New", "Noto Naskh Arabic", serif;
+  --f-ui: "Instrument Sans", system-ui, sans-serif;
+  --f-tx: "Literata", Georgia, serif;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --paper: #0E1513; --leaf: #151D1B; --tray: #1A2321; --tray-2: #222D2A;
+    --ink: #E5ECE9; --ink-2: #BAC6C2; --ink-3: #919E9A;
+    --line: #26312E; --line-2: #34413D; --edge: #6B7874;
+    --cloth: #1C4C44; --gilt: #E8D08C; --fillet: rgb(232 208 140 / .42);
+    --link: #86CDBD; --focus: #8AD3C2;
+    --pre: #A8BBF3; --pre-bg: #1B2340; --suf: #EFA6C6; --suf-bg: #35202A;
+    --btn: #E5ECE9; --btn-ink: #0E1513; --btn-hover: #C9D3CF;
+    --hl-bg: #86CDBD; --hl-ink: #0E1513;
+    --shadow: none;
+    --pop-shadow: 0 18px 44px -10px rgb(0 0 0 / .6), 0 0 0 1px rgb(255 255 255 / .03);
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --paper: #0E1513; --leaf: #151D1B; --tray: #1A2321; --tray-2: #222D2A;
+  --ink: #E5ECE9; --ink-2: #BAC6C2; --ink-3: #919E9A;
+  --line: #26312E; --line-2: #34413D; --edge: #6B7874;
+  --cloth: #1C4C44; --gilt: #E8D08C; --fillet: rgb(232 208 140 / .42);
+  --link: #86CDBD; --focus: #8AD3C2;
+  --pre: #A8BBF3; --pre-bg: #1B2340; --suf: #EFA6C6; --suf-bg: #35202A;
+  --btn: #E5ECE9; --btn-ink: #0E1513; --btn-hover: #C9D3CF;
+  --hl-bg: #86CDBD; --hl-ink: #0E1513;
+  --shadow: none;
+  --pop-shadow: 0 18px 44px -10px rgb(0 0 0 / .6), 0 0 0 1px rgb(255 255 255 / .03);
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+html { background: var(--paper); -webkit-text-size-adjust: 100%; }
+body {
+  margin: 0; min-height: 100vh; padding-bottom: 88px;
+  background: var(--paper); color: var(--ink);
+  font: 400 14px/1.5 var(--f-ui);
+  -webkit-font-smoothing: antialiased;
+}
+[lang="ar"] { font-family: var(--f-ar); }
+button, input, textarea { font: inherit; color: inherit; }
+button { cursor: pointer; }
+:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+[hidden] { display: none !important; }
+p, h1, h2, h3, ul, ol { margin: 0; }
+.wrap { max-width: 768px; margin: 0 auto; padding: 0 24px; }
+
+/* Header */
+.top { background: var(--leaf); border-bottom: 1px solid var(--line); }
+.top .wrap { display: flex; align-items: center; justify-content: space-between; height: 56px; }
+.brand { display: inline-flex; align-items: center; gap: 10px; color: var(--ink); text-decoration: none; border-radius: 6px; }
+.brand-en { font: 600 19px/1 var(--f-tx); letter-spacing: -.01em; }
+.stamp {
+  font: 600 17px/1 var(--f-ar); color: var(--gilt); background: var(--cloth);
+  padding: 4px 9px 8px; border-radius: 5px; box-shadow: inset 0 0 0 1px var(--fillet);
+}
+.nav { display: flex; gap: 2px; list-style: none; padding: 0; }
+.nav a {
+  display: inline-flex; align-items: center; height: 34px; padding: 0 12px;
+  border: 1px solid transparent; border-radius: 7px;
+  color: var(--ink-2); text-decoration: none; font-weight: 500;
+}
+.nav a:hover { color: var(--ink); background: var(--tray); }
+.nav a[aria-current="page"] { color: var(--ink); border-color: var(--line-2); background: var(--tray); font-weight: 600; }
+
+main.wrap { padding-top: 28px; }
+.box { background: var(--leaf); border: 1px solid var(--line); border-radius: 12px; box-shadow: var(--shadow); }
+
+/* Buttons */
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  height: 40px; padding: 0 16px; border-radius: 8px;
+  border: 1px solid var(--edge); background: var(--leaf); color: var(--ink);
+  font: 600 14px/1 var(--f-ui); white-space: nowrap;
+}
+.btn:hover { background: var(--tray); }
+.btn.primary { background: var(--btn); border-color: var(--btn); color: var(--btn-ink); }
+.btn.primary:hover { background: var(--btn-hover); border-color: var(--btn-hover); }
+.btn.sm { height: 36px; padding: 0 13px; font-size: 13.5px; }
+.link { color: var(--link); text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 3px; }
+.link:hover { text-decoration-thickness: 2px; }
+
+/* Search */
+.search { padding: 16px 18px 14px; }
+.lbl { display: block; margin-bottom: 8px; font-size: 13px; font-weight: 500; color: var(--ink-2); }
+.row { display: flex; gap: 8px; }
+.field { position: relative; flex: 1; min-width: 0; }
+.field input {
+  width: 100%; height: 40px; padding: 0 12px 0 46px;
+  border: 1px solid var(--edge); border-radius: 8px; background: var(--leaf);
+  font: 500 21px/1.5 var(--f-ar);
+}
+.field input::placeholder { color: var(--ink-3); opacity: 1; }
+.field input:focus-visible { outline-offset: 1px; border-color: var(--focus); }
+.kb-btn {
+  position: absolute; left: 4px; top: 4px; width: 32px; height: 32px;
+  display: grid; place-items: center; padding: 0;
+  border: 1px solid transparent; border-radius: 6px; background: transparent; color: var(--ink-2);
+}
+.kb-btn:hover { background: var(--tray-2); color: var(--ink); }
+.kb-btn[aria-expanded="true"] { background: var(--tray-2); border-color: var(--line-2); color: var(--ink); }
+.opts { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px 20px; margin-top: 12px; }
+.chk { display: inline-flex; align-items: center; gap: 8px; font-size: 13.5px; color: var(--ink-2); cursor: pointer; }
+.chk input { width: 16px; height: 16px; margin: 0; accent-color: var(--cloth); }
+.examples { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; }
+.examples > span { font-size: 13px; color: var(--ink-3); margin-right: 4px; }
+.examples ul { display: contents; list-style: none; }
+.chip {
+  height: 30px; padding: 0 9px; border: 1px solid var(--line-2); border-radius: 6px;
+  background: var(--tray); font: 500 18px/1 var(--f-ar);
+}
+.chip:hover { border-color: var(--edge); background: var(--tray-2); }
+
+/* Keyboard */
+.kbd { margin-top: 12px; padding: 10px; background: var(--tray); border: 1px solid var(--line); border-radius: 10px; }
+.kr { display: flex; justify-content: center; gap: 5px; max-width: 620px; margin: 0 auto; }
+.kr + .kr { margin-top: 5px; }
+.key {
+  flex: 0 1 calc((100% - 60px) / 13); min-width: 0; height: 40px; padding: 0 0 4px;
+  display: grid; place-items: center;
+  border: 1px solid var(--line-2); border-bottom: 2px solid var(--edge); border-radius: 6px;
+  background: var(--leaf); color: var(--ink); font: 500 21px/1 var(--f-ar);
+  touch-action: manipulation; user-select: none; -webkit-user-select: none;
+}
+.key:hover { background: var(--tray-2); }
+.key:active { translate: 0 1px; border-bottom-width: 1px; }
+.key.fn { padding: 0; font: 500 13px/1 var(--f-ui); color: var(--ink-2); }
+.key.shift, .key.hide { flex-basis: calc((100% - 60px) / 13 * 2 + 5px); }
+.key.del { flex-basis: calc((100% - 60px) / 13 * 1.5); font-size: 17px; }
+.key.space { flex: 1 1 auto; }
+.key.shift[aria-pressed="true"] { background: var(--btn); color: var(--btn-ink); border-color: var(--btn); }
+.kbd-note { margin-top: 8px; text-align: center; font-size: 12px; color: var(--ink-3); }
+
+/* Status and legend */
+.status { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 6px 16px; margin: 22px 2px 0; }
+.status p:first-child { font-size: 13.5px; color: var(--ink-2); }
+.status strong { color: var(--ink); font-weight: 600; }
+.status [lang="ar"] { font-size: 19px; font-weight: 600; color: var(--ink); }
+.legend { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 12.5px; color: var(--ink-2); }
+.lg-pre { color: var(--pre); text-decoration: underline 2px dotted; text-underline-offset: 4px; }
+.lg-stem { color: var(--ink); font-weight: 600; }
+.lg-suf { color: var(--suf); text-decoration: underline 1.5px dashed; text-underline-offset: 4px; }
+
+/* Entries */
+.entries { list-style: none; padding: 0; margin-top: 44px; display: grid; gap: 46px; }
+.entry { position: relative; background: var(--leaf); border: 1px solid var(--line); border-radius: 12px; box-shadow: var(--shadow); }
+.eh { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 4px 24px; padding: 12px 18px 12px; }
+.eh-en { min-width: 0; }
+.hw { font: 600 30px/1.55 var(--f-ar); color: var(--ink); text-align: right; }
+.meaning { font: 500 16.5px/1.35 var(--f-tx); color: var(--ink); margin-bottom: 7px; }
+.meta { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; }
+.tags { display: inline-flex; gap: 5px; }
+.pos {
+  display: inline-flex; align-items: center; height: 23px; padding: 0 8px 1px;
+  border: 1px solid var(--ink-3); border-radius: 5px;
+  font: italic 500 13.5px/1 var(--f-tx); color: var(--ink);
+}
+.pos.dim { border-style: dashed; color: var(--ink-2); font-weight: 400; }
+.freq { display: inline-flex; align-items: center; gap: 7px; font-size: 13px; color: var(--ink-2); }
+.freq .pct { color: var(--ink-3); }
+.pips { display: inline-flex; gap: 3px; }
+.pips i { width: 6px; height: 6px; rotate: 45deg; border: 1px solid var(--ink-2); }
+.pips i.on { background: var(--ink-2); }
+.meta .link { font-size: 13px; }
+
+/* Root: the gilt-on-cloth index tab, stamped onto the entry's top edge */
+.root-tab {
+  position: absolute; right: 14px; bottom: 100%; margin-bottom: -1px;
+  display: inline-flex; align-items: center; gap: 9px; height: 30px; padding: 0 11px;
+  background: var(--cloth); color: var(--gilt); text-decoration: none;
+  border-radius: 7px 7px 0 0; box-shadow: inset 0 0 0 1px var(--fillet);
+  font-size: 12px; font-weight: 500;
+}
+.root-tab .rt-ar { font: 600 19px/1 var(--f-ar); padding-bottom: 4px; word-spacing: 2px; }
+.root-tab .rt-n { padding-left: 9px; border-left: 1px solid var(--fillet); }
+.root-tab:hover .rt-n, .root-tab:hover .rt-k { text-decoration: underline; text-underline-offset: 3px; }
+
+/* Readings */
+.readings { list-style: none; padding: 0; border-top: 1px solid var(--line); background: var(--tray); border-radius: 0 0 11px 11px; }
+.rd { display: grid; grid-template-columns: 1fr auto; column-gap: 24px; padding: 12px 18px 13px; }
+.rd + .rd { border-top: 1px solid var(--line); }
+.rd-en { min-width: 0; padding-top: 3px; }
+.form { font: 500 25px/1.6 var(--f-ar); text-align: right; color: var(--ink); }
+.gloss { font: 400 15.5px/1.42 var(--f-tx); color: var(--ink); }
+.gram { margin-top: 2px; font: italic 400 13.5px/1.4 var(--f-tx); color: var(--ink-2); }
+.m-prefix { color: var(--pre); text-decoration: underline 2px dotted; text-underline-offset: .5em; text-decoration-skip-ink: none; }
+.m-stem { font-weight: 700; }
+.m-suffix { color: var(--suf); text-decoration: underline 1.5px dashed; text-underline-offset: .5em; text-decoration-skip-ink: none; }
+.parts-btn {
+  display: inline-flex; align-items: center; gap: 5px; margin-top: 9px;
+  height: 30px; padding: 0 10px 0 8px; border: 1px solid var(--line-2); border-radius: 6px;
+  background: var(--leaf); color: var(--ink-2); font: 500 13px/1 var(--f-ui);
+}
+.parts-btn:hover { color: var(--ink); border-color: var(--edge); }
+.parts-btn svg { transition: rotate .15s ease; }
+.parts-btn[aria-expanded="true"] { color: var(--ink); border-color: var(--edge); }
+.parts-btn[aria-expanded="true"] svg { rotate: 90deg; }
+.parts { grid-column: 1 / -1; margin-top: 12px; }
+.pl { display: flex; flex-wrap: wrap; gap: 6px; list-style: none; padding: 0; }
+.pt {
+  display: flex; flex-direction: column; align-items: center; min-width: 54px;
+  padding: 0 10px 8px; border-radius: 7px; background: var(--leaf); border: 1.5px solid var(--ink-3);
+}
+.pt-ar { font: 500 23px/1.75 var(--f-ar); color: var(--ink); }
+.pt-en { max-width: 132px; font: italic 400 12.5px/1.3 var(--f-tx); color: var(--ink-2); text-align: center; }
+.pt-prefix { border: 2px dotted var(--pre); background: var(--pre-bg); }
+.pt-prefix .pt-ar { color: var(--pre); }
+.pt-stem .pt-ar { font-weight: 700; }
+.pt-suffix { border: 1.5px dashed var(--suf); background: var(--suf-bg); }
+.pt-suffix .pt-ar { color: var(--suf); }
+@media (prefers-reduced-motion: no-preference) {
+  .parts:not([hidden]) { animation: open .18s ease-out; }
+  @keyframes open { from { opacity: 0; translate: 0 -3px; } }
+}
+
+/* No entry */
+.none { margin-top: 18px; padding: 18px 20px 20px; }
+.none h2 { font: 600 17px/1.5 var(--f-tx); }
+.none h2 [lang="ar"] { font-size: 23px; font-weight: 600; }
+.none p { margin-top: 4px; font: 400 15px/1.5 var(--f-tx); color: var(--ink-2); }
+.none ul { margin-top: 10px; padding-left: 20px; font: 400 15px/1.65 var(--f-tx); color: var(--ink); }
+.none li::marker { color: var(--ink-3); }
+.none li [lang="ar"] { font-size: 19px; }
+.empty { margin-top: 18px; padding: 18px 20px; font: 15px/1.5 var(--f-tx); color: var(--ink-2); }
+
+/* Text view */
+.tx-in { padding: 16px 18px; }
+textarea {
+  display: block; width: 100%; min-height: 104px; resize: vertical; padding: 8px 12px;
+  border: 1px solid var(--edge); border-radius: 8px; background: var(--leaf);
+  font: 500 22px/1.8 var(--f-ar);
+}
+textarea:focus-visible { outline-offset: 1px; border-color: var(--focus); }
+.tx-bar { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 12px; }
+.hint { font-size: 13px; color: var(--ink-3); }
+.passage-box { margin-top: 20px; }
+.pb-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 16px; padding: 12px 18px; border-bottom: 1px solid var(--line); }
+.pb-head h2 { font: 600 14px/1.4 var(--f-ui); }
+.pb-head h2 span { font-weight: 400; color: var(--ink-2); }
+.key-legend { display: flex; gap: 14px; font-size: 12.5px; color: var(--ink-2); }
+.key-legend span { display: inline-flex; align-items: center; gap: 6px; }
+.key-legend i { width: 18px; height: 13px; border-radius: 3px; background: var(--tray); border: 1px solid var(--line-2); border-bottom: 2px solid var(--edge); }
+.key-legend i.u { background: transparent; border: 1.5px dashed var(--edge); }
+.passage { padding: 18px 20px 22px; font: 500 27px/2.35 var(--f-ar); text-align: right; color: var(--ink); }
+.w {
+  margin: 0; padding: 0 6px; font: inherit; line-height: 1.55; color: inherit;
+  background: var(--tray); border: 1px solid var(--line-2); border-bottom: 2px solid var(--edge); border-radius: 6px;
+}
+.w:hover { background: var(--tray-2); }
+.w.unknown { background: transparent; border: 1.5px dashed var(--edge); color: var(--ink-2); }
+.w.is-open, .w.is-open:hover { background: var(--hl-bg); border-color: var(--hl-bg); color: var(--hl-ink); }
+
+/* Word panel (native popover) */
+#wp {
+  position: fixed; inset: auto; left: var(--x, 16px); top: var(--y, 16px); margin: 0; padding: 0;
+  width: min(400px, calc(100vw - 32px)); max-height: min(72vh, 620px);
+  border: 1px solid var(--line-2); border-radius: 12px; background: var(--leaf); color: var(--ink);
+  box-shadow: var(--pop-shadow); overflow: hidden;
+  opacity: 0; translate: 0 4px;
+  transition: opacity .16s ease, translate .16s ease, display .16s allow-discrete, overlay .16s allow-discrete;
+}
+#wp:popover-open { display: flex; flex-direction: column; opacity: 1; translate: 0 0; }
+@starting-style { #wp:popover-open { opacity: 0; translate: 0 4px; } }
+#wp::backdrop { background: transparent; }
+.wp-head { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 12px; padding: 10px 18px; border-bottom: 1px solid var(--line); }
+.wp-head h2 { font: 600 28px/1.55 var(--f-ar); text-align: right; grid-column: 2; grid-row: 1; }
+.wp-head p { grid-column: 1; grid-row: 1; font-size: 13px; color: var(--ink-2); }
+.wp-body { overflow: auto; overscroll-behavior: contain; flex: 1; }
+.wg { padding: 12px 18px 6px; }
+.wg + .wg { border-top: 1px solid var(--line); }
+.wg-h { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 12px; }
+.wg-h .tags { flex-wrap: wrap; align-items: center; }
+.wg-h .hw { font-size: 25px; font-weight: 700; }
+.root-chip {
+  display: inline-flex; align-items: center; gap: 6px; height: 23px; padding: 0 8px;
+  background: var(--cloth); color: var(--gilt); border-radius: 5px; box-shadow: inset 0 0 0 1px var(--fillet);
+  font-size: 12px; font-weight: 500;
+}
+.root-chip [lang="ar"] { font: 600 16px/1 var(--f-ar); padding-bottom: 3px; word-spacing: 1px; }
+.wg ul { list-style: none; padding: 0; margin-top: 4px; }
+.wg li { display: grid; grid-template-columns: 1fr auto; column-gap: 16px; padding: 7px 0 8px; }
+.wg li + li { border-top: 1px dashed var(--line); }
+.wg .form { font-size: 21px; color: var(--ink-2); }
+.wg .form .m-stem { color: var(--ink); }
+.wg .gloss { font-size: 15px; }
+.wg .gram { font-size: 13px; }
+.wp-none { padding: 16px 18px 18px; font: 15px/1.55 var(--f-tx); color: var(--ink-2); }
+.wp-none strong { display: block; margin-bottom: 4px; font-weight: 600; color: var(--ink); }
+.wp-foot { display: flex; justify-content: flex-end; gap: 8px; padding: 12px 18px; border-top: 1px solid var(--line); background: var(--tray); }
+
+/* About */
+.about { padding: 22px 24px 24px; }
+.about h1 { font: 600 20px/1.3 var(--f-tx); margin-bottom: 10px; }
+.about p { font: 400 15.5px/1.6 var(--f-tx); color: var(--ink-2); max-width: 62ch; }
+.about p + p { margin-top: 10px; }
+
+/* Toast */
+.toast {
+  position: fixed; left: 50%; bottom: 72px; translate: -50% 8px; z-index: 40;
+  max-width: calc(100vw - 32px); padding: 10px 14px; border-radius: 8px;
+  background: var(--btn); color: var(--btn-ink); font-size: 13.5px;
+  opacity: 0; pointer-events: none; transition: opacity .18s, translate .18s;
+}
+.toast.on { opacity: 1; translate: -50% 0; }
+.toast [lang="ar"] { font-size: 17px; }
+
+/* Phone */
+@media (max-width: 640px) {
+  .wrap { padding: 0 16px; }
+  .top .wrap { height: 54px; }
+  .brand-en { font-size: 18px; }
+  .nav a { height: 40px; padding: 0 10px; }
+  main.wrap { padding-top: 16px; }
+  .search { padding: 14px 14px 12px; }
+  .field input, .btn { height: 44px; }
+  .kb-btn { width: 36px; height: 36px; }
+  .btn.sm { height: 40px; }
+  .chip { height: 34px; }
+  .kbd { margin-left: -8px; margin-right: -8px; padding: 8px 6px; }
+  .kr { gap: 3px; }
+  .kr + .kr { margin-top: 6px; }
+  .key { flex-basis: calc((100% - 36px) / 13); height: 44px; font-size: 19px; border-radius: 5px; }
+  .key.shift, .key.hide { flex-basis: calc((100% - 36px) / 13 * 2.4); }
+  .key.del { flex-basis: calc((100% - 36px) / 13 * 1.8); }
+  .eh { padding: 11px 14px; gap: 4px 14px; }
+  .hw { font-size: 27px; }
+  .rd { padding: 11px 14px 12px; column-gap: 14px; }
+  .form { font-size: 23px; }
+  .parts-btn { height: 34px; }
+  .root-tab { right: 10px; }
+  .passage { padding: 14px 14px 18px; font-size: 25px; }
+  .tx-in { padding: 14px; }
+  textarea { min-height: 92px; font-size: 21px; }
+  .tx-bar .hint { font-size: 12.5px; }
+  body:has(#wp:popover-open) { padding-bottom: 66dvh; }
+  #wp {
+    left: 0; right: 0; top: auto; bottom: 0; width: 100%; max-height: 62dvh;
+    border-radius: 16px 16px 0 0; border-bottom: 0; translate: 0 24px;
+  }
+  #wp:popover-open { translate: 0 0; }
+  @starting-style { #wp:popover-open { translate: 0 24px; } }
+  #wp::backdrop { background: rgb(8 16 14 / .38); }
+  .wp-foot { padding-bottom: max(12px, env(safe-area-inset-bottom)); }
+  .wp-foot .btn { flex: 1; }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { transition: none !important; animation: none !important; }
+}
+
+/* Review control: not part of the design */
+.review {
+  position: fixed; left: 50%; bottom: 12px; translate: -50% 0; z-index: 60;
+  display: flex; align-items: center; gap: 6px; padding: 5px 6px;
+  background: #2B2E33; color: #EDEEF0; border-radius: 10px;
+  font: 500 12px/1 system-ui, sans-serif; box-shadow: 0 6px 18px rgb(0 0 0 / .28);
+  outline: 1px dashed #8A9099; outline-offset: 3px;
+}
+.review .rv-t { padding: 0 6px; color: #B9BDC4; }
+.review [role="group"] { display: flex; gap: 2px; padding-left: 6px; border-left: 1px solid #4A4F57; }
+.review button { height: 28px; padding: 0 9px; border: 0; border-radius: 6px; background: transparent; color: #D5D8DC; font: inherit; }
+.review button:hover { background: #3A3E44; }
+.review button[aria-pressed="true"] { background: #EDEEF0; color: #1C1E21; }
+.review :focus-visible { outline: 2px solid #9CC9FF; outline-offset: 1px; }
+@media (max-width: 640px) {
+  .review { bottom: 8px; gap: 2px; }
+  .review .rv-t { display: none; }
+  .review [role="group"]:first-of-type { border-left: 0; padding-left: 0; }
+  .review button { padding: 0 7px; }
+}
+</style>
+</head>
+<body>
+<header class="top">
+  <div class="wrap">
+    <a class="brand" href="#word" aria-label="AraDict, قاموس, home">
+      <span class="brand-en">AraDict</span>
+      <span class="stamp" lang="ar" dir="rtl">قاموس</span>
+    </a>
+    <nav aria-label="Main">
+      <ul class="nav">
+        <li><a href="#word" data-view="word">Word</a></li>
+        <li><a href="#text" data-view="text">Text</a></li>
+        <li><a href="#about" data-view="about">About</a></li>
+      </ul>
+    </nav>
+  </div>
+</header>
+
+<main class="wrap">
+  <!-- Word view -->
+  <section id="v-word" aria-labelledby="wv-h">
+    <h1 id="wv-h" class="sr">Word lookup</h1>
+    <form class="box search" id="sf" role="search">
+      <label class="lbl" for="q">Type or paste an Arabic word</label>
+      <div class="row">
+        <div class="field">
+          <input id="q" name="q" type="text" lang="ar" dir="rtl" autocomplete="off" autocapitalize="off" spellcheck="false" enterkeyhint="search" placeholder="كلمة">
+          <button type="button" class="kb-btn" id="kbBtn" aria-label="Arabic keyboard" aria-expanded="false" aria-controls="kbd">
+            <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true"><rect x="2" y="4.5" width="16" height="11" rx="2"/><path d="M5 8h1M8 8h1M11 8h1M14 8h1M5 11h1M14 11h1M8 11h4" stroke-linecap="round"/></svg>
+          </button>
+        </div>
+        <button class="btn primary" type="submit">Look up</button>
+      </div>
+      <div class="kbd" id="kbd" role="group" aria-label="Arabic keyboard" hidden></div>
+      <div class="opts">
+        <label class="chk"><input type="checkbox" id="ign" checked> Ignore diacritics</label>
+        <div class="examples">
+          <span id="exl">Examples</span>
+          <ul aria-labelledby="exl" id="ex"></ul>
+        </div>
+      </div>
+    </form>
+    <div class="status">
+      <p id="status" role="status"></p>
+      <p class="legend" id="legend"><span class="sr">How word parts are marked: </span><span class="lg-pre">prefix</span><span class="lg-stem">stem</span><span class="lg-suf">suffix</span></p>
+    </div>
+    <div id="results"></div>
+  </section>
+
+  <!-- Text view -->
+  <section id="v-text" aria-labelledby="tv-h" hidden>
+    <h1 id="tv-h" class="sr">Text analysis</h1>
+    <form class="box tx-in" id="tf">
+      <label class="lbl" for="ta">Paste an Arabic passage</label>
+      <textarea id="ta" lang="ar" dir="rtl" rows="3" spellcheck="false">كتب الطالب رسالة إلى مدرستي عن بودكاست.</textarea>
+      <div class="tx-bar">
+        <p class="hint">Every word becomes a button you can open.</p>
+        <button class="btn primary" type="submit">Analyze text</button>
+      </div>
+    </form>
+    <section class="box passage-box" aria-labelledby="pb-h">
+      <div class="pb-head">
+        <h2 id="pb-h">Passage<span id="pb-n"></span></h2>
+        <p class="key-legend"><span><i></i>has readings</span><span><i class="u"></i>no entry</span></p>
+      </div>
+      <p class="passage" id="passage" lang="ar" dir="rtl"></p>
+    </section>
+  </section>
+
+  <!-- About view -->
+  <section id="v-about" hidden>
+    <div class="box about">
+      <h1>About AraDict</h1>
+      <p>AraDict is an Arabic–English dictionary for Modern Standard Arabic. Paste a word exactly as you found it, with or without vowel marks and with its attached prefixes and suffixes, and see every way it can be read.</p>
+      <p>Readings are grouped under their dictionary headword, most common first. Each headword shows its root, its part of speech and how often it appears in news and texts.</p>
+    </div>
+  </section>
+</main>
+
+<div id="wp" popover role="dialog" aria-labelledby="wp-h"></div>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<div class="review" role="region" aria-label="Review controls (not part of the design)">
+  <span class="rv-t">Review</span>
+  <div role="group" aria-label="Screen">
+    <button type="button" data-screen="word">Word</button>
+    <button type="button" data-screen="text">Text</button>
+    <button type="button" data-screen="kbd">Keyboard</button>
+  </div>
+  <div role="group" aria-label="Theme">
+    <button type="button" data-theme="auto">Auto</button>
+    <button type="button" data-theme="light">Light</button>
+    <button type="button" data-theme="dark">Dark</button>
+  </div>
+</div>
+
+<script src="data.js"></script>
+<script>
+const $ = (s, r = document) => r.querySelector(s);
+const $$ = (s, r = document) => [...r.querySelectorAll(s)];
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
+const MARKS = /[ً-ْٰـ]/g;
+const bare = s => s.replace(MARKS, '').trim();
+const POS = { noun: 'noun', verb: 'verb', adj: 'adjective', prep: 'preposition', noun_prop: 'proper noun' };
+const KIND = { prefix: 'prefix', stem: 'stem', suffix: 'suffix' };
+const senses = s => (s || '').split(';').map(x => x.replace(/_/g, ' ').trim()).filter(Boolean);
+const plural = (n, w) => `${n} ${w}${n === 1 ? '' : 's'}`;
+const ar = t => `<span lang="ar" dir="rtl">${esc(t)}</span>`;
+
+function freq(p) {
+  if (p == null) return { n: 0, label: 'frequency unknown', pct: '' };
+  const [n, label] = p <= 5 ? [4, 'very common'] : p <= 15 ? [3, 'common'] : p <= 35 ? [2, 'less common'] : [1, 'rare'];
+  return { n, label, pct: `top ${p < 1 ? 1 : Math.round(p)}% of words` };
+}
+const rootText = r => r ? r.split('.').map(c => c === '#' ? '◌' : c).join(' ') : null;
+
+function group(readings) {
+  const m = new Map();
+  for (const r of readings) {
+    const k = r.lemma + '|' + r.pos;
+    if (!m.has(k)) m.set(k, []);
+    m.get(k).push(r);
+  }
+  return [...m.values()];
+}
+
+// The lemma's own meaning: senses of its active readings (passives only describe the form).
+function lemmaMeaning(rs) {
+  const act = rs.filter(r => !r.grammar.includes('passive'));
+  return [...new Set((act.length ? act : rs).flatMap(r => senses(r.stemgloss)))].join('; ');
+}
+
+function grammarLine(r) {
+  const g = r.grammar.slice(1).join(', ');
+  const att = r.segments.suffix.filter(s => /PRON/.test(s.tag)).map(s => s.label);
+  return att.length ? (g ? g + '; ' : '') + 'attached: ' + att.join(', ') : g;
+}
+
+function formHTML(r) {
+  const s = r.segments;
+  const all = [...s.prefix, ...s.stem, ...s.suffix].map(p => p.text).join('');
+  if (all !== r.form) return esc(r.form);
+  return ['prefix', 'stem', 'suffix'].map(k => {
+    const t = s[k].map(p => p.text).join('');
+    return t ? `<span class="m-${k}">${esc(t)}</span>` : '';
+  }).join('');
+}
+
+// Dictionary notation for parts: a tatweel shows where an affix joins its neighbour.
+const NOJOIN = new Set([...'اأإآٱدذرزوؤةء']);
+function joins(t) {
+  const b = t.replace(MARKS, '');
+  const c = b[b.length - 1];
+  return !!c && /[ئ-ي]/.test(c) && !NOJOIN.has(c);
+}
+function partsHTML(r) {
+  const seq = ['prefix', 'stem', 'suffix'].flatMap(k => r.segments[k].map(p => [k, p]));
+  return `<ol class="pl" lang="ar" dir="rtl">${seq.map(([k, p], i) => {
+    let t = p.text;
+    if (k === 'prefix' && seq[i + 1] && joins(t)) t += 'ـ';
+    if (k === 'suffix') {
+      if (seq[i - 1] && joins(seq[i - 1][1].text)) t = 'ـ' + t;
+      else if (/^[ً-ْٰ]/.test(t)) t = '◌' + t;
+    }
+    const label = p.label || (k === 'stem' ? senses(r.stemgloss).slice(0, 2).join(', ') : '');
+    return `<li class="pt pt-${k}"><span class="sr" lang="en">${KIND[k]}: </span><span class="pt-ar">${esc(t)}</span><span class="pt-en" lang="en" dir="ltr">${esc(label)}</span></li>`;
+  }).join('')}</ol>`;
+}
+
+function tagsHTML(r) {
+  const m = r.pos === 'verb'
+    ? `<span class="pos${r.measure ? '' : ' dim'}">${r.measure ? 'form ' + r.measure : 'measure unavailable'}</span>` : '';
+  return `<span class="pos">${esc(POS[r.pos] || r.pos.replace(/_/g, ' '))}</span>${m}`;
+}
+
+function readingHTML(r, id) {
+  const g = grammarLine(r);
+  return `<li class="rd">
+    <div class="rd-en">
+      <p class="gloss">${esc(r.gloss)}</p>
+      ${g ? `<p class="gram">${esc(g)}</p>` : ''}
+      <button type="button" class="parts-btn" aria-expanded="false" aria-controls="pt-${id}">
+        <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M4.5 2.5 8 6l-3.5 3.5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        Word parts<span class="sr"> of ${esc(r.form)}</span>
+      </button>
+    </div>
+    <p class="form" lang="ar" dir="rtl">${formHTML(r)}</p>
+    <div class="parts" id="pt-${id}" hidden>${partsHTML(r)}</div>
+  </li>`;
+}
+
+function entryHTML(rs, n) {
+  const r = rs[0], f = freq(r.freq_top_pct), root = rootText(r.root);
+  const meaning = rs.length > 1 ? lemmaMeaning(rs) : '';
+  return `<li class="entry" aria-labelledby="hw-${n}">
+    <div class="eh">
+      <div class="eh-en">
+        ${meaning ? `<p class="meaning">${esc(meaning)}</p>` : ''}
+        <div class="meta">
+          <span class="tags">${tagsHTML(r)}</span>
+          <span class="freq"><span class="pips" aria-hidden="true">${[1, 2, 3, 4].map(i => `<i${i <= f.n ? ' class="on"' : ''}></i>`).join('')}</span><span>${f.label}${f.pct ? `<span class="pct">, ${f.pct}</span>` : ''}</span></span>
+          ${r.related_count ? `<a class="link" href="#forms" data-forms="${esc(r.lemma)}">${plural(r.related_count, 'other form')}</a>` : ''}
+        </div>
+      </div>
+      <h2 class="hw" id="hw-${n}" lang="ar" dir="rtl">${esc(r.lemma)}</h2>
+      ${root ? `<a class="root-tab" href="#root" data-root="${esc(root)}" data-count="${r.root_family_count}"><span class="rt-k">root</span><span class="rt-ar" lang="ar" dir="rtl">${esc(root)}</span><span class="rt-n">${plural(r.root_family_count, 'word')}</span></a>` : ''}
+    </div>
+    <ul class="readings" aria-label="Readings under ${esc(r.lemma)}">${rs.map((x, i) => readingHTML(x, `${n}-${i}`)).join('')}</ul>
+  </li>`;
+}
+
+function noneHTML(w) {
+  return `<div class="box none">
+    <h2>No entry for ${ar(w)}</h2>
+    <p>The dictionary has no reading for this word. You could:</p>
+    <ul>
+      <li>Check the spelling.</li>
+      <li>Type it without vowel marks.</li>
+      <li>Try it without attached parts, such as ${ar('و')}, ${ar('ب')} or ${ar('ال')} at the start, or ${ar('ها')}, ${ar('هم')} at the end.</li>
+    </ul>
+    <p>Recent loanwords are often missing from the dictionary.</p>
+  </div>`;
+}
+
+// Word view
+const q = $('#q'), results = $('#results'), status = $('#status');
+function lookup(w) {
+  w = w.trim();
+  q.value = w;
+  const d = window.DATA[bare(w)];
+  if (!w) {
+    status.textContent = '';
+    results.innerHTML = '<div class="box empty">Type or paste an Arabic word above, or pick one of the examples.</div>';
+    return;
+  }
+  if (!d || !d.readings.length) {
+    status.innerHTML = `<strong>No readings</strong> for ${ar(w)}`;
+    $('#legend').hidden = true;
+    results.innerHTML = noneHTML(w);
+    return;
+  }
+  const g = group(d.readings);
+  $('#legend').hidden = false;
+  status.innerHTML = `<strong>${plural(d.readings.length, 'reading')}</strong> for ${ar(w)}, under ${plural(g.length, 'headword')}`;
+  results.innerHTML = `<ol class="entries">${g.map(entryHTML).join('')}</ol>`;
+}
+$('#sf').addEventListener('submit', e => { e.preventDefault(); lookup(q.value); });
+$('#ex').innerHTML = ['كتب', 'وبكتابهم', 'سيكتبون', 'استخدم', 'مدرستي', 'الى', 'بودكاست']
+  .map(w => `<li><button type="button" class="chip" lang="ar" dir="rtl">${w}</button></li>`).join('');
+$('#ex').addEventListener('click', e => { const b = e.target.closest('.chip'); if (b) lookup(b.textContent); });
+
+results.addEventListener('click', e => {
+  const pb = e.target.closest('.parts-btn');
+  if (pb) {
+    const open = pb.getAttribute('aria-expanded') !== 'true';
+    pb.setAttribute('aria-expanded', open);
+    $('#' + pb.getAttribute('aria-controls')).hidden = !open;
+    return;
+  }
+  const a = e.target.closest('a');
+  if (!a) return;
+  e.preventDefault();
+  if (a.dataset.root) toast(`The ${a.dataset.count} words from the root ${ar(a.dataset.root)} open here.`);
+  if (a.dataset.forms) toast(`All forms of ${ar(a.dataset.forms)} open here.`);
+});
+
+let toastT;
+function toast(html) {
+  const t = $('#toast');
+  t.innerHTML = html;
+  t.classList.add('on');
+  clearTimeout(toastT);
+  toastT = setTimeout(() => t.classList.remove('on'), 3200);
+}
+
+// On-screen keyboard (Arabic 101 rows, physical left-to-right order)
+const ROWS = [
+  [['ذ','dhal'],['ض','ḍad'],['ص','ṣad'],['ث','tha'],['ق','qaf'],['ف','fa'],['غ','ghayn'],['ع','ʿayn'],['ه','ha'],['خ','kha'],['ح','ḥa'],['ج','jim'],['د','dal']],
+  [['ش','shin'],['س','sin'],['ي','ya'],['ب','ba'],['ل','lam'],['ا','alif'],['ت','ta'],['ن','nun'],['م','mim'],['ك','kaf'],['ط','ṭa']],
+  [['ئ','ya with hamza above'],['ء','hamza'],['ؤ','waw with hamza above'],['ر','ra'],['لا','lam alif'],['ى','alif maqsura'],['ة','ta marbuta'],['و','waw'],['ز','zay'],['ظ','ẓa']],
+];
+const SHIFT = [
+  [['ّ','shadda'],['َ','fatha'],['ً','fathatan'],['ُ','damma'],['ٌ','dammatan'],['ِ','kasra'],['ٍ','kasratan'],['ْ','sukun']],
+  [['أ','alif with hamza above'],['إ','alif with hamza below'],['آ','alif with madda'],['لأ','lam alif with hamza above'],['لإ','lam alif with hamza below'],['لآ','lam alif with madda'],['ـ','tatweel']],
+  [['،','Arabic comma'],['؛','Arabic semicolon'],['؟','Arabic question mark']],
+];
+const kbd = $('#kbd'), kbBtn = $('#kbBtn');
+let shifted = false;
+function drawKbd() {
+  const rows = shifted ? SHIFT : ROWS;
+  kbd.innerHTML = rows.map(row => `<div class="kr">${row.map(([c, n]) =>
+    `<button type="button" class="key" data-c="${c}" aria-label="${n}"><span lang="ar">${/^[ً-ْ]$/.test(c) ? '◌' + c : c}</span></button>`).join('')}</div>`).join('') +
+    `<div class="kr">
+      <button type="button" class="key fn shift" data-fn="shift" aria-pressed="${shifted}">Shift</button>
+      <button type="button" class="key fn space" data-fn="space" aria-label="Space">Space</button>
+      <button type="button" class="key fn del" data-fn="del" aria-label="Delete">⌫</button>
+      <button type="button" class="key fn hide" data-fn="hide">Hide</button>
+    </div>
+    <p class="kbd-note">${shifted ? 'Marks, hamza seats and punctuation, for one key' : 'Shift for vowel marks, hamza seats and punctuation'}</p>`;
+}
+function setKbd(open) {
+  kbd.hidden = !open;
+  kbBtn.setAttribute('aria-expanded', open);
+  if (open) { q.setAttribute('inputmode', 'none'); drawKbd(); }
+  else { q.removeAttribute('inputmode'); shifted = false; }
+  q.focus();
+}
+kbBtn.addEventListener('click', () => setKbd(kbd.hidden));
+kbd.addEventListener('pointerdown', e => { if (e.target.closest('.key')) e.preventDefault(); }); // keep the caret in the field
+kbd.addEventListener('click', e => {
+  const k = e.target.closest('.key');
+  if (!k) return;
+  const fn = k.dataset.fn;
+  if (fn === 'hide') return setKbd(false);
+  if (fn === 'shift') { shifted = !shifted; drawKbd(); return refocusKey('shift'); }
+  let s = q.selectionStart ?? q.value.length, en = q.selectionEnd ?? s;
+  if (fn === 'del') {
+    if (s === en && s > 0) s -= 1;
+    q.setRangeText('', s, en, 'end');
+  } else {
+    q.setRangeText(fn === 'space' ? ' ' : k.dataset.c, s, en, 'end');
+    if (shifted && !fn) { shifted = false; drawKbd(); }
+  }
+  q.dispatchEvent(new Event('input', { bubbles: true }));
+  if (document.activeElement === document.body || kbd.contains(document.activeElement) === false) q.focus();
+});
+function refocusKey(fn) { if (kbd.contains(document.activeElement) || document.activeElement === document.body) $(`.key[data-fn="${fn}"]`, kbd)?.focus(); }
+
+// Text view
+const passage = $('#passage'), wp = $('#wp');
+let cur = null;
+function analyze(text) {
+  const re = /[ء-ْٰٱ]+/g;
+  let out = '', last = 0, m, n = 0;
+  while ((m = re.exec(text))) {
+    out += esc(text.slice(last, m.index));
+    const w = m[0], d = window.DATA[bare(w)], known = d && d.readings.length;
+    out += `<button type="button" class="w${known ? '' : ' unknown'}" popovertarget="wp" data-w="${esc(w)}">${esc(w)}${known ? '' : '<span class="sr" lang="en"> (no entry)</span>'}</button>`;
+    last = re.lastIndex; n++;
+  }
+  passage.innerHTML = out + esc(text.slice(last));
+  $('#pb-n').textContent = `, ${plural(n, 'word')}`;
+}
+$('#tf').addEventListener('submit', e => { e.preventDefault(); analyze($('#ta').value); });
+
+function panelHTML(w) {
+  const d = window.DATA[bare(w)], rs = d ? d.readings : [];
+  const body = rs.length ? group(rs).map(g => {
+    const r = g[0], root = rootText(r.root);
+    return `<section class="wg" aria-label="${esc(r.lemma)}">
+      <div class="wg-h">
+        <span class="tags">${tagsHTML(r)}${root ? `<span class="root-chip">root <span lang="ar" dir="rtl">${esc(root)}</span></span>` : ''}</span>
+        <h3 class="hw" lang="ar" dir="rtl">${esc(r.lemma)}</h3>
+      </div>
+      <ul>${g.map(x => {
+        const gl = grammarLine(x);
+        return `<li><div class="rd-en"><p class="gloss">${esc(x.gloss)}</p>${gl ? `<p class="gram">${esc(gl)}</p>` : ''}</div><p class="form" lang="ar" dir="rtl">${formHTML(x)}</p></li>`;
+      }).join('')}</ul>
+    </section>`;
+  }).join('') : `<div class="wp-none"><strong>No entry</strong>This word isn’t in the dictionary. Recent loanwords are often missing; try it without attached parts.</div>`;
+  return `<div class="wp-head"><h2 id="wp-h" lang="ar" dir="rtl">${esc(w)}</h2><p>${rs.length ? plural(rs.length, 'reading') : 'No entry'}</p></div>
+    <div class="wp-body">${body}</div>
+    <div class="wp-foot">
+      ${rs.length ? `<button type="button" class="btn sm" data-open="${esc(w)}">Open in Word lookup</button>` : ''}
+      <button type="button" class="btn sm primary" popovertarget="wp" popovertargetaction="hide">Close</button>
+    </div>`;
+}
+function setWord(b) {
+  cur?.classList.remove('is-open');
+  cur = b;
+  b.classList.add('is-open');
+  wp.innerHTML = panelHTML(b.dataset.w);
+}
+passage.addEventListener('click', e => {
+  const b = e.target.closest('.w');
+  if (!b) return;
+  const open = wp.matches(':popover-open');
+  if (open && b !== cur) { e.preventDefault(); setWord(b); place(); } // switch words without closing
+  else if (!open) setWord(b);
+});
+wp.addEventListener('toggle', e => {
+  if (e.newState === 'open') {
+    place();
+    if (narrow.matches) { // keep the tapped word visible above the sheet
+      const r = cur.getBoundingClientRect(), top = innerHeight - wp.offsetHeight - 20;
+      if (r.bottom > top) scrollBy({ top: r.bottom - top, behavior: 'instant' });
+    }
+  }
+  else { cur?.classList.remove('is-open'); cur = null; }
+});
+wp.addEventListener('click', e => {
+  const o = e.target.closest('[data-open]');
+  if (!o) return;
+  wp.hidePopover();
+  location.hash = '#word';
+  lookup(o.dataset.open);
+});
+const narrow = matchMedia('(max-width: 640px)');
+function place() {
+  if (!cur || !wp.matches(':popover-open')) return;
+  wp.style.removeProperty('max-height');
+  if (narrow.matches) return; // bottom sheet, placed by CSS
+  const r = cur.getBoundingClientRect(), pw = wp.offsetWidth, ph = wp.offsetHeight, m = 12, gap = 8;
+  // Prefer below the word; shrink (the body scrolls) rather than cover the text above.
+  const below = innerHeight - r.bottom - gap - m, above = r.top - gap - m;
+  const down = ph <= below || below >= 300 || below >= above;
+  const h = Math.min(ph, down ? below : above);
+  wp.style.maxHeight = h + 'px';
+  wp.style.setProperty('--x', Math.max(m, Math.min(r.right - pw, innerWidth - pw - m)) + 'px');
+  wp.style.setProperty('--y', (down ? r.bottom + gap : r.top - gap - h) + 'px');
+}
+addEventListener('resize', place);
+addEventListener('scroll', place, { passive: true });
+
+// Views
+function show(view) {
+  if (!['word', 'text', 'about'].includes(view)) view = 'word';
+  for (const v of ['word', 'text', 'about']) $('#v-' + v).hidden = v !== view;
+  $$('.nav a').forEach(a => a.dataset.view === view ? a.setAttribute('aria-current', 'page') : a.removeAttribute('aria-current'));
+  if (view !== 'text' && wp.matches(':popover-open')) wp.hidePopover();
+  markReview();
+}
+addEventListener('hashchange', () => show(location.hash.slice(1)));
+
+// Review control
+function markReview() {
+  const v = location.hash.slice(1) || 'word';
+  const s = v === 'text' ? 'text' : v === 'word' && !kbd.hidden ? 'kbd' : v === 'word' ? 'word' : '';
+  $$('.review [data-screen]').forEach(b => b.setAttribute('aria-pressed', b.dataset.screen === s));
+  $$('.review [data-theme]').forEach(b => b.setAttribute('aria-pressed', b.dataset.theme === document.documentElement.dataset.theme));
+}
+$('.review').addEventListener('click', e => {
+  const b = e.target.closest('button');
+  if (!b) return;
+  if (b.dataset.theme) document.documentElement.dataset.theme = b.dataset.theme;
+  if (b.dataset.screen) {
+    const s = b.dataset.screen;
+    location.hash = s === 'text' ? '#text' : '#word';
+    show(s === 'text' ? 'text' : 'word');
+    if (s !== 'text') setKbd(s === 'kbd');
+  }
+  markReview();
+});
+kbBtn.addEventListener('click', markReview);
+kbd.addEventListener('click', () => setTimeout(markReview));
+
+analyze($('#ta').value);
+lookup('وبكتابهم');
+show(location.hash.slice(1));
+</script>
+</body>
+</html>
