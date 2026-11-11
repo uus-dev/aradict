@@ -553,8 +553,8 @@ def about_page() -> Node:
             # Measured in ACCEPTANCE.md (#17); tests/test_acceptance.py checks the numbers against the database.
             p[
                 "AraDict has about 38,000 entries under 35,000 headwords, from about 4,500 roots. An entry is a headword with one part "
-                "of speech, so a word that is both a noun and an adjective has two. Almost every verb shows its measure (Form I to X, "
-                "or one of the rarer forms): all but a few dozen of about 9,000."
+                "of speech, so a word that is both a noun and an adjective has two. Almost every verb shows its measure (I to X, "
+                "or one of the rarer measures): all but a few dozen of about 9,000."
             ],
             p[
                 "In about 1 root in 4, the data leaves a weak or hamza letter open, and AraDict shows it as ", ar("◌"), ". About 5,000 "

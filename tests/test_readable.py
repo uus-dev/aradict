@@ -6,7 +6,7 @@ from unicodedata import normalize
 import pytest
 
 from aradict.dictionary import Dictionary
-from aradict.readable import IRREGULAR_PAST
+from aradict.readable import IRREGULAR_PAST, plural
 
 
 @pytest.fixture(scope="module")
@@ -118,6 +118,8 @@ def test_a_participle_used_as_a_noun_takes_no_plural_ending(real):
     # "two wounded", as English says "the wounded", not "two woundeds" (#17). A short noun in -ed still takes one.
     assert glosses(real, "مجروحان") == {"two wounded; two injured"}
     assert glosses(real, "سريران") == {"two beds; two couches"}
+    # The data's few countable nouns in -ed that are not participles keep their ending.
+    assert [plural(w) for w in ("shred", "hundred")] == ["shreds", "hundreds"]
 
 
 def test_senses_already_plural_are_not_pluralized_again(real):

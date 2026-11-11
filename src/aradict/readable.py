@@ -226,7 +226,10 @@ def segments(a: dict) -> tuple[Segment, ...]:
 # --- Gloss ---------------------------------------------------------------------------------
 
 TAG_WORDS = {"masc": "m.", "fem": "f.", "pl": "pl.", "du": "dual", "Egy": "Egyptian"}
-IRREGULAR_PLURALS = {"man": "men", "woman": "women", "child": "children", "person": "people", "foot": "feet", "tooth": "teeth"}
+IRREGULAR_PLURALS = {
+    "man": "men", "woman": "women", "child": "children", "person": "people", "foot": "feet", "tooth": "teeth",
+    "shred": "shreds", "hundred": "hundreds",  # nouns in -ed that the participle rule would leave bare
+}
 
 
 def _tag_note(match: re.Match) -> str:
