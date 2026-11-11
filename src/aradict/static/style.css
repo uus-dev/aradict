@@ -333,7 +333,6 @@ a.root-tab:hover .rt-go { background: rgb(255 255 255 / .15); text-decoration-th
 .about ul { margin: 0; padding-inline-start: 20px }
 .about blockquote.notice { margin-block: 10px; max-width: 62ch }
 .about .notice p { font-size: 14px }
-.placeholder { margin-block-start: 10px !important; padding: 8px 12px; border: 1px dashed var(--edge); border-radius: 8px }
 
 @media (max-width: 640px) {
   .wrap { padding-inline: max(16px, env(safe-area-inset-left, 0px)) max(16px, env(safe-area-inset-right, 0px)) }

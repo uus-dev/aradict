@@ -1,6 +1,18 @@
 """The release gate's data acceptance checks (#17)."""
 
-from aradict.acceptance import approx, malformed, overpluralized, singular_after_two
+from aradict.acceptance import approx, inventory, malformed, overpluralized, singular_after_two
+from aradict.views import about_page
+
+
+def test_about_states_the_measured_coverage(real_db):
+    from camel_tools.morphology.database import MorphologyDB
+
+    _, entries, lemmas, roots = inventory(MorphologyDB(str(real_db), "a"))
+    about = str(about_page())
+    coverage = about[about.index('id="coverage"'):about.index('id="typing"')]
+    assert f"about {approx(len(entries))} entries" in coverage
+    assert f"{approx(len(lemmas))} headwords" in coverage
+    assert f"about {approx(len(roots))} roots" in coverage
 
 
 def test_counts_are_rounded_to_two_figures_for_a_learner():

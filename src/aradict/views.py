@@ -550,8 +550,16 @@ def about_page() -> Node:
                 ", which builds on the Buckwalter Arabic Morphological Analyzer. That vocabulary dates from about 2002, "
                 "so newer words, such as the ones for “tweet” and “podcast”, are missing."
             ],
-            # TODO(#17): replace this placeholder with the measured coverage from the data acceptance report.
-            p(class_="placeholder")["Placeholder: the measured coverage (entries, lemmas and roots) will be added here before release."],
+            # Measured in ACCEPTANCE.md (#17); tests/test_acceptance.py checks the numbers against the database.
+            p[
+                "AraDict has about 38,000 entries under 35,000 headwords, from about 4,500 roots. An entry is a headword with one part "
+                "of speech, so a word that is both a noun and an adjective has two. Almost every verb shows its measure (Form I to X, "
+                "or one of the rarer forms): all but a few dozen of about 9,000."
+            ],
+            p[
+                "In about 1 root in 4, the data leaves a weak or hamza letter open, and AraDict shows it as ", ar("◌"), ". About 5,000 "
+                "entries have no root: mostly names of people and places, and words borrowed from other languages."
+            ],
         ],
         section(id="typing")[
             h2["Typing Arabic"],
