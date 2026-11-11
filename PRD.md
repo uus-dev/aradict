@@ -309,7 +309,7 @@ Launch as a web application whose home view opens directly on Word lookup, with 
   - The number of entries kept is configurable, with a sensible default, and the history can be cleared.
   - History is never sent to a server.
 - **Wiktionary layer (Milestone 2):**
-  - Import English Wiktionary's Arabic entries from the kaikki.org extraction on a schedule, into a separate dataset.
+  - Import English Wiktionary's Arabic entries from a pinned, dated kaikki.org extraction, checked by SHA-256 like the core database, into a separate dataset. It is refreshed by moving the pin and rebuilding; a scheduled refresh waits until the site is hosted.
   - Wiktionary text is CC BY-SA 4.0 / GFDL, which is not compatible with GPL v2-only. It is therefore never merged into a file or database with the GPL data. The two are joined at request time by vocalized lemma and part of speech.
   - From Wiktionary, show numbered senses, plurals and gender, verbal nouns, and transliteration and IPA. Use it to fill unresolved root radicals.
   - Words found only in Wiktionary are looked up through its inflected-form entries. They are shown as entries without the morphology fields the core would provide.
