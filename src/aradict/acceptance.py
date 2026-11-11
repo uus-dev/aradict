@@ -62,14 +62,15 @@ def singular_after_two(sense: str) -> bool:
     return not (word.endswith("s") or word in IRREGULAR_PLURALS.values() or is_participle(word))
 
 
-# A participle (established) or a phrasal verb's particle (taking over) with a plural -s.
-OVERPLURAL = re.compile(r"\b\w{3,}[^e\W]eds\b|\b(?:out|over|away|up|off|down)s\b")
+# A phrasal verb's particle (taking over) with a plural -s.
+PHRASAL = re.compile(r"\b(?:out|over|away|up|off|down)s\b")
 
 
 def overpluralized(sense: str) -> bool:
-    """An adjective-like sense given a plural ending ("two firmly establisheds"). A heuristic: it
-    misses adjectives in -ing ("two pantings"), which it can't tell from nouns ("two buildings")."""
-    return bool(OVERPLURAL.search(sense))
+    """An adjective-like sense given a plural ending: a participle, as readable.is_participle tells
+    one ("two firmly establisheds"), or a phrasal verb's particle ("two taking overs"). A heuristic:
+    it misses adjectives in -ing ("two pantings"), which it can't tell from nouns ("two buildings")."""
+    return any(w.endswith("eds") and is_participle(w[:-1]) for w in re.findall(r"[\w-]+", sense)) or bool(PHRASAL.search(sense))
 
 
 def approx(n: int) -> str:

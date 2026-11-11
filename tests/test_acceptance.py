@@ -62,7 +62,8 @@ def test_a_singular_noun_after_two_is_the_two_school_defect():
 
 
 def test_adjective_senses_given_a_plural_ending_are_found():
-    for sense in ("two firmly establisheds", "two taking overs", "two ruling outs (f.)"):
+    # A participle is what readable.is_participle takes for one, short ones too.
+    for sense in ("two firmly establisheds", "two deep-rooteds", "two guided; two leds", "two taking overs", "two ruling outs (f.)"):
         assert overpluralized(sense), sense
-    for sense in ("two needs", "two beds", "two schools", "two hot springs"):
+    for sense in ("two needs", "two beds", "two hundreds", "two schools", "two hot springs"):
         assert not overpluralized(sense), sense
