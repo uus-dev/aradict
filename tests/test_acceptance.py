@@ -1,18 +1,38 @@
 """The release gate's data acceptance checks (#17)."""
 
-from aradict.acceptance import approx, inventory, malformed, overpluralized, singular_after_two
+from hashlib import sha256
+
+from aradict.acceptance import approx, coverage, malformed, notices, overpluralized, singular_after_two
+from aradict.dictionary import Dictionary
 from aradict.views import about_page
 
 
 def test_about_states_the_measured_coverage(real_db):
     from camel_tools.morphology.database import MorphologyDB
 
-    _, entries, lemmas, roots = inventory(MorphologyDB(str(real_db), "a"))
+    measured = coverage(Dictionary(real_db), MorphologyDB(str(real_db), "a"))
+    without_measure = sum(n for (_, derived), n in measured["measures"].items() if not derived)
+    rootless = dict(measured["rootless_by_pos"])
+    other = measured["rootless"] - rootless["noun_prop"] - rootless["noun"] - rootless["adj"]
     about = str(about_page())
-    coverage = about[about.index('id="coverage"'):about.index('id="typing"')]
-    assert f"about {approx(len(entries))} entries" in coverage
-    assert f"{approx(len(lemmas))} headwords" in coverage
-    assert f"about {approx(len(roots))} roots" in coverage
+    stated = about[about.index('id="coverage"'):about.index('id="typing"')]
+    # Every figure the section states, as the database measures it today.
+    for figure in (
+        f"about {approx(measured['entries'])} entries",
+        f"{approx(measured['lemmas'])} headwords",
+        f"about {approx(measured['roots'])} roots",
+        f"all but {approx(without_measure)} of about {approx(measured['verbs'])}",
+        f"about 1 root in {round(measured['roots'] / measured['unresolved'])}",
+        f"About {approx(measured['rootless'])} entries have no root: about {approx(rootless['noun_prop'])} proper nouns, "
+        f"{approx(rootless['noun'])} other nouns, {approx(rootless['adj'])} adjectives and {approx(other)} of other parts of speech.",
+    ):
+        assert figure in stated
+
+
+def test_attribution_privacy_statement_and_support_are_in_place(real_db):
+    # The release gate (#17): every provenance, license, privacy and support check holds.
+    failing = [what for what, holds in notices(real_db, sha256(real_db.read_bytes()).hexdigest()) if not holds]
+    assert failing == []
 
 
 def test_counts_are_rounded_to_two_figures_for_a_learner():
@@ -42,7 +62,8 @@ def test_a_singular_noun_after_two_is_the_two_school_defect():
 
 
 def test_adjective_senses_given_a_plural_ending_are_found():
-    for sense in ("two firmly establisheds", "two taking overs", "two ruling outs (f.)"):
+    # A participle is what readable.is_participle takes for one, short ones too.
+    for sense in ("two firmly establisheds", "two deep-rooteds", "two guided; two leds", "two taking overs", "two ruling outs (f.)"):
         assert overpluralized(sense), sense
-    for sense in ("two needs", "two beds", "two schools", "two hot springs"):
+    for sense in ("two needs", "two beds", "two hundreds", "two schools", "two hot springs"):
         assert not overpluralized(sense), sense

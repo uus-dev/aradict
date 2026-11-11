@@ -226,10 +226,10 @@ def segments(a: dict) -> tuple[Segment, ...]:
 # --- Gloss ---------------------------------------------------------------------------------
 
 TAG_WORDS = {"masc": "m.", "fem": "f.", "pl": "pl.", "du": "dual", "Egy": "Egyptian"}
-IRREGULAR_PLURALS = {
-    "man": "men", "woman": "women", "child": "children", "person": "people", "foot": "feet", "tooth": "teeth",
-    "shred": "shreds", "hundred": "hundreds",  # nouns in -ed that the participle rule would leave bare
-}
+IRREGULAR_PLURALS = {"man": "men", "woman": "women", "child": "children", "person": "people", "foot": "feet", "tooth": "teeth"}
+# The words in -ed in the data's noun and verb senses that are not past participles: nouns, and
+# verbs in their base form.
+NOT_PARTICIPLES = frozenset({"bed", "red", "shed", "shred", "sled", "hundred"})
 
 
 def _tag_note(match: re.Match) -> str:
@@ -288,10 +288,16 @@ DOUBLE_FINAL = set("""
 """.split())
 
 
+def is_participle(word: str) -> bool:
+    """A past participle such as "wounded", "blurred" or "led": a word in -ed, but not in -eed
+    (need, exceed) and not one of NOT_PARTICIPLES. A noun sense that is one takes no plural ending
+    ("two wounded"), and a verb sense that is one is glossed in the past already."""
+    return word.endswith("ed") and not word.endswith("eed") and word not in NOT_PARTICIPLES
+
+
 def _inflected(verb: str) -> bool:
-    """A few stems are glossed in the past already: قالَ as "said", others as "blurred". Verbs
-    ending in -eed (exceed, need), shed and shred are base forms."""
-    return verb == "said" or verb.endswith("ed") and not verb.endswith("eed") and verb not in ("shed", "shred")
+    """A few stems are glossed in the past already: قالَ as "said", others as "blurred"."""
+    return verb == "said" or is_participle(verb)
 
 
 def _s(word: str) -> str:
@@ -349,24 +355,26 @@ def _verb(sense: str, a: dict, future: bool) -> str:
     return be + sense[2:]
 
 
-def participle(word: str) -> bool:
-    """A past participle such as "wounded" or "spotted". Short words in -ed are nouns (bed, shed)."""
-    return len(word) > 4 and word.endswith("ed") and not word.endswith("eed")
+def head_noun(sense: str) -> tuple[str, str, str]:
+    """A noun sense cut round the word that shows its number: what comes before that word, the
+    word, and what follows it. The word is the last before any bracketed note, or before "of" in
+    a phrase like "period of time": ("", "period", " of time")."""
+    head, paren, note = sense.partition(" (")
+    head, tail = re.fullmatch(r"(.*?)((?: of\b.*)?)", head).groups()  # "eve of" too: the eves of
+    before, space, word = head.rpartition(" ")
+    return before + space, word, tail + paren + note
 
 
 def plural(sense: str) -> str:
-    """English plural of a noun sense, inflecting the word before any bracketed note, or before
-    "of" in a phrase like "period of time" (periods of time)."""
-    head, paren, note = sense.partition(" (")
-    head, tail = re.fullmatch(r"(.*?)((?: of\b.*)?)", head).groups()  # "eve of" too: the eves of
-    *rest, word = head.split(" ")
+    """English plural of a noun sense, inflecting its head noun: "period of time" gives "periods of time"."""
+    before, word, after = head_noun(sense)
     if word in IRREGULAR_PLURALS:
         word = IRREGULAR_PLURALS[word]
-    elif participle(word):
+    elif is_participle(word):
         pass  # the data glosses many participles as nouns: "two wounded", as English says "the wounded"
     elif not word.endswith("s") or word.endswith("ss"):  # CAMeL often glosses a singular stem with a plural sense ("law;statutes")
         word = _s(word)  # ponytail: regular rules plus a few irregulars; extend IRREGULAR_PLURALS as glosses need
-    return " ".join(rest + [word]) + tail + paren + note
+    return before + word + after
 
 
 def _noun(sense: str, a: dict, suffixes: list[str]) -> str:

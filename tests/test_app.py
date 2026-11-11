@@ -25,7 +25,8 @@ def test_reading_shows_marked_parts_gloss_grammar_and_word_parts(client):
     assert ('<span class="ar form" lang="ar" dir="rtl"><span class="prefix">وَ</span><span class="prefix">بِ</span>'
             '<span class="stem">كِتاب</span><span class="suffix">هم</span></span>') in reading
     assert '<dd class="gloss">and by/with their book</dd>' in reading
-    assert '<ul class="grammar"><li>masculine singular</li><li>construct state</li></ul>' in reading
+    # The attached pronoun is part of the grammar too, as in the M1 design (#14).
+    assert '<ul class="grammar"><li>masculine singular</li><li>construct state</li><li>attached: their</li></ul>' in reading
     # Word parts: a native disclosure, closed by default, one labelled chip per part, right to left.
     assert '<details class="parts"><summary>Word parts</summary><ol class="chips" dir="rtl">' in reading
     assert ('<li class="chip prefix"><span class="kind" dir="ltr">prefix<span class="sr-only">: </span></span>'
@@ -315,7 +316,12 @@ def test_word_details_show_its_readings_and_open_in_word_lookup(client):
     assert vocalized[:vocalized.index('id="w1"')].count('class="reading"') == 1  # only the vocalized reading
     assert bare[:bare.index('id="w2"')].count('class="entry"') == 2 and bare[:bare.index('id="w2"')].count('class="reading"') == 3
     assert '<dd class="gloss">he/it wrote</dd>' in vocalized
-    assert '<span class="root-tab"><span class="rt-k">Root</span> <span class="ar" lang="ar" dir="rtl">ك ت ب</span></span>' in vocalized
+    # The root links to its words as on the Word page (#14), without the count, which is too slow
+    # to work out for every root of a long passage; closing the root view returns to the word's lookup.
+    assert links(vocalized[:vocalized.index('id="w1"')]) == {
+        "Root ك ت ب words": {"q": ["كَتَبَ"], "root": ["ك.ت.ب"]},
+        "Open in Word lookup": {"q": ["كَتَبَ"]},
+    }
     assert "not in the dictionary" in unknown and 'class="reading"' not in unknown
     hrefs = [html.unescape(h) for h in re.findall(r'<a href="([^"]*)">Open in Word lookup</a>', page)]
     assert [parse_qs(urlsplit(h).query) for h in hrefs] == [{"q": ["كَتَبَ"]}, {"q": ["كتب"]}, {"q": ["قخغثص"]}]
@@ -502,7 +508,7 @@ def test_no_root_or_related_forms_means_no_link(client):
     assert '<span class="nil">No other forms</span>' in heading(adjective)
     laysa = entries(client.get("/", params={"q": "ليس"}).text)[0]
     assert links(heading(laysa)) == {}
-    assert "root=" not in client.post("/text", data={"text": "كتاب"}).text  # token details link to Word lookup instead
+    assert "related=" not in client.post("/text", data={"text": "كتاب"}).text  # token details leave out the forms
 
 
 def table(page: str) -> list[list[str]]:

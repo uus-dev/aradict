@@ -10,9 +10,10 @@ from urllib.parse import urlencode
 from htpy import Element, Node, a, blockquote, body, br, button, caption, code, dd, details, div, dl, dt, form, fragment, h1, h2, h3, head, header, html, i, input, label, li, link, main, meta, nav, ol, p, path, rect, script, section, span, summary, svg, table, tbody, td, template, textarea, th, thead, title, tr, ul
 
 from .dictionary import MEASURES, Lookup, Reading, Segment, Token, alphabetical
-from .readable import POS
+from .readable import OBJECT, POS, POSSESSIVE
 
 ARABIC = re.compile("[\u0600-\u06ff]")  # Arabic script
+PRONOUNS = {*POSSESSIVE.values(), *OBJECT.values()}  # what an attached pronoun's part is labelled
 PAGES = [("word", "/", "Word"), ("text", "/text", "Text"), ("about", "/about", "About")]
 
 
@@ -55,10 +56,16 @@ def _root(root: str | None) -> Node:
     return ar(" ".join("◌" if letter == "#" else letter for letter in root.split("."))) if root else span(class_="muted")["unavailable"]
 
 
+def _measure(r: Reading) -> str | None:
+    """A verb's measure, or "unavailable" where it can't be derived; None for any other part of speech."""
+    return (r.measure or "unavailable") if r.pos == "verb" else None
+
+
 def _badges(r: Reading) -> Node:
     """The part of speech, and a verb's measure, each in its own box."""
-    measure = r.pos == "verb" and (span(class_="badge measure")[f"Measure {r.measure}"] if r.measure else span(class_="badge measure na")["measure unavailable"])
-    return p(class_="pos")[span(class_="badge")[r.tags[0]], measure and [" ", measure]]
+    measure = _measure(r)
+    badge = measure and (span(class_="badge measure")[f"Measure {measure}"] if r.measure else span(class_="badge measure na")[f"measure {measure}"])
+    return p(class_="pos")[span(class_="badge")[r.tags[0]], badge and [" ", badge]]
 
 
 def _how_common(top_percent: float | None) -> Node:
@@ -102,9 +109,13 @@ def _parts(r: Reading) -> Node:
 
 
 def _grammar(r: Reading) -> Node:
-    """Voice, agreement and the rest of the grammar, each in its own box. The part of speech heads the entry."""
+    """Voice, agreement, the rest of the grammar and any attached pronoun ("attached: their"), each in
+    its own box. The part of speech heads the entry."""
     # ponytail: readable.grammar joins its details with ", ", and none has a comma of its own.
-    details = [*r.tags[1:], *filter(None, r.grammar.split(", "))]
+    details = [
+        *r.tags[1:], *filter(None, r.grammar.split(", ")),
+        *(f"attached: {s.label}" for s in r.segments if s.role == "suffix" and s.label in PRONOUNS),
+    ]
     return ul(class_="grammar")[(li[d] for d in details)] if details else span(class_="nil")["None marked"]
 
 
@@ -139,12 +150,13 @@ def _url(params: dict[str, str]) -> str:
 
 
 def _root_tab(root: str | None, links: Links | None) -> Node:
-    """The root, on a tab above its entry. With links it opens the root's words and says how many there are."""
+    """The root, on a tab above its entry. With links it opens the root's words and says how many
+    there are, or just "words" where they weren't counted."""
     label = [span(class_="rt-k")["Root"], " ", _root(root)]
     if not (links and root):
         return span(class_="root-tab" if root else "root-tab na")[label]
     count = links.root_counts.get(root)
-    return a(href=_url(links.lookup | {"root": root}), class_="root-tab")[label, count and [" ", span(class_="rt-go")[_n(count, "word")]]]
+    return a(href=_url(links.lookup | {"root": root}), class_="root-tab")[label, " ", span(class_="rt-go")[_n(count, "word") if count else "words"]]
 
 
 def _entry(lemma: str, glosses: dict[str, list[Reading]], heading: Element, links: Links | None, brief: bool) -> Node:
@@ -339,7 +351,7 @@ def _family(label: str, name: Node, status: Node, rows: list[Reading], lookup: d
                     td(data_label="Part of speech")[span(class_="badge")[r.tags[0]]],
                     td(data_label="Grammar")[_grammar(r)],
                     td(data_label="Root")[_root(r.root)],
-                    td(data_label="Measure")[r.measure or ("unavailable" if r.pos == "verb" else "")],
+                    td(data_label="Measure")[_measure(r)],
                 ]
                 for r in _sorted(rows, column, descending)
             )],
@@ -465,14 +477,15 @@ def _token(t: Token, ids: dict[str, str]) -> Node:
 
 
 def _details(t: Token, id: str) -> Node:
-    """A word's readings, grouped by lemma as on the Word page, in a native popover."""
+    """A word's readings, grouped by lemma as on the Word page, in a native popover. Each root links
+    to its words, and the root view returns to the word's lookup."""
     return div(id=id, class_="tok-pop", popover=True, role="dialog", aria_labelledby=f"{id}-h")[
         div(class_="tp-head")[
             h2(id=f"{id}-h")[ar(t.text)],
             p[_n(len(t.readings), "reading") if t.readings else "not in the dictionary"],
         ],
         div(class_="tp-body")[
-            _entries(t.readings, h3, brief=True) if t.readings else p(class_="tp-msg")[
+            _entries(t.readings, h3, Links({"q": t.text}, {}, {}), brief=True) if t.readings else p(class_="tp-msg")[
                 "AraDict couldn't find this word in its Modern Standard Arabic dictionary."
             ],
         ],
@@ -484,7 +497,9 @@ def _details(t: Token, id: str) -> Node:
 
 
 def analysed(tokens: list[Token]) -> State:
-    """The passage as typed, each word opening its details. A word written twice opens the same details."""
+    """The passage as typed, each word opening its details. A word written twice opens the same
+    details. The roots there link without a word count: counting a root's words the first time
+    takes about 27 ms, too slow for every root of a long passage."""
     words: dict[str, Token] = {}  # each word once, in order
     for t in tokens:
         if t.kind in ("word", "unknown"):
@@ -550,15 +565,15 @@ def about_page() -> Node:
                 ", which builds on the Buckwalter Arabic Morphological Analyzer. That vocabulary dates from about 2002, "
                 "so newer words, such as the ones for “tweet” and “podcast”, are missing."
             ],
-            # Measured in ACCEPTANCE.md (#17); tests/test_acceptance.py checks the numbers against the database.
+            # Measured in ACCEPTANCE.md (#17); tests/test_acceptance.py checks every number here against the database.
             p[
                 "AraDict has about 38,000 entries under 35,000 headwords, from about 4,500 roots. An entry is a headword with one part "
                 "of speech, so a word that is both a noun and an adjective has two. Almost every verb shows its measure (I to X, "
-                "or one of the rarer measures): all but a few dozen of about 9,000."
+                "or one of the rarer measures): all but 46 of about 9,000."
             ],
             p[
                 "In about 1 root in 4, the data leaves a weak or hamza letter open, and AraDict shows it as ", ar("◌"), ". About 5,000 "
-                "entries have no root: mostly names of people and places, and words borrowed from other languages."
+                "entries have no root: about 2,700 proper nouns, 1,500 other nouns, 550 adjectives and 200 of other parts of speech."
             ],
         ],
         section(id="typing")[
