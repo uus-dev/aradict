@@ -39,7 +39,7 @@ def _page(heading: str, active: str, content: Node) -> Node:
         body[
             header(class_="site")[
                 div(class_="wrap")[
-                    a(href="/", class_="brand")["AraDict"],
+                    a(href="/", class_="brand")["AraDict", " ", span(class_="stamp", lang="ar", dir="rtl")["قاموس"]],
                     nav({"aria-label": "Main"})[
                         (a({"aria-current": "page"} if key == active else {}, href=href)[name] for key, href, name in PAGES)
                     ],
@@ -55,20 +55,25 @@ def _root(root: str | None) -> Node:
     return ar(" ".join("◌" if letter == "#" else letter for letter in root.split("."))) if root else span(class_="muted")["unavailable"]
 
 
-def _pos_and_measure(r: Reading) -> str:
-    """The part of speech, and a verb's measure."""
-    if r.pos != "verb":
-        return r.tags[0]
-    return f"{r.tags[0]} · {f'Measure {r.measure}' if r.measure else 'measure unavailable'}"
+def _badges(r: Reading) -> Node:
+    """The part of speech, and a verb's measure, each in its own box."""
+    measure = r.pos == "verb" and (span(class_="badge measure")[f"Measure {r.measure}"] if r.measure else span(class_="badge measure na")["measure unavailable"])
+    return p(class_="pos")[span(class_="badge")[r.tags[0]], measure and [" ", measure]]
 
 
-def _how_common(top_percent: float | None) -> str:
-    """How common the lemma is, from its rank among all lemmas with a frequency."""
+def _how_common(top_percent: float | None) -> Node:
+    """How common the lemma is, from its rank among all lemmas with a frequency: one to four bars, and in words."""
     if top_percent is None:
-        return "frequency unknown"
-    band = "very common" if top_percent <= 1 else "common" if top_percent <= 10 else "less common" if top_percent <= 40 else "rare"
+        band, bars = "frequency unknown", 0
+    else:
+        band, bars = ("very common", 4) if top_percent <= 1 else ("common", 3) if top_percent <= 10 else ("less common", 2) if top_percent <= 40 else ("rare", 1)
     # The least frequent lemmas share the lowest figure, so they are all "top 100%", which says nothing.
-    return band if round(top_percent) >= 100 else f"{band} · top {max(1, round(top_percent))}% of words"
+    detail = top_percent is not None and round(top_percent) < 100 and f"top {max(1, round(top_percent))}% of words"
+    return [
+        span(class_="bars", aria_hidden="true")[(span(class_="on" if n <= bars else None) for n in range(1, 5))],
+        span(class_="band")[band],
+        detail and [" ", span(class_="pct")[detail]],
+    ]
 
 
 def _chip_text(s: Segment) -> str:
@@ -83,8 +88,10 @@ def _parts(r: Reading) -> Node:
         summary["Word parts"],
         ol(class_="chips", dir="rtl")[(
             li(class_=f"chip {s.role}")[
+                # English inside the right-to-left list keeps its own direction, so "my (f.)" keeps its brackets.
+                span(class_="kind", dir="ltr")[s.role, span(class_="sr-only")[": "]],
                 span(class_="ar", lang="ar")[_chip_text(s)],
-                span(class_="label")[span(class_="sr-only")[f"{s.role}: "], s.label],
+                span(class_="label", dir="ltr")[s.label],
             ]
             for s in r.segments
         )],
@@ -94,18 +101,24 @@ def _parts(r: Reading) -> Node:
     ]
 
 
-def _reading(group: list[Reading]) -> Node:
+def _grammar(r: Reading) -> Node:
+    """Voice, agreement and the rest of the grammar, each in its own box. The part of speech heads the entry."""
+    # ponytail: readable.grammar joins its details with ", ", and none has a comma of its own.
+    details = [*r.tags[1:], *filter(None, r.grammar.split(", "))]
+    return ul(class_="grammar")[(li[d] for d in details)] if details else span(class_="nil")["None marked"]
+
+
+def _reading(group: list[Reading], brief: bool = False) -> Node:
     """One result: the readings that share a gloss, such as an adjective's singular, dual and
-    plural. The gloss is said once; each form keeps its own grammar and parts."""
+    plural. The gloss is said once; each form keeps its own grammar and, unless brief, its parts."""
     return li(class_="reading")[(
-        fragment[
+        div(class_="rd")[
             span(class_="ar form", lang="ar", dir="rtl")[(span(class_=s.role)[s.text] for s in r.segments)],
-            div(class_="sense")[
-                r is group[0] and p(class_="gloss")[r.gloss],
-                # The part of speech heads the entry; voice, agreement and the rest go with each reading.
-                (r.tags[1:] or r.grammar) and p(class_="grammar")[(span(class_="tag")[t] for t in r.tags[1:]), r.grammar and f" {r.grammar}"],
-                len(r.segments) > 1 and _parts(r),
+            dl(class_="facts")[
+                r is group[0] and [dt["Meaning"], dd(class_="gloss")[r.gloss]],
+                dt["Grammar"], dd[_grammar(r)],
             ],
+            not brief and len(r.segments) > 1 and _parts(r),
         ]
         for r in group
     )]
@@ -113,46 +126,55 @@ def _reading(group: list[Reading]) -> Node:
 
 class Links(NamedTuple):
     """What a Word entry links its root and related forms with: the lookup's own URL parameters,
-    which every link keeps so that its view can return to the lookup, and how many forms each
-    lemma (with its part of speech) has."""
+    which every link keeps so that its view can return to the lookup, how many forms each lemma
+    (with its part of speech) has, and how many words each root has."""
 
     lookup: dict[str, str]
     form_counts: dict[tuple[str, str], int]
+    root_counts: dict[str, int]
 
 
 def _url(params: dict[str, str]) -> str:
     return f"/?{urlencode(params)}" if params else "/"
 
 
-def _entry(lemma: str, glosses: dict[str, list[Reading]], heading: Element, links: Links | None) -> Node:
+def _root_tab(root: str | None, links: Links | None) -> Node:
+    """The root, on a tab above its entry. With links it opens the root's words and says how many there are."""
+    label = [span(class_="rt-k")["Root"], " ", _root(root)]
+    if not (links and root):
+        return span(class_="root-tab" if root else "root-tab na")[label]
+    count = links.root_counts.get(root)
+    return a(href=_url(links.lookup | {"root": root}), class_="root-tab")[label, count and [" ", span(class_="rt-go")[_n(count, "word")]]]
+
+
+def _entry(lemma: str, glosses: dict[str, list[Reading]], heading: Element, links: Links | None, brief: bool) -> Node:
     """A lemma's heading, said once, then its readings, one result per gloss. With links, the
-    root opens the root's words, and a lemma with more than one form links to all of them."""
+    root opens the root's words, and a lemma with more than one form links to all of them.
+    Brief leaves out how common the lemma is, its forms, and the readings' parts."""
     first = next(iter(glosses.values()))[0]
     forms = links.form_counts.get((first.lemma, first.pos), 0) if links else 0
     # A lemma's senses may be stored under different roots (إِجارَة "rent" and "protection"): each is offered.
     roots = list(dict.fromkeys(r.root for group in glosses.values() for r in group if r.root)) or [None]
     return section(class_="entry")[
+        div(class_="tabs")[(_root_tab(root, links) for root in roots)],
         div(class_="head")[
-            heading[ar(lemma)],
-            p(class_="pos")[_pos_and_measure(first)],
-            dl[
-                dt["Root"],
-                dd[([
-                    i > 0 and ", ",
-                    a(href=_url(links.lookup | {"root": root}))[span(class_="sr-only")["Words from the root "], _root(root)]
-                    if links and root else _root(root),
-                ] for i, root in enumerate(roots))],
-                dt["Use"], dd[_how_common(first.top_percent)],
-                forms > 1 and [dt["Forms"], dd[
-                    a(href=_url(links.lookup | {"related": first.lemma, "pos": first.pos}))[f"all {forms} forms", span(class_="sr-only")[" of ", ar(lemma)]],
-                ]],
+            div(class_="lemma")[heading[ar(lemma)], _badges(first)],
+            not brief and dl(class_="facts")[
+                dt["Frequency"], dd(class_="freq")[_how_common(first.top_percent)],
+                dt["Forms"], dd[
+                    a(href=_url(links.lookup | {"related": first.lemma, "pos": first.pos}))[f"all {forms} forms", span(class_="sr-only")[" of ", ar(lemma)]]
+                    if forms > 1 else span(class_="nil")["No other forms"]
+                ],
             ],
         ],
-        ul(class_="readings")[(_reading(group) for group in glosses.values())],
+        ul(class_="readings")[(_reading(group, brief) for group in glosses.values())],
     ]
 
 
-LEGEND = p(class_="legend")["In each form: ", span(class_="prefix")["prefix"], " · stem · ", span(class_="suffix")["suffix"]]
+LEGEND = p(class_="legend")[
+    span(class_="sr-only")["How word parts are marked in each form: "],
+    span(class_="prefix")["prefix"], " ", span(class_="stem")["stem"], " ", span(class_="suffix")["suffix"],
+]
 
 
 def _n(count: int, noun: str) -> str:
@@ -160,12 +182,12 @@ def _n(count: int, noun: str) -> str:
     return f"{count} {noun}{'s' if count != 1 else ''}"
 
 
-def _entries(readings: Iterable[Reading], heading: Element = h2, links: Links | None = None) -> Node:
+def _entries(readings: Iterable[Reading], heading: Element = h2, links: Links | None = None, brief: bool = False) -> Node:
     """One entry per lemma and part of speech, in the order the readings arrive."""
     groups: dict[tuple[str, str], dict[str, list[Reading]]] = {}
     for reading in readings:
         groups.setdefault((reading.lemma, reading.pos), {}).setdefault(reading.gloss, []).append(reading)
-    return div(class_="entries")[(_entry(lemma, glosses, heading, links) for (lemma, _), glosses in groups.items())]
+    return div(class_="entries")[(_entry(lemma, glosses, heading, links, brief) for (lemma, _), glosses in groups.items())]
 
 
 def _intro() -> Node:
@@ -202,7 +224,7 @@ def looked_up(text: str, found: Lookup, links: Links | None = None) -> State:
     ] if not found.complete else None
     if found.readings:
         arabizi = found.query if found.mode == "arabizi" else None
-        return State([f"{_n(len(found.readings), 'reading')} for ", ar(found.query)], [notice, LEGEND, _entries(found.readings, h2, links)], arabizi)
+        return State([f"{_n(len(found.readings), 'reading')} for ", ar(found.query)], [notice, _entries(found.readings, h2, links)], arabizi)
     if latin:
         return State(["No Arabic word for ", _arabizi(words[0])], [notice, div(class_="empty")[
             p["AraDict read this as Arabic in Latin letters (Arabizi), but found no word it could stand for. You could:"],
@@ -242,7 +264,7 @@ def looked_up_en(found: Lookup, links: Links | None = None) -> State:
     their root and related forms with links."""
     query = found.query
     if found.readings:
-        return State(f"{_n(len(found.readings), 'Arabic word')} for “{query}”", [COVERAGE, LEGEND, _entries(found.readings, h2, links)])
+        return State(f"{_n(len(found.readings), 'Arabic word')} for “{query}”", [COVERAGE, _entries(found.readings, h2, links)])
     # Arabic typed here is meant the other way round, so switching direction keeps it.
     arabic = bool(ARABIC.search(query))
     back = f"/?{urlencode({'q': query})}" if arabic else "/"
@@ -370,20 +392,26 @@ def word_page(query: str, state: State, filter_diacritics: bool = True, english:
         )[
             # lookup.js sets the label and the field's language when the direction switches. Arabic reads in the
             # direction of what is typed: right to left, or left to right for Arabizi.
-            label(for_="q", class_="sr-only")["English word" if english else "Arabic word"],
-            input(id="q", name="q", value=query, dir="ltr" if english else "auto", lang="en" if english else "ar", autocomplete="off", spellcheck="false"),
+            label(for_="q", class_="lbl")["English word" if english else "Arabic word"],
+            input(
+                id="q", name="q", value=query, dir="ltr" if english else "auto", lang="en" if english else "ar",
+                autocomplete="off", autocapitalize="off", spellcheck="false", enterkeyhint="search",
+            ),
             _keyboard_toggle("q"),
             a(href="/?lang=en" if english else "/", class_="clear", hidden=not query)["Clear"],
             button(type="submit")["Look up"],
             _arabizi_chip(state.arabizi),
-            label(class_="option")[input(type="checkbox", name="lang", value="en", checked=english, data_remember=True), " English → Arabic"],
-            label(class_="option")[input(type="checkbox", name="diacritics", value="off", checked=not filter_diacritics, data_remember=True), " Ignore diacritics"],
-            # Shown by autocomplete.js and remembered by history.js. form="" leaves it out of the lookup and its URL.
-            label(class_="option", hidden=True)[input(type="checkbox", name="autocomplete", form="", checked=True, data_remember=True), " Show suggestions"],
+            div(class_="opts")[
+                label(class_="option")[input(type="checkbox", name="lang", value="en", checked=english, data_remember=True), " English → Arabic"],
+                label(class_="option")[input(type="checkbox", name="diacritics", value="off", checked=not filter_diacritics, data_remember=True), " Ignore diacritics"],
+                # Shown by autocomplete.js and remembered by history.js. form="" leaves it out of the lookup and its URL.
+                label(class_="option", hidden=True)[input(type="checkbox", name="autocomplete", form="", checked=True, data_remember=True), " Show suggestions"],
+            ],
         ],
         _keyboard_panel("q"),
         _history(),
-        p(id="status", class_="status", role="status")[state.status],
+        # The legend shows beside the status while the results have entries (style.css).
+        div(class_="status-row")[p(id="status", class_="status", role="status")[state.status], LEGEND],
         div(id="results")[state.body],
         # Shown by lookup.js when a live lookup fails, including when the server can't be reached.
         template(id="failure", data_status=FAILURE.status)[FAILURE.body],
@@ -441,13 +469,17 @@ def _details(t: Token, id: str) -> Node:
     return div(id=id, class_="tok-pop", popover=True, role="dialog", aria_labelledby=f"{id}-h")[
         div(class_="tp-head")[
             h2(id=f"{id}-h")[ar(t.text)],
-            p(class_="muted")[_n(len(t.readings), "reading") if t.readings else "not in the dictionary"],
+            p[_n(len(t.readings), "reading") if t.readings else "not in the dictionary"],
+        ],
+        div(class_="tp-body")[
+            _entries(t.readings, h3, brief=True) if t.readings else p(class_="tp-msg")[
+                "AraDict couldn't find this word in its Modern Standard Arabic dictionary."
+            ],
+        ],
+        div(class_="tp-foot")[
+            a(href=f"/?{urlencode({'q': t.text})}")["Open in Word lookup"],
             button(type="button", popovertarget=id, popovertargetaction="hide")["Close"],
         ],
-        _entries(t.readings, h3) if t.readings else p(class_="tp-msg")[
-            "AraDict couldn't find this word in its Modern Standard Arabic dictionary."
-        ],
-        p(class_="tp-foot")[a(href=f"/?{urlencode({'q': t.text})}")["Open in Word lookup"]],
     ]
 
 
@@ -461,8 +493,14 @@ def analysed(tokens: list[Token]) -> State:
     n, unknown = sum(t.kind in ("word", "unknown") for t in tokens), sum(t.kind == "unknown" for t in tokens)
     status = f"{_n(n, 'word')}{f', {unknown} not in the dictionary' if unknown else ''}" if n else "No Arabic words to analyse."
     return State(status, [
-        # The passage keeps its spaces and line breaks (white-space: pre-wrap).
-        div(class_="passage", lang="ar", dir="rtl")[(_token(t, ids) for t in tokens)],
+        section(class_="passage-box", aria_labelledby="passage-h")[
+            div(class_="pb-head")[
+                h2(id="passage-h")["Passage"],
+                p(class_="key-legend")[span(class_="known")["has readings"], " ", span(class_="unknown")["not in the dictionary"]],
+            ],
+            # The passage keeps its spaces and line breaks (white-space: pre-wrap).
+            div(class_="passage", lang="ar", dir="rtl")[(_token(t, ids) for t in tokens)],
+        ],
         (_details(t, ids[word]) for word, t in words.items()),
     ])
 
@@ -476,13 +514,13 @@ def text_page(text: str, state: State) -> Node:
             id="analyse", class_="text-in", method="post", action="/text",
             hx_post="/text", hx_trigger="input delay:500ms, submit", hx_target="#analysis", hx_sync="this:replace",
         )[
-            label(for_="text")["Arabic text"],
+            label(for_="text", class_="lbl")["Arabic text"],
             textarea(
                 id="text", name="text", rows="4", dir="rtl", lang="ar", spellcheck="false",
                 placeholder="Paste or type Arabic text", aria_describedby="text-hint",
             )[text],
             p(id="text-hint", class_="hint")[f"Analyse at most {MAX_TEXT:,} characters at a time."],
-            div(class_="actions")[button(type="submit")["Analyse"], _keyboard_toggle("text")],
+            div(class_="actions")[_keyboard_toggle("text"), button(type="submit")["Analyse"]],
         ],
         _keyboard_panel("text"),
         p(id="status", class_="status", role="status")[state.status],
@@ -498,7 +536,7 @@ REPO = "https://github.com/uus-dev/aradict"
 
 
 def about_page() -> Node:
-    return _page("About and help", "about", [
+    return _page("About and help", "about", div(class_="about")[
         h1["About and help"],
         p[
             "AraDict is an Arabic–English dictionary. Type or paste an Arabic word as it appears in a text, with its prefixes "
@@ -577,9 +615,11 @@ def about_page() -> Node:
             ],
             p[
                 "Bundled with AraDict: ", a(href="https://htmx.org/")["htmx"], " 2.0.11 under the ",
-                a(href="/static/vendor/LICENSE-htmx")["Zero-Clause BSD license"], ", and the ",
+                a(href="/static/vendor/LICENSE-htmx")["Zero-Clause BSD license"], "; the ",
                 a(href="https://software.sil.org/scheherazade/")["Scheherazade New"], " font by SIL under the ",
-                a(href="/static/vendor/OFL-ScheherazadeNew.txt")["SIL Open Font License"], ".",
+                a(href="/static/vendor/OFL-ScheherazadeNew.txt")["SIL Open Font License"], "; and the ",
+                a(href="https://github.com/adobe-fonts/source-sans")["Source Sans 3"], " font by Adobe under the ",
+                a(href="/static/vendor/OFL-SourceSans3.txt")["SIL Open Font License"], ".",
             ],
         ],
         section(id="privacy")[

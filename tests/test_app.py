@@ -24,21 +24,21 @@ def test_reading_shows_marked_parts_gloss_grammar_and_word_parts(client):
     # The form, with each part marked by its role.
     assert ('<span class="ar form" lang="ar" dir="rtl"><span class="prefix">وَ</span><span class="prefix">بِ</span>'
             '<span class="stem">كِتاب</span><span class="suffix">هم</span></span>') in reading
-    assert '<p class="gloss">and by/with their book</p>' in reading
-    assert '<p class="grammar"><span class="tag">masculine singular</span> construct state</p>' in reading
+    assert '<dd class="gloss">and by/with their book</dd>' in reading
+    assert '<ul class="grammar"><li>masculine singular</li><li>construct state</li></ul>' in reading
     # Word parts: a native disclosure, closed by default, one labelled chip per part, right to left.
     assert '<details class="parts"><summary>Word parts</summary><ol class="chips" dir="rtl">' in reading
-    assert ('<li class="chip prefix"><span class="ar" lang="ar">بِـ</span>'
-            '<span class="label"><span class="sr-only">prefix: </span>by/with</span></li>') in reading
-    assert '<span class="ar" lang="ar">ـهم</span><span class="label"><span class="sr-only">suffix: </span>their</span>' in reading
-    assert '<p class="pos">noun</p>' in page  # the entry's part of speech, in plain English
+    assert ('<li class="chip prefix"><span class="kind" dir="ltr">prefix<span class="sr-only">: </span></span>'
+            '<span class="ar" lang="ar">بِـ</span><span class="label" dir="ltr">by/with</span></li>') in reading
+    assert '<span class="ar" lang="ar">ـهم</span><span class="label" dir="ltr">their</span>' in reading
+    assert '<p class="pos"><span class="badge">noun</span></p>' in page  # the entry's part of speech, in plain English
 
 
 def test_word_parts_explain_a_letter_two_parts_share(client):
     page = client.get("/", params={"q": "مدرستي"}).text
     # مَدْرَسَتَيَّ "my two schools": the dual ending and "my" share one ي, written with a shadda.
-    assert '<span class="ar" lang="ar">ـَتَيْ</span><span class="label"><span class="sr-only">suffix: </span>dual ending</span>' in page
-    assert '<span class="ar" lang="ar">ـيَ</span><span class="label"><span class="sr-only">suffix: </span>my</span>' in page
+    assert '<span class="ar" lang="ar">ـَتَيْ</span><span class="label" dir="ltr">dual ending</span>' in page
+    assert '<span class="ar" lang="ar">ـيَ</span><span class="label" dir="ltr">my</span>' in page
     assert '<p class="note"><span class="ar" lang="ar" dir="rtl">ـَتَيْ</span> + <span class="ar" lang="ar" dir="rtl">ـيَ</span> are written' in page
 
 
@@ -245,28 +245,29 @@ def entries(page: str) -> list[str]:
 def test_each_entry_heads_its_readings_with_part_of_speech_measure_root_and_use(client):
     # سيكتبون: two lemmas, each with an active and a passive reading.
     katab, aktab = entries(client.get("/", params={"q": "سيكتبون"}).text)
-    assert '<h2><span class="ar" lang="ar" dir="rtl">كَتَب</span></h2><p class="pos">verb · Measure I</p>' in katab
-    assert '<h2><span class="ar" lang="ar" dir="rtl">أَكْتَب</span></h2><p class="pos">verb · Measure IV</p>' in aktab
+    verb = '<p class="pos"><span class="badge">verb</span> <span class="badge measure">Measure {}</span></p>'
+    assert '<h2><span class="ar" lang="ar" dir="rtl">كَتَب</span></h2>' + verb.format("I") in katab
+    assert '<h2><span class="ar" lang="ar" dir="rtl">أَكْتَب</span></h2>' + verb.format("IV") in aktab
     assert katab.count('class="reading"') == aktab.count('class="reading"') == 2
-    assert '<span class="ar" lang="ar" dir="rtl">ك ت ب</span></a></dd>' in katab  # the root, as a link to its words
-    assert re.search(r"<dt>Use</dt><dd>(very common|common|less common|rare) · top \d+% of words</dd>", katab)
-    assert "<dt>Use</dt><dd>frequency unknown</dd>" in aktab  # the database has no figure for أَكْتَب
-    assert '<p class="pos">verb · Measure X</p>' in client.get("/", params={"q": "استخدم"}).text
+    assert "Root ك ت ب 16 words" in links(heading(katab))  # the root, as a link to its words, as many as the root view lists
+    assert re.search(r'<dt>Frequency</dt><dd class="freq">.*?<span class="band">(very common|common|less common|rare)</span>'
+                     r' <span class="pct">top \d+% of words</span></dd>', katab)
+    assert '<span class="band">frequency unknown</span></dd>' in aktab  # the database has no figure for أَكْتَب
+    assert verb.format("X") in client.get("/", params={"q": "استخدم"}).text
 
 
 def test_the_least_frequent_lemmas_read_just_rare(client):
     # آر "area" is at the database's lowest frequency, where "top 100% of words" says nothing.
-    assert "<dt>Use</dt><dd>rare</dd>" in client.get("/", params={"q": "آر"}).text
+    assert '<span class="band">rare</span></dd>' in client.get("/", params={"q": "آر"}).text
 
 
 def test_unresolved_radicals_and_missing_root_or_measure_show_as_such(client):
     qal = entries(client.get("/", params={"q": "قال"}).text)[0]
-    assert '<span class="ar" lang="ar" dir="rtl">ق ◌ ل</span></a></dd>' in qal
-    assert links(qal)["Words from the root ق ◌ ل"]["root"] == ["ق.#.ل"]  # and its words are a link away
+    assert [params["root"] for name, params in links(qal).items() if name.startswith("Root ق ◌ ل")] == [["ق.#.ل"]]  # its words are a link away
     assert "#" not in qal
     laysa = entries(client.get("/", params={"q": "ليس"}).text)[0]
-    assert '<p class="pos">verb · measure unavailable</p>' in laysa
-    assert '<dt>Root</dt><dd><span class="muted">unavailable</span></dd>' in laysa
+    assert '<p class="pos"><span class="badge">verb</span> <span class="badge measure na">measure unavailable</span></p>' in laysa
+    assert '<span class="root-tab na"><span class="rt-k">Root</span> <span class="muted">unavailable</span></span>' in laysa
 
 
 def test_readings_that_share_a_gloss_are_one_result_listing_every_form(client):
@@ -310,7 +311,8 @@ def test_word_details_show_its_readings_and_open_in_word_lookup(client):
     # The same entries as the Word page: one per lemma, with its part of speech and root, then its readings.
     assert vocalized[:vocalized.index('id="w1"')].count('class="reading"') == 1  # only the vocalized reading
     assert bare[:bare.index('id="w2"')].count('class="entry"') == 2 and bare[:bare.index('id="w2"')].count('class="reading"') == 3
-    assert '<p class="gloss">he/it wrote</p>' in vocalized and "<dt>Root</dt>" in vocalized
+    assert '<dd class="gloss">he/it wrote</dd>' in vocalized
+    assert '<span class="root-tab"><span class="rt-k">Root</span> <span class="ar" lang="ar" dir="rtl">ك ت ب</span></span>' in vocalized
     assert "not in the dictionary" in unknown and 'class="reading"' not in unknown
     hrefs = [html.unescape(h) for h in re.findall(r'<a href="([^"]*)">Open in Word lookup</a>', page)]
     assert [parse_qs(urlsplit(h).query) for h in hrefs] == [{"q": ["كَتَبَ"]}, {"q": ["كتب"]}, {"q": ["قخغثص"]}]
@@ -473,28 +475,28 @@ def test_entries_link_to_their_root_and_related_forms_keeping_the_lookup(client)
     kitab, katib, kuttab = entries(client.get("/", params={"q": "كتاب", "diacritics": "off"}).text)
     lookup = {"q": ["كتاب"], "diacritics": ["off"]}
     assert links(heading(kitab)) == {
-        "Words from the root ك ت ب": lookup | {"root": ["ك.ت.ب"]},
+        "Root ك ت ب 16 words": lookup | {"root": ["ك.ت.ب"]},
         "all 2 forms of كِتاب": lookup | {"related": ["كِتاب"], "pos": ["noun"]},
     }
-    assert '<dt>Root</dt><dd><a href="' in kitab and ">ك ت ب</span></a>" in kitab  # the root itself is the link
     assert "all 4 forms of كاتِب" in links(heading(katib))  # writer and clerk, and two plurals
 
 
 def test_an_entry_offers_each_of_its_roots(client):
     # إِجارَة is stored under two roots, one per sense: "rent" (أ ج ر) and "protection" (ج و ر).
     ijara, = entries(client.get("/", params={"q": "إجارة"}).text)
-    roots = {name: params for name, params in links(heading(ijara)).items() if name.startswith("Words from the root")}
+    roots = {re.fullmatch(r"Root (.+?)(?: \d+ words?)?", name).group(1): params for name, params in links(heading(ijara)).items() if name.startswith("Root ")}
     assert roots == {
-        "Words from the root ◌ ج ر": {"q": ["إجارة"], "root": ["#.ج.ر"]},
-        "Words from the root ج ◌ ر": {"q": ["إجارة"], "root": ["ج.#.ر"]},
+        "◌ ج ر": {"q": ["إجارة"], "root": ["#.ج.ر"]},
+        "ج ◌ ر": {"q": ["إجارة"], "root": ["ج.#.ر"]},
     }
     assert "No forms" not in client.get("/", params={"root": "ج.#.ر"}).text  # each opens its own root view
 
 
 def test_no_root_or_related_forms_means_no_link(client):
     adjective = entries(client.get("/", params={"q": "كاتب"}).text)[-1]
-    assert '<p class="pos">adjective</p>' in adjective
-    assert list(links(heading(adjective))) == ["Words from the root ك ت ب"]  # كاتِب "writing" has one form
+    assert '<p class="pos"><span class="badge">adjective</span></p>' in adjective
+    assert list(links(heading(adjective))) == ["Root ك ت ب 16 words"]  # كاتِب "writing" has one form
+    assert '<span class="nil">No other forms</span>' in heading(adjective)
     laysa = entries(client.get("/", params={"q": "ليس"}).text)[0]
     assert links(heading(laysa)) == {}
     assert "root=" not in client.post("/text", data={"text": "كتاب"}).text  # token details link to Word lookup instead
@@ -602,7 +604,7 @@ def test_english_lookup_shows_arabic_entries_like_arabic_lookup(client):
     page = client.get("/", params={"q": "book", "lang": "en"}).text
     assert page.count('class="entry"') == 2  # كِتاب and سِفْر, one entry per lemma as in Arabic lookup
     assert '<span class="ar" lang="ar" dir="rtl">كِتاب</span>' in page and '<span class="ar" lang="ar" dir="rtl">سِفْر</span>' in page
-    assert '<p class="gloss">book</p>' in page
+    assert '<dd class="gloss">book</dd>' in page
     assert "2 Arabic words for “book”" in page
     same = client.get("/", params={"q": "Book ", "lang": "en"}).text
     # The same entries; only their root and related-forms links keep the query as it was typed.
@@ -621,13 +623,13 @@ def test_english_entries_link_to_their_family_which_returns_to_the_english_looku
 def test_english_direction_lives_in_the_url_and_sets_the_field(client):
     page = client.get("/", params={"lang": "en"}).text
     assert 'lang="en"' in field(page) and 'dir="ltr"' in field(page)
-    assert '<label for="q" class="sr-only">English word</label>' in page
+    assert '<label for="q" class="lbl">English word</label>' in page
     assert "checked" in english_switch(page) and "data-remember" in english_switch(page)
     assert 'href="/?lang=en"' in re.search(r'<a [^>]*class="clear"[^>]*>', page).group(0)  # Clear keeps the direction
 
     home = client.get("/").text
     assert 'lang="ar"' in field(home) and "checked" not in english_switch(home)
-    assert '<label for="q" class="sr-only">Arabic word</label>' in home
+    assert '<label for="q" class="lbl">Arabic word</label>' in home
 
 
 def test_arabic_field_follows_the_direction_of_what_is_typed(client):

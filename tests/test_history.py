@@ -163,7 +163,7 @@ def test_root_and_related_views_are_listed_apart_from_their_lookup(base_url, bro
     page.get_by_role("link", name="all 2 forms of كِتاب").click()
     expect(open_history(page)).to_have_text(["كتاب · forms of كِتاب", "كتاب"])
     page.go_back()
-    page.get_by_role("link", name="Words from the root ك ت ب").first.click()
+    page.get_by_role("link", name="Root ك ت ب").first.click()
     meaning = page.get_by_role("columnheader", name="Meaning")
     meaning.get_by_role("link").click()  # sorting is the same view
     expect(meaning).to_have_attribute("aria-sort", "ascending")

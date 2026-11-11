@@ -95,7 +95,11 @@ def word(
             state = views.State("Type a word: letters, not only numbers or symbols.")
         else:
             found = dictionary().lookup(q, english, filter_diacritics)
-            links = views.Links(lookup, {lemma: len(dictionary().related(*lemma)) for lemma in {(r.lemma, r.pos) for r in found.readings}})
+            links = views.Links(
+                lookup,
+                {lemma: len(dictionary().related(*lemma)) for lemma in {(r.lemma, r.pos) for r in found.readings}},
+                {root: dictionary().family_size(root) for root in {r.root for r in found.readings if r.root}},
+            )
             state = views.looked_up_en(found, links) if english else views.looked_up(q, found, links)
     except Exception as error:
         _log_failure("Lookup failed", error)
