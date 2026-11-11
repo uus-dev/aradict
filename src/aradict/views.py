@@ -56,10 +56,16 @@ def _root(root: str | None) -> Node:
     return ar(" ".join("◌" if letter == "#" else letter for letter in root.split("."))) if root else span(class_="muted")["unavailable"]
 
 
+def _measure(r: Reading) -> str | None:
+    """A verb's measure, or "unavailable" where it can't be derived; None for any other part of speech."""
+    return (r.measure or "unavailable") if r.pos == "verb" else None
+
+
 def _badges(r: Reading) -> Node:
     """The part of speech, and a verb's measure, each in its own box."""
-    measure = r.pos == "verb" and (span(class_="badge measure")[f"Measure {r.measure}"] if r.measure else span(class_="badge measure na")["measure unavailable"])
-    return p(class_="pos")[span(class_="badge")[r.tags[0]], measure and [" ", measure]]
+    measure = _measure(r)
+    badge = measure and (span(class_="badge measure")[f"Measure {measure}"] if r.measure else span(class_="badge measure na")[f"measure {measure}"])
+    return p(class_="pos")[span(class_="badge")[r.tags[0]], badge and [" ", badge]]
 
 
 def _how_common(top_percent: float | None) -> Node:
@@ -344,7 +350,7 @@ def _family(label: str, name: Node, status: Node, rows: list[Reading], lookup: d
                     td(data_label="Part of speech")[span(class_="badge")[r.tags[0]]],
                     td(data_label="Grammar")[_grammar(r)],
                     td(data_label="Root")[_root(r.root)],
-                    td(data_label="Measure")[r.measure or ("unavailable" if r.pos == "verb" else "")],
+                    td(data_label="Measure")[_measure(r)],
                 ]
                 for r in _sorted(rows, column, descending)
             )],
