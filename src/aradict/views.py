@@ -469,15 +469,16 @@ def _token(t: Token, ids: dict[str, str]) -> Node:
     ]
 
 
-def _details(t: Token, id: str) -> Node:
-    """A word's readings, grouped by lemma as on the Word page, in a native popover."""
+def _details(t: Token, id: str, root_counts: dict[str, int]) -> Node:
+    """A word's readings, grouped by lemma as on the Word page, in a native popover. Each root links
+    to its words, with how many there are, and the root view returns to the word's lookup."""
     return div(id=id, class_="tok-pop", popover=True, role="dialog", aria_labelledby=f"{id}-h")[
         div(class_="tp-head")[
             h2(id=f"{id}-h")[ar(t.text)],
             p[_n(len(t.readings), "reading") if t.readings else "not in the dictionary"],
         ],
         div(class_="tp-body")[
-            _entries(t.readings, h3, brief=True) if t.readings else p(class_="tp-msg")[
+            _entries(t.readings, h3, Links({"q": t.text}, {}, root_counts), brief=True) if t.readings else p(class_="tp-msg")[
                 "AraDict couldn't find this word in its Modern Standard Arabic dictionary."
             ],
         ],
@@ -488,8 +489,9 @@ def _details(t: Token, id: str) -> Node:
     ]
 
 
-def analysed(tokens: list[Token]) -> State:
-    """The passage as typed, each word opening its details. A word written twice opens the same details."""
+def analysed(tokens: list[Token], root_counts: dict[str, int]) -> State:
+    """The passage as typed, each word opening its details. A word written twice opens the same
+    details. root_counts holds how many words each of the readings' roots has."""
     words: dict[str, Token] = {}  # each word once, in order
     for t in tokens:
         if t.kind in ("word", "unknown"):
@@ -506,7 +508,7 @@ def analysed(tokens: list[Token]) -> State:
             # The passage keeps its spaces and line breaks (white-space: pre-wrap).
             div(class_="passage", lang="ar", dir="rtl")[(_token(t, ids) for t in tokens)],
         ],
-        (_details(t, ids[word]) for word, t in words.items()),
+        (_details(t, ids[word], root_counts) for word, t in words.items()),
     ])
 
 

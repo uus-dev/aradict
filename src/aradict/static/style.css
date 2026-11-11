@@ -157,7 +157,8 @@ a.root-tab:hover { --cloth: var(--cloth-hi) }
 span.root-tab { padding-inline-end: 2px }
 .rt-go { display: inline-flex; align-items: center; gap: 4px; height: 24px; padding: 0 6px 0 9px; border-radius: 5px; background: rgb(255 255 255 / .09); box-shadow: inset 0 0 0 1px var(--fillet); text-decoration: underline 1px rgb(235 213 150 / .7); text-underline-offset: 3px }
 .rt-go::after { content: ""; display: inline-block; width: 5px; height: 5px; margin-inline: 1px 2px; border: solid currentColor; border-width: 1.5px 1.5px 0 0; rotate: 45deg }
-a.root-tab:hover .rt-go { background: rgb(255 255 255 / .15); text-decoration-thickness: 2px }
+/* Hovered, the count drops its tint: gilt on the lighter cloth with a tint is below 4.5:1. */
+a.root-tab:hover .rt-go { background: none; text-decoration-thickness: 2px }
 
 .entry .head { display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "facts lemma"; align-items: center; gap: 8px 28px; padding: 14px 18px; background: var(--leaf); border: 1px solid var(--line); border-block-end: 0; border-radius: 12px 12px 0 0 }
 .lemma { grid-area: lemma; display: flex; flex-direction: row-reverse; align-items: center; gap: 12px }
