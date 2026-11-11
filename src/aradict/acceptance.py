@@ -435,7 +435,7 @@ def report(db: Path, data: dict, checked: list[tuple[str, bool]], perf: dict) ->
         f"| Adjective-like senses given a plural ending (found by this pass) | at least {over:,} of {plurals:,} dual and sound plural "
         f"noun readings | {cell(over_example)} | Partly fixed in `readable.py` on 2026-11-11. The data glosses many participles and "
         "adjectives as nouns; a participle in -ed now takes no plural ending (“two wounded”, which read “two woundeds”, about "
-        "1,300 readings). Left as a known limit: phrasal senses (“two ruling outs”) and adjectives in -ing (“two pantings”), which "
+        "1,200 readings). Left as a known limit: phrasal senses (“two ruling outs”) and adjectives in -ing (“two pantings”), which "
         "no rule can tell from real nouns (“two buildings”) without a word list. The count is a heuristic and misses the -ing kind. |",
         f"| Root alternatives such as “الو/الي” | {slashed:,} root fields with alternatives; {alternatives:,} entries whose stems carry "
         f"different roots | {cell(alternative_example)} | Handled. The data writes no alternatives into one root field. An entry whose "
