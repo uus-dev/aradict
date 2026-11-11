@@ -1,18 +1,30 @@
 """The release gate's data acceptance checks (#17)."""
 
-from aradict.acceptance import approx, inventory, malformed, overpluralized, singular_after_two
+from aradict.acceptance import approx, coverage, malformed, overpluralized, singular_after_two
+from aradict.dictionary import Dictionary
 from aradict.views import about_page
 
 
 def test_about_states_the_measured_coverage(real_db):
     from camel_tools.morphology.database import MorphologyDB
 
-    _, entries, lemmas, roots = inventory(MorphologyDB(str(real_db), "a"))
+    measured = coverage(Dictionary(real_db), MorphologyDB(str(real_db), "a"))
+    without_measure = sum(n for (_, derived), n in measured["measures"].items() if not derived)
+    rootless = dict(measured["rootless_by_pos"])
+    other = measured["rootless"] - rootless["noun_prop"] - rootless["noun"] - rootless["adj"]
     about = str(about_page())
-    coverage = about[about.index('id="coverage"'):about.index('id="typing"')]
-    assert f"about {approx(len(entries))} entries" in coverage
-    assert f"{approx(len(lemmas))} headwords" in coverage
-    assert f"about {approx(len(roots))} roots" in coverage
+    stated = about[about.index('id="coverage"'):about.index('id="typing"')]
+    # Every figure the section states, as the database measures it today.
+    for figure in (
+        f"about {approx(measured['entries'])} entries",
+        f"{approx(measured['lemmas'])} headwords",
+        f"about {approx(measured['roots'])} roots",
+        f"all but {approx(without_measure)} of about {approx(measured['verbs'])}",
+        f"about 1 root in {round(measured['roots'] / measured['unresolved'])}",
+        f"About {approx(measured['rootless'])} entries have no root: about {approx(rootless['noun_prop'])} proper nouns, "
+        f"{approx(rootless['noun'])} other nouns, {approx(rootless['adj'])} adjectives and {approx(other)} of other parts of speech.",
+    ):
+        assert figure in stated
 
 
 def test_counts_are_rounded_to_two_figures_for_a_learner():

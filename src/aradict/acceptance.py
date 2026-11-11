@@ -88,6 +88,35 @@ def inventory(db) -> tuple[list[dict], list[tuple[str, str]], set[str], list[str
     return stems, entries, {lemma for lemma, _ in entries}, roots
 
 
+def _rootless(stems: list[dict], entries: list[tuple[str, str]]) -> list[tuple[str, str]]:
+    """The entries none of whose stems has a well-formed root."""
+    rooted = {(f["lex"], f["pos"]) for f in stems if ROOT.fullmatch(f.get("root", ""))}
+    return [e for e in entries if e not in rooted]
+
+
+def coverage(d: Dictionary, db) -> dict:
+    """The coverage the About page states, measured: stem entries, entries, headwords and roots;
+    the roots with an unresolved radical; the entries with no root, by part of speech, most first;
+    and the verbs, counted by their root's length and whether they have a measure."""
+    stems, entries, lemmas, roots = inventory(db)
+    rootless = _rootless(stems, entries)
+    stored_roots = Counter(f.get("root", "") for f in stems)
+    unresolved = [root for root in roots if "#" in root]
+    verb_roots = {f["lex"]: f.get("root", "") for f in stems if f["pos"] == "verb"}
+    return {
+        "stems": len(stems), "entries": len(entries), "lemmas": len(lemmas), "roots": len(roots),
+        "unresolved": len(unresolved),
+        "unresolved_example": max((root for root in unresolved if root.count("#") == 1), key=stored_roots.get, default=""),
+        "unresolved_stems": sum(n for root, n in stored_roots.items() if "#" in root),
+        "rootless": len(rootless), "rootless_by_pos": Counter(pos for _, pos in rootless).most_common(),
+        "verbs": len(verb_roots),
+        "measures": Counter(
+            (root.count(".") + 1 if ROOT.fullmatch(root) else 0, ROOT.fullmatch(root) is not None and d.measure(lemma, root) is not None)
+            for lemma, root in verb_roots.items()
+        ),
+    }
+
+
 def _sample_words(db, every: int = 20) -> list[str]:
     """Words to look up: every nth stem, bare and with common attached parts, and the dual of
     every noun stem, which the "two school" check needs."""
@@ -107,7 +136,7 @@ def _first(items) -> str:
 def data_pass(d: Dictionary, db) -> dict:
     """Every entry's forms and every root's words, as the related and root views list them, plus
     the readings of a sample of words looked up: checked for what users would see wrong, and counted."""
-    stems, entries, lemmas, roots = inventory(db)
+    stems, entries, _, roots = inventory(db)
     related = {e: d.related(*e) for e in entries}
     family = {root: d.root_family(root) for root in roots}
     looked_up = [r for w in _sample_words(db) for r in d.lookup_ar(w)]
@@ -162,27 +191,11 @@ def data_pass(d: Dictionary, db) -> dict:
     overplural = [r for r in plurals if overpluralized(r.gloss)]
     entry_roots = {e: sorted({r.root for r in rs if r.root}) for e, rs in related.items()}
     alternatives = [(e, rs) for e, rs in entry_roots.items() if len(rs) > 1]
-    by_entry: dict[tuple[str, str], list[dict]] = {}
-    for f in stems:
-        by_entry.setdefault((f["lex"], f["pos"]), []).append(f)
-    rootless = [e for e in entries if not any(ROOT.fullmatch(f.get("root", "")) for f in by_entry[e])]
-    proper_rootless = [e for e in rootless if e[1] == "noun_prop"]
-
-    verb_roots = {f["lex"]: f.get("root", "") for f in stems if f["pos"] == "verb"}
-    measures = Counter(
-        (root.count(".") + 1 if ROOT.fullmatch(root) else 0, ROOT.fullmatch(root) is not None and d.measure(lemma, root) is not None)
-        for lemma, root in verb_roots.items()
-    )
-    unresolved = [root for root in roots if "#" in root]
+    proper_rootless = [e for e in _rootless(stems, entries) if e[1] == "noun_prop"]
     return {
-        "stems": len(stems), "entries": len(entries), "lemmas": len(lemmas), "roots": len(roots),
+        **coverage(d, db),
         "listed": len(shown) - len(looked_up), "looked_up": len(looked_up),
         "standalone": len(entries) - len(no_form),
-        "unresolved": len(unresolved),
-        "unresolved_example": max((root for root in unresolved if root.count("#") == 1), key=stored_roots.get, default=""),
-        "unresolved_stems": sum(n for root, n in stored_roots.items() if "#" in root),
-        "rootless": len(rootless), "rootless_by_pos": Counter(pos for _, pos in rootless).most_common(3),
-        "verbs": len(verb_roots), "measures": measures,
         "checks": checks, "found": found,
         "misspelled": [(word, sum(word in t for t in visible), sum(word in g for g in raw)) for word in ("genetive", "possesive")],
         "two_school": (len(two_school), len(duals), _first(map(_example, two_school))),
@@ -347,6 +360,8 @@ def report(db: Path, data: dict, checked: list[tuple[str, bool]], perf: dict) ->
     m = data["measures"]
     three, four = (m[3, True], m[3, False]), (m[4, True], m[4, False])
     other = (sum(n for (k, ok), n in m.items() if k not in (3, 4) and ok), sum(n for (k, ok), n in m.items() if k not in (3, 4) and not ok))
+    rootless = dict(data["rootless_by_pos"])
+    rootless_other = data["rootless"] - rootless["noun_prop"] - rootless["noun"] - rootless["adj"]
     two, duals, two_example = data["two_school"]
     over, plurals, over_example = data["overplural"]
     alternatives, slashed, alternative_example = data["alternatives"]
@@ -419,8 +434,12 @@ def report(db: Path, data: dict, checked: list[tuple[str, bool]], perf: dict) ->
         "`tests/test_contract.py`: the data merges a Form III and a Form IV verb into one lemma, spells Forms VIII and IX alike, "
         "gives a root that does not fit the lemma, or tags a non-verb as a verb.",
         "",
-        f"The About page states these, rounded for a learner: about {approx(data['entries'])} entries, {approx(data['lemmas'])} headwords "
-        f"and {approx(data['roots'])} roots.",
+        f"The About page states these, rounded for a learner, and `tests/test_acceptance.py` checks each against the database: "
+        f"about {approx(data['entries'])} entries, {approx(data['lemmas'])} headwords and {approx(data['roots'])} roots; a measure "
+        f"for all but {approx(three[1] + four[1] + other[1])} of about {approx(data['verbs'])} verbs; an unresolved radical in about "
+        f"1 root in {round(data['roots'] / data['unresolved'])}; and about {approx(data['rootless'])} entries with no root: about "
+        f"{approx(rootless['noun_prop'])} proper nouns, {approx(rootless['noun'])} other nouns, {approx(rootless['adj'])} adjectives and "
+        f"{approx(rootless_other)} of other parts of speech.",
         "",
         "## Known defects and limits",
         "",
