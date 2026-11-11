@@ -354,6 +354,8 @@ def plural(sense: str) -> str:
     *rest, word = head.split(" ")
     if word in IRREGULAR_PLURALS:
         word = IRREGULAR_PLURALS[word]
+    elif len(word) > 4 and word.endswith("ed") and not word.endswith("eed"):
+        pass  # a participle the data glosses as a noun: "two wounded", as in "the wounded". Short nouns (bed, shed) are not.
     elif not word.endswith("s") or word.endswith("ss"):  # CAMeL often glosses a singular stem with a plural sense ("law;statutes")
         word = _s(word)  # ponytail: regular rules plus a few irregulars; extend IRREGULAR_PLURALS as glosses need
     return " ".join(rest + [word]) + tail + paren + note

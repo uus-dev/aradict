@@ -114,6 +114,12 @@ def test_an_of_phrase_takes_its_plural_on_the_noun_before_of(real):
     assert "two points of view; two angles" in glosses(real, "وجهتان")
 
 
+def test_a_participle_used_as_a_noun_takes_no_plural_ending(real):
+    # "two wounded", as English says "the wounded", not "two woundeds" (#17). A short noun in -ed still takes one.
+    assert glosses(real, "مجروحان") == {"two wounded; two injured"}
+    assert glosses(real, "سريران") == {"two beds; two couches"}
+
+
 def test_senses_already_plural_are_not_pluralized_again(real):
     assert "my two laws; my two statutes; my two regulations" in glosses(real, "قانوني")
 
