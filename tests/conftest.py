@@ -8,9 +8,13 @@ import uvicorn
 from fastapi.testclient import TestClient
 from playwright.sync_api import sync_playwright
 
+from aradict import wiktionary
 from aradict.app import app, dictionary
 from aradict.data import db_path
 from make_fixture_db import make_fixture
+import make_fixture_wiktionary
+
+REAL_WIKTIONARY = wiktionary.dataset_path()  # read before fixture_env points the app away from it
 
 
 @pytest.fixture(scope="session")
@@ -24,15 +28,32 @@ def real_db() -> Path:
 
 
 @pytest.fixture(scope="session")
+def real_wiktionary() -> Path:
+    path = REAL_WIKTIONARY
+    if not path.is_file():
+        if os.environ.get("CI"):
+            pytest.fail(f"No Wiktionary dataset at {path}")
+        pytest.skip("Wiktionary dataset not built; run `uv run python -m aradict.wiktionary`")
+    return path
+
+
+@pytest.fixture(scope="session")
 def fixture_db(real_db, tmp_path_factory) -> Path:
     return make_fixture(real_db, tmp_path_factory.mktemp("db") / "morphology.db")
 
 
 @pytest.fixture(scope="session")
+def fixture_wiktionary(real_wiktionary, tmp_path_factory) -> Path:
+    return make_fixture_wiktionary.make_fixture(real_wiktionary, tmp_path_factory.mktemp("wiktionary") / "wiktionary.db")
+
+
+@pytest.fixture(scope="session")
 def fixture_env(fixture_db):
-    """Point the app at the fixture database for the whole session."""
+    """Point the app at the fixture database for the whole session, with no Wiktionary dataset:
+    the app as Milestone 1 shipped it."""
     with pytest.MonkeyPatch.context() as patch:
         patch.setenv("ARADICT_DB_PATH", str(fixture_db))
+        patch.setenv("ARADICT_WIKTIONARY_PATH", str(fixture_db.parent / "no-wiktionary.db"))
         dictionary.cache_clear()
         yield fixture_db
     dictionary.cache_clear()
@@ -42,6 +63,17 @@ def fixture_env(fixture_db):
 def client(fixture_env):
     with TestClient(app) as test_client:
         yield test_client
+
+
+@pytest.fixture
+def wiktionary_client(fixture_env, fixture_wiktionary):
+    """The app on the fixture database and the fixture Wiktionary dataset."""
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setenv("ARADICT_WIKTIONARY_PATH", str(fixture_wiktionary))
+        dictionary.cache_clear()
+        with TestClient(app) as test_client:
+            yield test_client
+    dictionary.cache_clear()
 
 
 @pytest.fixture(scope="module")

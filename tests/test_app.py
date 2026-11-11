@@ -672,3 +672,29 @@ def test_english_live_lookup_returns_only_results(client):
     page = client.get("/", params={"q": "books", "lang": "en"}, headers={"HX-Request": "true"}).text
     assert "<form" not in page
     assert page.count('class="entry"') == 2  # the "book" entries
+
+
+def senses_of(entry: str) -> list[str]:
+    """The Wiktionary senses an entry lists, in order, as text."""
+    listed = "".join(re.findall(r'<ol class="senses">(.*?)</ol>', entry))
+    return [html.unescape(re.sub("<[^>]+>", "", sense)) for sense in re.findall(r"<li>(.*?)</li>", listed)]
+
+
+CREDIT = '<a href="https://en.wiktionary.org/wiki/كتاب#Arabic">From Wiktionary, CC BY-SA 4.0</a>'
+
+
+def test_a_joined_entry_lists_wiktionary_senses_numbered_with_the_credit(wiktionary_client):
+    kitab, katib, kuttab = entries(wiktionary_client.get("/", params={"q": "كتاب", "diacritics": "off"}).text)
+    assert '<span class="ar" lang="ar" dir="rtl">كِتاب</span>' in heading(kitab)
+    assert {"book", "letter, note, paper, piece of writing, message", "a marriage contract."} <= set(senses_of(kitab))
+    assert not [s for s in senses_of(kitab) if "verbal noun" in s]  # a relation, not a meaning
+    assert CREDIT in kitab
+    # كُتّاب "Quran school" lists its own sense, not كِتاب's, nor "plural of كاتِب".
+    assert senses_of(kuttab) == ["a traditional school for teaching Qur'an"]
+    assert CREDIT in kuttab
+
+
+def test_without_the_wiktionary_dataset_entries_show_no_wiktionary_content(client):
+    page = client.get("/", params={"q": "كتاب"})
+    assert page.status_code == 200 and 'class="entry"' in page.text
+    assert "Wiktionary" not in page.text
