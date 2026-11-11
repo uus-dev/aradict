@@ -105,13 +105,13 @@ Measured on macOS-26.6.2-arm64-arm-64bit-Mach-O, 12 cores, Python 3.13.13. A rea
 
 | Kind | Words | p50 (ms) | p95 (ms) | First, worst (ms) |
 |---|---|--:|--:|--:|
-| bare | كتب, مدرسة, قال, علم, الى, من | 4 | 10 | 96 |
-| marked | كَتَبَ, كُتُب, مَدْرَسَةٌ, عِلْم | 3 | 4 | 3 |
-| clitics | وبكتابهم, سيكتبون, مدرستي, والكتاب, فقالوا, بالمدرسة | 5 | 8 | 8 |
-| Arabizi | ktb, mar7aba, kitab, 3arabi, shukran, madrasa | 5 | 7 | 16 |
-| English | book, write, school, piece of writing, eat, go | 5 | 10 | 93 |
-| not found | قخغثص, qxzv, xyzzy | 1 | 2 | 1 |
-| **All** | | **4** | **9** | **96** |
+| bare | كتب, مدرسة, قال, علم, الى, من | 5 | 12 | 144 |
+| marked | كَتَبَ, كُتُب, مَدْرَسَةٌ, عِلْم | 3 | 4 | 5 |
+| clitics | وبكتابهم, سيكتبون, مدرستي, والكتاب, فقالوا, بالمدرسة | 6 | 9 | 11 |
+| Arabizi | ktb, mar7aba, kitab, 3arabi, shukran, madrasa | 5 | 9 | 22 |
+| English | book, write, school, piece of writing, eat, go | 5 | 11 | 128 |
+| not found | قخغثص, qxzv, xyzzy | 1 | 2 | 2 |
+| **All** | | **5** | **10** | **144** |
 
 ### Text analysis
 
@@ -119,29 +119,29 @@ Our own news-style passage, cut at each size, analysed 10 times.
 
 | Characters | Words | Median (ms) | Worst (ms) |
 |--:|--:|--:|--:|
-| 100 | 18 | 21 | 207 |
-| 500 | 81 | 71 | 818 |
-| 2,000 | 323 | 261 | 2179 |
+| 100 | 18 | 23 | 24 |
+| 500 | 81 | 84 | 85 |
+| 2,000 | 323 | 396 | 486 |
 
 ### Startup and memory
 
 | Measure | Value |
 |---|--:|
-| Startup, from process start to the first answer (median of 3) | 3.9 s |
+| Startup, from process start to the first answer (median of 3) | 3.8 s |
 | Resident memory after startup | 543 MB |
-| Resident memory after the timings above | 545 MB |
+| Resident memory after the timings above | 528 MB |
 
 ### Proposed budgets
 
 | Budget | Proposed | Measured here | Within |
 |---|--:|--:|---|
-| Word lookup, server time, p95 | ≤ 50 ms | 9.5 ms | yes |
-| Word lookup, first time a word is looked up after start, worst | ≤ 500 ms | 95.9 ms | yes |
-| Text analysis of 2,000 characters, worst | ≤ 1,000 ms | 2,179.0 ms | **no** |
-| Startup to the first answer | ≤ 10 s | 3.9 s | yes |
-| Resident memory after use | ≤ 768 MB | 545.4 MB | yes |
+| Word lookup, server time, p95 | ≤ 50 ms | 10.5 ms | yes |
+| Word lookup, first time a word is looked up after start, worst | ≤ 500 ms | 143.8 ms | yes |
+| Text analysis of 2,000 characters, worst | ≤ 1,000 ms | 485.6 ms | yes |
+| Startup to the first answer | ≤ 10 s | 3.8 s | yes |
+| Resident memory after use | ≤ 768 MB | 528.3 MB | yes |
 
-Why these: lookup runs while the user types, debounced at about 150 ms, so its server share should stay well under that, leaving room for a mobile network and a production CPU several times slower than this one. The first lookup of a word also counts each of its roots' words once, then remembers the count, so it may take longer. Text analysis runs once per pause and shows a loading state, so up to 1 s for the largest passage the Text view accepts is acceptable. Text analysis also counts the words of every root it has not counted before, for the root links in its token details: the first analysis of the 2,000-character passage took 2,179 ms, and later ones 260 ms at the median. Startup only matters on deploy and restart. The memory budget leaves headroom on a 1 GB instance, the size the CAMeL spike suggested. The owner should confirm the budgets on the production host, and the whole experience on a mid-range phone, before they become pass/fail.
+Why these: lookup runs while the user types, debounced at about 150 ms, so its server share should stay well under that, leaving room for a mobile network and a production CPU several times slower than this one. The first lookup of a word also counts each of its roots' words once, then remembers the count, so it may take longer. Text analysis runs once per pause and shows a loading state, so up to 1 s for the largest passage the Text view accepts is acceptable. Its token details link each root without counting the root's words, which would cost about 27 ms a root the first time: the first analysis of the 2,000-character passage took 328 ms, and later ones 404 ms at the median. Startup only matters on deploy and restart. The memory budget leaves headroom on a 1 GB instance, the size the CAMeL spike suggested. The owner should confirm the budgets on the production host, and the whole experience on a mid-range phone, before they become pass/fail.
 
 Checked by a test: none of these. CI runs on shared runners whose speed varies by several times, so a test tight enough to catch a regression would be flaky, and a loose one would catch nothing. `tests/test_contract.py` already bounds the one input with an unbounded cost, a very long Arabizi word (under 2 s). Rerun this script before a release instead.
 
