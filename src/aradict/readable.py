@@ -346,6 +346,11 @@ def _verb(sense: str, a: dict, future: bool) -> str:
     return be + sense[2:]
 
 
+def participle(word: str) -> bool:
+    """A past participle such as "wounded" or "spotted". Short words in -ed are nouns (bed, shed)."""
+    return len(word) > 4 and word.endswith("ed") and not word.endswith("eed")
+
+
 def plural(sense: str) -> str:
     """English plural of a noun sense, inflecting the word before any bracketed note, or before
     "of" in a phrase like "period of time" (periods of time)."""
@@ -354,8 +359,8 @@ def plural(sense: str) -> str:
     *rest, word = head.split(" ")
     if word in IRREGULAR_PLURALS:
         word = IRREGULAR_PLURALS[word]
-    elif len(word) > 4 and word.endswith("ed") and not word.endswith("eed"):
-        pass  # a participle the data glosses as a noun: "two wounded", as in "the wounded". Short nouns (bed, shed) are not.
+    elif participle(word):
+        pass  # the data glosses many participles as nouns: "two wounded", as English says "the wounded"
     elif not word.endswith("s") or word.endswith("ss"):  # CAMeL often glosses a singular stem with a plural sense ("law;statutes")
         word = _s(word)  # ponytail: regular rules plus a few irregulars; extend IRREGULAR_PLURALS as glosses need
     return " ".join(rest + [word]) + tail + paren + note
