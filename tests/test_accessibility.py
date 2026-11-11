@@ -137,6 +137,43 @@ def test_text_zoomed_to_200_percent_stays_usable(base_url, browser, name):
     context.close()
 
 
+# How far each control's content reaches past its box, kept at the default text size (scale 0) and
+# compared at a larger one: a control may overflow only as much as before, scaled. Arabic glyphs
+# reach a little past a tight line at any size; a box that stays put while its text grows does not
+# scale with it. A text field must also stay at least one line of its text tall.
+CRAMPED = """scale => {
+  const all = [...document.querySelectorAll(
+    'button, input:not([type=checkbox]), textarea, summary, .site nav a, .clear, .root-tab, .rt-go, .dismiss, .badge, .grammar li, .history ol a, .family th a, .tp-foot a'
+  )].filter(e => e.checkVisibility() && e.clientHeight);
+  const over = e => [e.scrollWidth - e.clientWidth, e.scrollHeight - e.clientHeight];
+  if (!scale) { window.defaultOverflow = new Map(all.map(e => [e, over(e)])); return []; }
+  return all.filter(e => {
+    const s = getComputedStyle(e);
+    const line = s.lineHeight === 'normal' ? 1.2 * parseFloat(s.fontSize) : parseFloat(s.lineHeight);
+    const before = window.defaultOverflow.get(e) || [0, 0];
+    return over(e).some((d, i) => d > scale * Math.max(0, before[i]) + 1) || (e.matches('input, textarea') && e.clientHeight < line);
+  }).map(e => e.outerHTML.slice(0, 80));
+}"""
+
+HEADWORD = {"word": ".lemma .ar", "text": ".tok-pop .lemma .ar", "root": ".family td:first-child .ar"}
+
+
+@pytest.mark.parametrize("name", HEADWORD)
+def test_the_browsers_text_size_setting_scales_the_text(base_url, browser, name):
+    # A larger text size in the browser's settings sets the root font size; the page must follow it
+    # (PRD story 81) and keep its text inside its controls.
+    page = browser.new_page(viewport={"width": 1280, "height": 800})
+    PAGES[name](page, base_url)
+    sizes = f"[...document.querySelectorAll('{HEADWORD[name]}, body')].map(e => parseFloat(getComputedStyle(e).fontSize))"
+    default = page.evaluate(sizes)
+    page.evaluate(CRAMPED, 0)
+    page.add_style_tag(content="html { font-size: 200% }")
+    assert page.evaluate(sizes) == [2 * size for size in default]
+    assert not scrolls_sideways(page)
+    assert page.evaluate(CRAMPED, 2) == []
+    page.close()
+
+
 def focus_ring(page) -> str:
     """The focused element's outline, which keyboard users follow."""
     return page.evaluate("(() => { const s = getComputedStyle(document.activeElement); return `${s.outlineStyle} ${s.outlineWidth}`; })()")
