@@ -8,7 +8,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Source+Sans+3:wght@400..700&family=Scheherazade+New:wght@400;500;600;700&display=swap">
 <style>
-/* Layout: a short intro, then one row of four equal cards (two on tablets, one on phones). */
+/* Layout: a short intro, then the cards in as many equal columns as fit (one on phones). */
 :root {
   --bg: #f2f4f6; --card: #ffffff; --fg: #161b22; --muted: #57606b; --line: #dde2e7; --accent: #1f55c2; --tag: #eef2f7;
   --f: "Source Sans 3", system-ui, -apple-system, "Segoe UI", sans-serif;
@@ -21,9 +21,7 @@ main { max-width: 76rem; margin: 0 auto }
 h1 { font-size: 20px; font-weight: 600; margin: 0 0 6px; text-wrap: balance }
 .intro { color: var(--muted); max-width: 72ch; margin: 0 0 24px }
 [lang="ar"] { font-family: "Scheherazade New", serif; font-size: 1.25em; line-height: 1 }
-.grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px }
-@media (max-width: 1100px) { .grid { grid-template-columns: repeat(2, minmax(0, 1fr)) } }
-@media (max-width: 620px) { .grid { grid-template-columns: minmax(0, 1fr) } }
+.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 220px), 1fr)); gap: 16px }
 .card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; display: flex; flex-direction: column; min-width: 0; overflow: hidden }
 .shot { display: block; aspect-ratio: 390 / 600; overflow: hidden; border-bottom: 1px solid var(--line); background: var(--tag) }
 .shot img { width: 100%; height: auto; display: block }
@@ -46,9 +44,17 @@ ul.try li + li { margin-top: 2px }
 <body>
 <main>
   <h1>Wiktionary content in the M1 layout</h1>
-  <p class="intro">Ways to add English Wiktionary entries to the chosen M1 Cloth Tab design. W4 was added after review: it is W1 with the readings first, because a reading says what the word you typed means. They differ mainly in where Wiktionary's numbered senses sit relative to the core dictionary's meaning for each reading. Everything else is shared: plurals, gender, verbal nouns, pronunciation, homographs, Wiktionary-only words, the filled root letter and the credit. The bar at the bottom of each design switches option, screen and theme.</p>
+  <p class="intro">Ways to add English Wiktionary entries to the chosen M1 Cloth Tab design. W4 and W5 were added after review. W5 sorts everything by the question it answers: which word is this, what does the word I typed mean, and then everything else about the headword. They differ mainly in where Wiktionary's numbered senses sit relative to the core dictionary's meaning for each reading. Everything else is shared: plurals, gender, verbal nouns, pronunciation, homographs, Wiktionary-only words, the filled root letter and the credit. The bar at the bottom of each design switches option, screen and theme.</p>
 
   <div class="grid">
+    <article class="card">
+      <a class="shot" href="w5.html" aria-label="Open W5"><img src="w5-phone.png" alt="W5 on a phone: the headword with its transliteration and frequency, then the reading, then all meanings, plural and gender"></a>
+      <div class="body">
+        <div class="name"><h2>W5 · Question order</h2><span class="tag">recommended</span></div>
+        <p class="idea">1. Which word: headword, part of speech, transliteration under it, frequency, root tab. 2. What you typed means: each reading's meaning and grammar. 3. About the headword: all meanings, then plural, gender, verbal nouns, other forms, regional pronunciations, and the credit.</p>
+        <div class="actions"><a class="open" href="w5.html">Open design</a><a href="w5-desk.png">Desktop</a><a href="w5-phone-dark.png">Phone, dark</a><a href="w5-desk-dark.png">Desktop, dark</a></div>
+      </div>
+    </article>
     <article class="card">
       <a class="shot" href="w1.html" aria-label="Open W1"><img src="w1-phone.png" alt="W1 on a phone: the entry for كتاب with numbered meanings in its head"></a>
       <div class="body">

@@ -1,0 +1,124 @@
+<!doctype html>
+<html lang="en" data-option="w5">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AraDict W5</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Source+Sans+3:wght@400..700&family=Scheherazade+New:wght@400;500;600;700&display=swap">
+<link rel="stylesheet" href="proto.css">
+</head>
+<body>
+<header class="top">
+  <div class="wrap">
+    <a class="brand" href="#word" aria-label="AraDict, قاموس, home">
+      <span class="brand-en">AraDict</span>
+      <span class="stamp" lang="ar" dir="rtl">قاموس</span>
+    </a>
+    <nav aria-label="Main">
+      <ul class="nav">
+        <li><a href="#word" data-view="word">Word</a></li>
+        <li><a href="#text" data-view="text">Text</a></li>
+        <li><a href="#about" data-view="about">About</a></li>
+      </ul>
+    </nav>
+  </div>
+</header>
+
+<main class="wrap">
+  <!-- Word view -->
+  <section id="v-word" aria-labelledby="wv-h">
+    <h1 id="wv-h" class="sr">Word lookup</h1>
+    <form class="box search" id="sf" role="search">
+      <label class="lbl" for="q">Type or paste an Arabic word</label>
+      <div class="row">
+        <div class="field">
+          <input id="q" name="q" type="text" lang="ar" dir="rtl" autocomplete="off" autocapitalize="off" spellcheck="false" enterkeyhint="search" placeholder="كلمة">
+          <button type="button" class="kb-btn" id="kbBtn" aria-label="Arabic keyboard" aria-expanded="false" aria-controls="kbd">
+            <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true"><rect x="2" y="4.5" width="16" height="11" rx="2"/><path d="M5 8h1M8 8h1M11 8h1M14 8h1M5 11h1M14 11h1M8 11h4" stroke-linecap="round"/></svg>
+          </button>
+        </div>
+        <button class="btn primary" type="submit">Look up</button>
+      </div>
+      <div class="kbd" id="kbd" role="group" aria-label="Arabic keyboard" hidden></div>
+      <div class="opts">
+        <label class="chk"><input type="checkbox" id="ign" checked> Ignore diacritics</label>
+        <div class="examples">
+          <span id="exl">Examples</span>
+          <ul aria-labelledby="exl" id="ex"></ul>
+        </div>
+      </div>
+    </form>
+    <div class="status">
+      <p id="status" role="status"></p>
+      <p class="legend" id="legend"><span class="sr">How word parts are marked: </span><span class="lg-pre">prefix</span><span class="lg-stem">stem</span><span class="lg-suf">suffix</span></p>
+    </div>
+    <div id="results"></div>
+  </section>
+
+  <!-- Text view -->
+  <section id="v-text" aria-labelledby="tv-h" hidden>
+    <h1 id="tv-h" class="sr">Text analysis</h1>
+    <form class="box tx-in" id="tf">
+      <label class="lbl" for="ta">Paste an Arabic passage</label>
+      <textarea id="ta" lang="ar" dir="rtl" rows="3" spellcheck="false">قال الطالب: كتب تغريدة عن كتاب.</textarea>
+      <div class="tx-bar">
+        <p class="hint">Select any word to see its readings.</p>
+        <button class="btn primary" type="submit">Analyze text</button>
+      </div>
+    </form>
+    <section class="box passage-box" aria-labelledby="pb-h">
+      <div class="pb-head">
+        <h2 id="pb-h">Passage<span id="pb-n"></span></h2>
+        <p class="key-legend"><span><i></i>has readings</span><span><i class="u"></i>no entry</span></p>
+      </div>
+      <p class="passage" id="passage" lang="ar" dir="rtl"></p>
+    </section>
+  </section>
+
+  <!-- Root view -->
+  <section id="v-root" hidden>
+    <p class="rv-back"><button type="button" class="btn sm" id="rvBack">‹ Back</button></p>
+    <div id="rv"></div>
+  </section>
+
+  <!-- About view -->
+  <section id="v-about" hidden>
+    <div class="box about">
+      <h1>About AraDict</h1>
+      <p>AraDict is an Arabic–English dictionary for Modern Standard Arabic. Paste a word exactly as you found it, with or without vowel marks and with its attached prefixes and suffixes, and see every way it can be read.</p>
+      <p>Readings are grouped under their dictionary headword, most common first. Each headword shows its root, its part of speech and how often it appears in news and texts.</p>
+    </div>
+  </section>
+</main>
+
+<div id="wp" popover role="dialog" aria-labelledby="wp-h"></div>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<div class="review" role="region" aria-label="Review controls (not part of the design)">
+  <span class="rv-t">Review</span>
+  <div role="group" aria-label="Option">
+    <a data-opt="w1" href="w1.html">W1</a>
+    <a data-opt="w2" href="w2.html">W2</a>
+    <a data-opt="w3" href="w3.html">W3</a>
+    <a data-opt="w4" href="w4.html">W4</a>
+    <a data-opt="w5" href="w5.html">W5</a>
+  </div>
+  <div role="group" aria-label="Screen">
+    <button type="button" data-screen="word">Word</button>
+    <button type="button" data-screen="text">Text</button>
+    <button type="button" data-screen="root">Root</button>
+  </div>
+  <div role="group" aria-label="Theme">
+    <button type="button" data-theme="auto">Auto</button>
+    <button type="button" data-theme="light">Light</button>
+    <button type="button" data-theme="dark">Dark</button>
+  </div>
+</div>
+
+<script src="camel.js"></script>
+<script src="wiktionary.js"></script>
+<script src="proto.js"></script>
+</body>
+</html>

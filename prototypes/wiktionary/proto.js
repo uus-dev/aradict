@@ -4,6 +4,8 @@
 //   w2  a separate credited panel under the readings
 //   w3  beside each reading, opened on demand like Word parts
 //   w4  like w1, but the readings come first and all the senses follow them
+//   w5  question order: which word (headword, how to say it, how common), what the typed word
+//       means (readings), then everything about the headword, meanings first
 const OPT = document.documentElement.dataset.option;
 const W = window.WIKT, FAMILY = window.FAMILY;
 const $ = (s, r = document) => r.querySelector(s);
@@ -189,6 +191,62 @@ function tagsHTML(g) {
   return h;
 }
 
+/* ---------- W5: question order ---------- */
+
+// How to say the headword sits under it, as in a printed dictionary's headword line.
+const sayLine = e => e && (e.tr || e.ipa) ? `<p class="say-line" lang="en" dir="ltr">${e.tr ? `<span class="tr">${esc(e.tr)}</span>` : ''}${e.ipa ? ` <span class="ipa">${esc(e.ipa)}</span>` : ''}</p>` : '';
+const regional = e => `<details class="reg"><summary>${CHEV}${plural(e.regional.length, 'pronunciation')}</summary><dl class="reg-l">${e.regional.map(([k, v]) => `<dt>${esc(k)}</dt><dd class="ipa">${esc(v)}</dd>`).join('')}</dl></details>`;
+
+// Everything about the headword, after the readings: what it means, then how it changes, then where it leads.
+function w5Rows(g, brief) {
+  const e = g.wk, r = g.rs[0], info = rootInfo(g);
+  let h = '';
+  const row = (k, v, cls = '') => { h += `<dt class="${cls}">${k}</dt><dd class="${cls}">${v}</dd>`; };
+  const merged = r && g.rs.length > 1 && !e?.senses.length ? lemmaMeaning(g.rs) : '';
+  if (merged) row('Meaning', `<span class="mean">${esc(merged)}</span>`);
+  if (e?.senses.length) row('Meanings', sensesHTML(e), 'wide');
+  if (e?.plural.length) row(e.plural.length > 1 ? 'Plurals' : 'Plural', forms(e.plural));
+  if (e?.gender) row('Gender', `<ul class="gram"><li>${cap(e.gender)}</li></ul>`);
+  if (e?.vn.length) row(e.vn.length > 1 ? 'Verbal nouns' : 'Verbal noun', forms(e.vn));
+  if (e?.of.length) row(esc(e.of[0].rel), e.of.map(o => look(o.ar, o.tr, o.tags)).join('<span class="sep" aria-hidden="true"> · </span> '));
+  if (!brief && r) row('Forms', r.related_count ? `<a class="link" href="#forms" data-forms="${esc(r.lemma)}">${plural(r.related_count, 'other form')}</a>` : '<span class="nil">No other forms</span>');
+  if (info?.camel) row('Root', filledNote(info));
+  if (!brief && e?.regional.length) row('Regional', regional(e));
+  return h;
+}
+function aboutW5(g, brief) {
+  const rows = w5Rows(g, brief);
+  if (!rows) return '';
+  return `<section class="about-w5" aria-label="About ${esc(g.rs[0] ? g.rs[0].lemma : g.wk.word)}"><dl class="facts">${rows}</dl>${g.wk ? credit([g.wk.page]) : ''}</section>`;
+}
+function entryW5(g, n) {
+  const r = g.rs[0], e = g.wk;
+  return `<li class="entry" aria-labelledby="hw-${n}">
+    <div class="eh">
+      <div class="lemma">
+        <div class="hwb"><h2 class="hw" id="hw-${n}" lang="ar" dir="rtl">${esc(r ? r.lemma : e.word)}</h2>${sayLine(e)}</div>
+        <span class="tags">${tagsHTML(g)}</span>
+      </div>
+      ${rootTab(g)}
+      ${r ? `<dl class="facts"><dt>Frequency</dt><dd class="freq">${freqHTML(r)}</dd></dl>` : ''}
+    </div>
+    ${r ? `<ul class="readings" aria-label="Readings under ${esc(r.lemma)}">${g.rs.map((x, i) => readingHTML(x, g, `${n}-${i}`)).join('')}</ul>` : ''}
+    ${aboutW5(g, false)}
+    ${r ? '' : onlyNote}
+  </li>`;
+}
+function wgW5(g) {
+  const r = g.rs[0], e = g.wk;
+  const li = x => `<li><div><p class="gloss">${esc(x.gloss)}</p>${gramHTML(x)}</div><p class="form" lang="ar" dir="rtl">${formHTML(x)}</p></li>`;
+  return `<section class="wg" aria-label="${esc(r ? r.lemma : e.word)}">
+    ${rootTab(g)}
+    <div class="wg-h"><div class="hwb"><h3 class="hw" lang="ar" dir="rtl">${esc(r ? r.lemma : e.word)}</h3>${sayLine(e)}</div><span class="tags">${tagsHTML(g)}</span></div>
+    ${r ? `<ul class="wl">${g.rs.map(li).join('')}</ul>` : ''}
+    ${aboutW5(g, true)}
+    ${r ? '' : onlyNote}
+  </section>`;
+}
+
 /* ---------- Word view ---------- */
 
 function readingHTML(r, g, id) {
@@ -208,6 +266,7 @@ function readingHTML(r, g, id) {
 }
 
 function entryHTML(g, n) {
+  if (OPT === 'w5') return entryW5(g, n);
   const r = g.rs[0], e = g.wk;
   // W1 shows Wiktionary's numbered senses in the head, so CAMeL's merged lemma meaning steps aside.
   const meaning = r && g.rs.length > 1 && !((OPT === 'w1' || OPT === 'w4') && e?.senses.length) ? lemmaMeaning(g.rs) : '';
@@ -455,6 +514,7 @@ function analyze(text) {
 $('#tf').addEventListener('submit', e => { e.preventDefault(); analyze($('#ta').value); });
 
 function wgHTML(g, n) {
+  if (OPT === 'w5') return wgW5(g);
   const r = g.rs[0], e = g.wk, id = `p${n}`;
   const li = (x, i) => `<li><div><p class="gloss">${esc(x.gloss)}</p>${gramHTML(x)}${OPT === 'w3' && sensesBtn(g, `${id}-${i}`) ? `<div class="rd-btns">${sensesBtn(g, `${id}-${i}`)}</div>` : ''}</div><p class="form" lang="ar" dir="rtl">${formHTML(x)}</p>${OPT === 'w3' ? sensesPanel(g, `${id}-${i}`) : ''}</li>`;
   return `<section class="wg" aria-label="${esc(r ? r.lemma : e.word)}">

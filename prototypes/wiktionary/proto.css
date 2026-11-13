@@ -455,6 +455,17 @@ textarea:focus-visible { outline-offset: 1px; border-color: var(--focus); }
 .credit .link { font-weight: 500; }
 .credit svg { margin-left: 2px; vertical-align: -1px; }
 
+/* W5: the headword's identity on top, then the readings, then everything about the headword */
+.hwb { display: flex; flex-direction: column; align-items: flex-end; }
+.say-line { margin-top: -6px; font-size: 13.5px; line-height: 1.3; color: var(--ink-2); white-space: nowrap; }
+.say-line .tr { color: var(--ink); font-weight: 500; }
+.wg-h .say-line { margin-top: -4px; font-size: 13px; }
+.about-w5 { padding: 12px 18px 14px; border-top: 1px solid var(--line); background: var(--leaf); }
+.about-w5 .credit { margin-top: 10px; }
+.wg .about-w5 { padding: 8px 14px 10px; border-top: 1px solid var(--line); }
+.wg > :last-child { border-bottom-left-radius: 9px; border-bottom-right-radius: 9px; }
+@media (max-width: 640px) { .about-w5 { padding: 10px 14px 12px; } }
+
 /* W4: all senses after the readings */
 .wk-after { padding: 12px 18px 14px; border-top: 1px solid var(--line); background: var(--leaf); }
 .wk-after .credit { margin-top: 10px; }
