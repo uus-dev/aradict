@@ -314,6 +314,10 @@ Launch as a web application whose home view opens directly on Word lookup, with 
   - From Wiktionary, show numbered senses, plurals and gender, verbal nouns, and transliteration and IPA. Use it to fill unresolved root radicals.
   - Words found only in Wiktionary are looked up through its inflected-form entries. They are shown as entries without the morphology fields the core would provide.
   - Every view that shows Wiktionary content credits it ("From Wiktionary, CC BY-SA 4.0") with a link to the source entry. Adapted Wiktionary text stays under CC BY-SA.
+  - **Register.** AraDict covers Modern Standard Arabic, as its CAMeL core does. Aratools does too: both are built on the Buckwalter lexicon of MSA news text. Wiktionary also records Classical, obsolete, archaic, rare and dialectal uses. About 4% of its senses carry such a label (2,051 of 47,111 in the pinned extraction), for example كِتاب as an obsolete verbal noun of كَتَبَ, where MSA uses كِتابة.
+    - Every sense, form and relation that Wiktionary labels this way is shown with its label, never without it.
+    - A label on one side of a relation also shows on the other side: كَتَبَ's list of verbal nouns marks كِتاب as obsolete, too.
+    - These uses are labelled, not hidden, so that a reader of older texts can still find them.
 - **Conjugation and declension tables (Milestone 3):**
   - Generate tables from the lemma using CAMeL Tools' generator over the core database:
     - verbs: perfect; imperfect (indicative, subjunctive, jussive); imperative; active and passive; all persons;
