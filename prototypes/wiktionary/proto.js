@@ -3,6 +3,7 @@
 //   w1  labelled rows in the entry head, above the readings
 //   w2  a separate credited panel under the readings
 //   w3  beside each reading, opened on demand like Word parts
+//   w4  like w1, but the readings come first and all the senses follow them
 const OPT = document.documentElement.dataset.option;
 const W = window.WIKT, FAMILY = window.FAMILY;
 const $ = (s, r = document) => r.querySelector(s);
@@ -165,7 +166,14 @@ function wkRows(g, withSenses) {
   if (e.tr || e.ipa) row('Pronunciation', pronHTML(e));
   return h;
 }
-const wkBlock = (g, withSenses) => `<div class="wk"><dl class="facts">${wkRows(g, withSenses)}</dl>${credit([g.wk.page])}</div>`;
+function wkBlock(g, withSenses, withCredit = true) {
+  const rows = wkRows(g, withSenses);
+  if (!rows && !withCredit) return '';
+  return `<div class="wk"><dl class="facts">${rows}</dl>${withCredit ? credit([g.wk.page]) : ''}</div>`;
+}
+// W4: all of Wiktionary's senses after the readings, with the credit for the entry's Wiktionary content
+const sensesAfter = g => OPT === 'w4' && g.rs.length && g.wk?.senses.length;
+const wkAfter = g => `<section class="wk-after" aria-label="All meanings, from Wiktionary"><dl class="facts"><dt class="wide">All meanings</dt><dd class="wide">${sensesHTML(g.wk)}</dd></dl>${credit([g.wk.page])}</section>`;
 const wkPanel = g => `<section class="wk-panel" aria-label="From Wiktionary">${credit([g.wk.page])}<dl class="facts">${wkRows(g, true)}</dl></section>`;
 const onlyNote = '<p class="only-note">Only in Wiktionary: no frequency, measure or word parts.</p>';
 // W3: the entry's numbered senses, opened beside one reading
@@ -202,7 +210,7 @@ function readingHTML(r, g, id) {
 function entryHTML(g, n) {
   const r = g.rs[0], e = g.wk;
   // W1 shows Wiktionary's numbered senses in the head, so CAMeL's merged lemma meaning steps aside.
-  const meaning = r && g.rs.length > 1 && !(OPT === 'w1' && e?.senses.length) ? lemmaMeaning(g.rs) : '';
+  const meaning = r && g.rs.length > 1 && !((OPT === 'w1' || OPT === 'w4') && e?.senses.length) ? lemmaMeaning(g.rs) : '';
   const inHead = e && (OPT !== 'w2');
   return `<li class="entry" aria-labelledby="hw-${n}">
     <div class="eh${inHead ? ' has-wk' : ''}${r ? '' : ' no-facts'}">
@@ -216,9 +224,10 @@ function entryHTML(g, n) {
         <dt>Forms</dt><dd>${r.related_count ? `<a class="link" href="#forms" data-forms="${esc(r.lemma)}">${plural(r.related_count, 'other form')}</a>` : '<span class="nil">No other forms</span>'}</dd>
         ${meaning ? `<dt>Meaning</dt><dd class="mean">${esc(meaning)}</dd>` : ''}
       </dl>` : ''}
-      ${inHead ? wkBlock(g, OPT === 'w1' || !r) : ''}
+      ${inHead ? wkBlock(g, OPT === 'w1' || !r, !sensesAfter(g)) : ''}
     </div>
     ${r ? `<ul class="readings" aria-label="Readings under ${esc(r.lemma)}">${g.rs.map((x, i) => readingHTML(x, g, `${n}-${i}`)).join('')}</ul>` : onlyNote}
+    ${sensesAfter(g) ? wkAfter(g) : ''}
     ${e && OPT === 'w2' ? wkPanel(g) : ''}
   </li>`;
 }
@@ -454,8 +463,9 @@ function wgHTML(g, n) {
       <h3 class="hw" lang="ar" dir="rtl">${esc(r ? r.lemma : e.word)}</h3>
       <span class="tags">${tagsHTML(g)}</span>
     </div>
-    ${e && OPT !== 'w2' ? wkBlock(g, OPT === 'w1' || !r) : ''}
+    ${e && OPT !== 'w2' ? wkBlock(g, OPT === 'w1' || !r, !sensesAfter(g)) : ''}
     ${r ? `<ul class="wl">${g.rs.map(li).join('')}</ul>` : onlyNote}
+    ${sensesAfter(g) ? wkAfter(g) : ''}
     ${e && OPT === 'w2' ? wkPanel(g) : ''}
   </section>`;
 }

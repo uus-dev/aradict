@@ -8,7 +8,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Source+Sans+3:wght@400..700&family=Scheherazade+New:wght@400;500;600;700&display=swap">
 <style>
-/* Layout: a short intro, then one row of three equal cards (one on phones). */
+/* Layout: a short intro, then one row of four equal cards (two on tablets, one on phones). */
 :root {
   --bg: #f2f4f6; --card: #ffffff; --fg: #161b22; --muted: #57606b; --line: #dde2e7; --accent: #1f55c2; --tag: #eef2f7;
   --f: "Source Sans 3", system-ui, -apple-system, "Segoe UI", sans-serif;
@@ -17,12 +17,13 @@
 :root[data-theme="dark"] { --bg: #0f1216; --card: #171b21; --fg: #e7eaee; --muted: #a2abb6; --line: #2a3038; --accent: #8db1ff; --tag: #222832; color-scheme: dark }
 * { box-sizing: border-box }
 body { margin: 0; background: var(--bg); color: var(--fg); font: 15px/1.5 var(--f); padding: 28px 16px 40px }
-main { max-width: 64rem; margin: 0 auto }
+main { max-width: 76rem; margin: 0 auto }
 h1 { font-size: 20px; font-weight: 600; margin: 0 0 6px; text-wrap: balance }
 .intro { color: var(--muted); max-width: 72ch; margin: 0 0 24px }
 [lang="ar"] { font-family: "Scheherazade New", serif; font-size: 1.25em; line-height: 1 }
-.grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px }
-@media (max-width: 820px) { .grid { grid-template-columns: minmax(0, 1fr) } }
+.grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px }
+@media (max-width: 1100px) { .grid { grid-template-columns: repeat(2, minmax(0, 1fr)) } }
+@media (max-width: 620px) { .grid { grid-template-columns: minmax(0, 1fr) } }
 .card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; display: flex; flex-direction: column; min-width: 0; overflow: hidden }
 .shot { display: block; aspect-ratio: 390 / 600; overflow: hidden; border-bottom: 1px solid var(--line); background: var(--tag) }
 .shot img { width: 100%; height: auto; display: block }
@@ -45,7 +46,7 @@ ul.try li + li { margin-top: 2px }
 <body>
 <main>
   <h1>Wiktionary content in the M1 layout</h1>
-  <p class="intro">Three ways to add English Wiktionary entries to the chosen M1 Cloth Tab design. They differ mainly in where Wiktionary's numbered senses sit relative to the core dictionary's meaning for each reading. Everything else is shared: plurals, gender, verbal nouns, pronunciation, homographs, Wiktionary-only words, the filled root letter and the credit. The bar at the bottom of each design switches option, screen and theme.</p>
+  <p class="intro">Ways to add English Wiktionary entries to the chosen M1 Cloth Tab design. W4 was added after review: it is W1 with the readings first, because a reading says what the word you typed means. They differ mainly in where Wiktionary's numbered senses sit relative to the core dictionary's meaning for each reading. Everything else is shared: plurals, gender, verbal nouns, pronunciation, homographs, Wiktionary-only words, the filled root letter and the credit. The bar at the bottom of each design switches option, screen and theme.</p>
 
   <div class="grid">
     <article class="card">
@@ -72,6 +73,14 @@ ul.try li + li { margin-top: 2px }
         <div class="name"><h2>W3 · Meanings beside each reading</h2><span class="tag">senses on demand</span></div>
         <p class="idea">Each reading gets a "5 meanings" button next to Word parts that opens Wiktionary's numbered meanings under it. Forms and pronunciation stay in the head. Most compact, but readings of one headword repeat the same list.</p>
         <div class="actions"><a class="open" href="w3.html">Open design</a><a href="w3-desk.png">Desktop</a><a href="w3-phone-dark.png">Phone, dark</a><a href="w3-desk-dark.png">Desktop, dark</a></div>
+      </div>
+    </article>
+    <article class="card">
+      <a class="shot" href="w4.html" aria-label="Open W4"><img src="w4-phone.png" alt="W4 on a phone: the entry for كتاب with its reading right after the head, and all meanings below"></a>
+      <div class="body">
+        <div class="name"><h2>W4 · W1, readings first</h2><span class="tag">senses after readings</span></div>
+        <p class="idea">W1's labelled rows for plural, gender, verbal nouns and pronunciation stay in the head. Next comes what the word you typed means, with its grammar. Wiktionary's full numbered list follows the readings as "All meanings", with the credit.</p>
+        <div class="actions"><a class="open" href="w4.html">Open design</a><a href="w4-desk.png">Desktop</a><a href="w4-phone-dark.png">Phone, dark</a><a href="w4-desk-dark.png">Desktop, dark</a></div>
       </div>
     </article>
   </div>

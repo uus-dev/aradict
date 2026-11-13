@@ -455,6 +455,11 @@ textarea:focus-visible { outline-offset: 1px; border-color: var(--focus); }
 .credit .link { font-weight: 500; }
 .credit svg { margin-left: 2px; vertical-align: -1px; }
 
+/* W4: all senses after the readings */
+.wk-after { padding: 12px 18px 14px; border-top: 1px solid var(--line); background: var(--leaf); }
+.wk-after .credit { margin-top: 10px; }
+.wg .wk-after { padding: 8px 14px 10px; border-radius: 0 0 9px 9px; }
+
 /* Numbered senses: Wiktionary's own numbering, sub-senses lettered */
 .sn { padding-left: 1.35em; font-size: 15px; line-height: 1.45; color: var(--ink); }
 .sn > li + li { margin-top: 3px; }
