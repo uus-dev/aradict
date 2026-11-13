@@ -8,6 +8,8 @@ import pytest
 from axe_playwright_python.sync_playwright import Axe
 from playwright.sync_api import expect
 
+from aradict.app import dictionary
+
 WCAG = {"runOnly": {"type": "tag", "values": ["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa", "best-practice"]}}
 
 
@@ -44,6 +46,31 @@ def test_pages_pass_axe(base_url, browser, name, width, scheme):
     results = Axe().run(page, options=WCAG)
     context.close()
     assert results.violations_count == 0, results.generate_report()
+
+
+@pytest.fixture
+def wiktionary_url(base_url, fixture_wiktionary):
+    """The server at base_url, reading the fixture Wiktionary dataset for one test."""
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setenv("ARADICT_WIKTIONARY_PATH", str(fixture_wiktionary))
+        dictionary.cache_clear()
+        yield base_url
+        dictionary.cache_clear()
+
+
+@pytest.mark.parametrize("scheme", ["light", "dark"])
+@pytest.mark.parametrize("width", [360, 1280])
+def test_a_root_filled_from_wiktionary_passes_axe(wiktionary_url, browser, width, scheme):
+    # قال's root tab, with و filled in, and the root view of ق و ل.
+    context = browser.new_context(viewport={"width": width, "height": 800}, color_scheme=scheme)
+    page = context.new_page()
+    for params in ({"q": "قال"}, {"q": "قال", "root": "ق.و.ل"}):
+        page.goto(f"{wiktionary_url}/?{urlencode(params)}")
+        expect(page.locator(".fill").first).to_be_visible()
+        results = Axe().run(page, options=WCAG)
+        assert results.violations_count == 0, results.generate_report()
+        assert not scrolls_sideways(page)
+    context.close()
 
 
 def test_the_dark_scheme_follows_the_system_setting(base_url, browser):

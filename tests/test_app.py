@@ -698,3 +698,39 @@ def test_without_the_wiktionary_dataset_entries_show_no_wiktionary_content(clien
     page = client.get("/", params={"q": "كتاب"})
     assert page.status_code == 200 and 'class="entry"' in page.text
     assert "Wiktionary" not in page.text
+
+
+# --- Roots filled from Wiktionary (#26) -----------------------------------------------------------
+
+FILLED = '<span class="fill">و<span class="sr-only" lang="en"> (filled from Wiktionary)</span></span>'
+
+
+def test_an_open_root_letter_wiktionary_fills_is_marked_and_opens_the_full_roots_family(wiktionary_client):
+    # CAMeL leaves قال's root open (ق ◌ ل); of Wiktionary's two قَالَ, its gloss "said" picks "to say", of ق و ل.
+    qal = entries(wiktionary_client.get("/", params={"q": "قال"}).text)[0]
+    assert links(heading(qal)) == {
+        "Root ق و (filled from Wiktionary) ل 7 words": {"q": ["قال"], "root": ["ق.و.ل"]},
+        "all 5 forms of قال": {"q": ["قال"], "related": ["قال"], "pos": ["verb"]},
+    }
+    assert f'<span class="ar" lang="ar" dir="rtl">ق {FILLED} ل</span>' in heading(qal)
+    assert '<a href="https://en.wiktionary.org/wiki/قال#Arabic">From Wiktionary, CC BY-SA 4.0</a>' in qal
+
+
+def test_a_filled_roots_view_lists_its_words_then_the_open_roots_others_with_the_credit(wiktionary_client):
+    lookup = {"q": ["قال"], "root": ["ق.و.ل"]}
+    page = wiktionary_client.get("/", params=lookup).text
+    filled, apart = page.split('<h2 class="rv-sub">')
+    assert text(context(page)).startswith("Root: ق و (filled from Wiktionary) ل")
+    assert "و filled from Wiktionary; the core dictionary has ق ◌ ل" in text(page)
+    assert "5 forms from the root ق و (filled from Wiktionary) ل, 2 more not confirmed" in text(page)
+    # قال's forms are from ق و ل; مَقال is of ق و ل or ق ي ل on Wiktionary, and CAMeL's gloss picks neither.
+    assert column(filled, "Form") == ["قالَ", "قُلْ", "قِيلَ", "يُقال", "يَقُول"]
+    assert set(column(filled, "Root")) == {"ق و (filled from Wiktionary) ل"}
+    assert text(apart).startswith("Also under ق ◌ ل in the core dictionary, letter not confirmed")
+    assert column(apart, "Form") == ["مَقال", "مَقالات"] and set(column(apart, "Root")) == {"ق ◌ ل"}
+    assert '<a href="https://en.wiktionary.org/wiki/قال#Arabic">' in apart  # the credit, linked to the entry
+    assert "From Wiktionary, CC BY-SA 4.0" in text(apart)
+    # Sorting sorts both lists and keeps the root.
+    by_form = wiktionary_client.get("/", params=lookup | {"sort": "-form"}).text
+    assert column(by_form, "Form")[0] == "يَقُول" and headers(by_form)["Form"] == ("descending", lookup)
+    assert column(by_form.split('<h2 class="rv-sub">')[1], "Form") == ["مَقالات", "مَقال"]
