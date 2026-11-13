@@ -1,5 +1,6 @@
 """The accessibility pass (#15): automated axe checks, reflow on a narrow phone, text zoom, and the
-core flows by keyboard alone, in Chromium against a real server on the fixture database."""
+core flows by keyboard alone, in Chromium against a real server on the fixture database, with
+Wiktionary's senses and credit (#22)."""
 
 import re
 from urllib.parse import quote, urlencode
@@ -11,6 +12,11 @@ from playwright.sync_api import expect
 from aradict.app import dictionary
 
 WCAG = {"runOnly": {"type": "tag", "values": ["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa", "best-practice"]}}
+
+
+@pytest.fixture(scope="module")
+def base_url(wiktionary_base_url):
+    return wiktionary_base_url
 
 
 def open_word(page, base_url):
@@ -30,6 +36,9 @@ def open_text(page, base_url):
 PAGES = {
     "word": open_word,
     "text": open_text,
+    # Wiktionary's homographs, one only Wiktionary has, and senses with labels and sub-senses.
+    "homographs": lambda page, base_url: page.goto(f"{base_url}/?q={quote('قال')}"),
+    "labels": lambda page, base_url: page.goto(f"{base_url}/?q={quote('جدة')}"),
     "root": lambda page, base_url: page.goto(f"{base_url}/?{urlencode({'q': 'كتب', 'root': 'ك.ت.ب'})}"),
     "related": lambda page, base_url: page.goto(f"{base_url}/?{urlencode({'q': 'كتاب', 'related': 'كِتاب', 'pos': 'noun'})}"),
     "about": lambda page, base_url: page.goto(f"{base_url}/about"),
@@ -43,6 +52,8 @@ def test_pages_pass_axe(base_url, browser, name, width, scheme):
     context = browser.new_context(viewport={"width": width, "height": 800}, color_scheme=scheme)
     page = context.new_page()
     PAGES[name](page, base_url)
+    if name in ("word", "text", "homographs", "labels"):
+        expect(page.locator(".credit:visible").first).to_contain_text("From Wiktionary")  # its content is checked too
     results = Axe().run(page, options=WCAG)
     context.close()
     assert results.violations_count == 0, results.generate_report()
@@ -147,7 +158,7 @@ TIGHT = """() => [...document.querySelectorAll('[lang="ar"]')].filter(e => e.che
 }).map(e => e.outerHTML.slice(0, 80))"""
 
 
-@pytest.mark.parametrize("name", ["word", "text", "root", "about"])
+@pytest.mark.parametrize("name", ["word", "text", "homographs", "labels", "root", "about"])
 def test_text_zoomed_to_200_percent_stays_usable(base_url, browser, name):
     # A 1280 × 800 window zoomed to 200% lays the page out in 640 × 400 CSS pixels.
     context = browser.new_context(viewport={"width": 640, "height": 400}, device_scale_factor=2)

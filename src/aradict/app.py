@@ -88,7 +88,7 @@ def word(
         elif root is not None:
             rows = dictionary().root_family(root)
             filled = dict.fromkeys((r.lemma, r.pos) for r in rows if r.root == opened(root) != root)  # the lemmas Wiktionary filled to it, in order
-            sources = {e.url: lemma for lemma, pos in filled for e in dictionary().wiktionary(lemma, pos)}
+            sources = {e.url: lemma for lemma, pos in filled for e in dictionary().wiktionary(lemma, pos).entries}
             state = views.root_view(root, rows, lookup, sort, dictionary().unconfirmed(root), [(lemma, url) for url, lemma in sources.items()])
         elif related is not None:
             state = views.related_view(related, pos, dictionary().related(related, pos), lookup, sort)
@@ -99,13 +99,18 @@ def word(
         else:
             found = dictionary().lookup(q, english, filter_diacritics)
             lemmas = {(r.lemma, r.pos) for r in found.readings}
+            joins = {lemma: dictionary().wiktionary(*lemma) for lemma in lemmas}
             roots = {(r.lemma, r.pos, r.root) for r in found.readings if r.root}
             filled = {root: full for root in roots if (full := dictionary().filled_root(*root))}
+            # The roots of the readings, filled where Wiktionary can, and of Wiktionary's homographs shown on their own.
+            counted = {filled.get(root, root[2]) for root in roots} | {
+                e.root.replace(" ", ".") for join in joins.values() if join.joined for e in join.entries if e is not join.joined and e.root
+            }
             links = views.Links(
                 lookup,
                 {lemma: len(dictionary().related(*lemma)) for lemma in lemmas},
-                {root: dictionary().family_size(root) for root in {filled.get(root, root[2]) for root in roots}},
-                {lemma: dictionary().wiktionary(*lemma) for lemma in lemmas},
+                {root: dictionary().family_size(root) for root in counted},
+                joins,
                 filled,
             )
             state = views.looked_up_en(found, links) if english else views.looked_up(q, found, links)
@@ -132,7 +137,14 @@ def _analyse(text: str, hx_request: str | None = None) -> HTMLResponse:
         state = views.State(f"Your text has {len(text):,} characters. Analyse at most {views.MAX_TEXT:,} at a time: shorten it and try again.")
     else:
         try:
-            state = views.analysed(dictionary().analyze_text(text))
+            tokens = dictionary().analyze_text(text)
+            lemmas = {(r.lemma, r.pos) for t in tokens for r in t.readings}
+            roots = {(r.lemma, r.pos, r.root) for t in tokens for r in t.readings if r.root}
+            state = views.analysed(
+                tokens,
+                {lemma: dictionary().wiktionary(*lemma) for lemma in lemmas},
+                {root: full for root in roots if (full := dictionary().filled_root(*root))},
+            )
         except Exception as error:
             _log_failure("Text analysis failed", error)
             state, status_code = views.TEXT_FAILURE, 500

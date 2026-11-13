@@ -22,6 +22,7 @@ def make_fixture(source: Path, target: Path, lemmas: frozenset[str] = LEMMAS) ->
     with closing(sqlite3.connect(target)) as db:
         db.execute("ATTACH ? AS real", (str(source),))
         db.execute(f"CREATE TABLE entry AS SELECT * FROM real.entry WHERE letters IN ({', '.join('?' * len(keys))}) ORDER BY rowid", keys)
+        db.execute(f"PRAGMA user_version = {db.execute('PRAGMA real.user_version').fetchone()[0]}")  # the build that wrote it
         db.commit()
     return target
 

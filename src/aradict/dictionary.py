@@ -306,7 +306,8 @@ def _english_index(stems) -> dict[str, tuple[tuple[str, str, str, str], ...]]:
 def _says(entry: wiktionary.Entry, pos: str) -> set[str]:
     """What a Wiktionary entry's senses say, as the English keys a CAMeL gloss is found by:
     "To say, to tell [with لِ]" says say, said, says, tell, told, tells."""
-    parts = [part.strip().rstrip(".").lower() for sense in entry.senses for gloss in sense for part in re.split("[,;]", BRACKETED.sub("", gloss))]
+    glosses = [s.gloss for sense in entry.senses for s in (sense, *sense.subsenses)]
+    parts = [part.strip().rstrip(".").lower() for gloss in glosses for part in re.split("[,;]", BRACKETED.sub("", gloss))]
     return _english_keys(";".join(part.removeprefix("to ") if pos == "verb" else part for part in parts), pos)
 
 
@@ -360,21 +361,31 @@ class Dictionary:
         self._frequencies = sorted(logprob for logprob in lemmas.values() if logprob > NO_FREQUENCY)
         self._english = _english_index(analysis for stems in self._db.stem_hash.values() for _, analysis in stems)
         self._wiktionary = wiktionary_path if wiktionary_path and wiktionary_path.is_file() else None
+        if self._wiktionary:
+            wiktionary.check(self._wiktionary)
         self._fills: dict[tuple[str, str, str], str | None] = {}
 
-    def wiktionary(self, lemma: str, pos: str) -> list[wiktionary.Entry]:
-        """A lemma's Wiktionary entries for this part of speech: several when Wiktionary has
-        homographs from different etymologies. [] for a lemma Wiktionary doesn't have, or with no dataset."""
+    def wiktionary(self, lemma: str, pos: str) -> wiktionary.Join:
+        """A lemma's Wiktionary entries for this part of speech, several when Wiktionary has homographs
+        from different etymologies, and the one joined to the lemma: its only entry, or the one
+        homograph CAMeL's glosses pick (see picked). No entries for a lemma Wiktionary doesn't have,
+        or with no dataset."""
+        found = self._entries(lemma, pos)
+        picked = found if len(found) < 2 else self.picked(lemma, pos, entries=found)
+        return wiktionary.Join(found, picked[0] if len(picked) == 1 else None)
+
+    def _entries(self, lemma: str, pos: str) -> list[wiktionary.Entry]:
         return wiktionary.entries(self._wiktionary, lemma, pos) if self._wiktionary else []
 
-    def picked(self, lemma: str, pos: str, root: str | None = None) -> list[wiktionary.Entry]:
+    def picked(self, lemma: str, pos: str, root: str | None = None, entries: list[wiktionary.Entry] | None = None) -> list[wiktionary.Entry]:
         """Of a lemma's Wiktionary homographs, the ones CAMeL's own glosses pick: each entry with a
         sense that says what one of the lemma's glosses says, in Wiktionary's order. "said" picks
         قَالَ "to say" over قَالَ "to nap". [] when one of the glosses is said by none of them: the
         lemma may then be another word, or join two (CAMeL's هال "frighten" and "pour" are two of
         Wiktionary's). With root, only the glosses of the lemma's stems under it count. A passive's
-        gloss ("be said") isn't compared: its active verb's is."""
-        entries = self.wiktionary(lemma, pos)
+        gloss ("be said") isn't compared: its active verb's is. Takes the lemma's entries if given.
+        The one rule for homographs: it decides the entry a lemma joins (wiktionary) and the root that fills its own."""
+        entries = self._entries(lemma, pos) if entries is None else entries
         says = [_says(e, pos) for e in entries]
         glosses = {f["gloss"] for _, f in self._lemma_stems.get((lemma, pos), {}).values() if f.get("vox") != "p" and root in (None, f.get("root"))}
         picked: set[int] = set()
@@ -388,9 +399,10 @@ class Dictionary:
     def wiktionary_root(self, lemma: str, pos: str, root: str | None = None) -> str | None:
         """The root Wiktionary gives a lemma, "ق.و.ل": the one all its entries give, or else the one
         all the entries CAMeL's gloss picks give (see picked). None if they give none, or several."""
-        roots = {e.root for e in self.wiktionary(lemma, pos)}
+        entries = self._entries(lemma, pos)
+        roots = {e.root for e in entries}
         if len(roots) > 1:
-            roots = {e.root for e in self.picked(lemma, pos, root)}
+            roots = {e.root for e in self.picked(lemma, pos, root, entries)}
         full = roots.pop() if len(roots) == 1 else None
         return full and full.replace(" ", ".")
 

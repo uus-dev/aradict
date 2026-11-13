@@ -190,7 +190,8 @@ a.root-tab:hover .rt-go { background: none; text-decoration-thickness: 2px }
 .pct { font-size: .875rem; color: var(--ink-3) }
 
 /* Readings: the form on the right, its meaning and grammar labelled on the left, its parts on demand below. */
-.readings { margin: 0; padding: 0; list-style: none; background: var(--tray); border: 1px solid var(--line); border-radius: 0 0 12px 12px; box-shadow: var(--shadow) }
+.readings { margin: 0; padding: 0; list-style: none; background: var(--tray); border: 1px solid var(--line); box-shadow: var(--shadow) }
+.entry > :last-child { border-end-start-radius: 12px; border-end-end-radius: 12px }
 .reading + .reading { border-block-start: 1px solid var(--line) }
 .rd { display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "facts form" "facts btn" "parts parts"; grid-template-rows: auto 1fr auto; column-gap: 28px; padding: 12px 18px 14px }
 .rd + .rd { border-block-start: 1px dashed var(--line-2) }
@@ -225,6 +226,26 @@ a.root-tab:hover .rt-go { background: none; text-decoration-thickness: 2px }
 .chip.prefix :is(.ar, .kind) { color: var(--pre) }
 .chip.suffix :is(.ar, .kind) { color: var(--suf) }
 .note { margin: 8px 0 0; font-size: .8125rem; color: var(--ink-2) }
+
+/* Everything about the headword, after its readings (#21, design W5): Wiktionary's numbered senses,
+   the other forms, then the credit. A homograph only Wiktionary has goes from its headword to its senses. */
+.about-hw { padding: 12px 18px 14px; background: var(--leaf); border: 1px solid var(--line); border-block-start: 0; box-shadow: var(--shadow) }
+.head + .about-hw { border-block-start: 1px solid var(--line) }
+.facts .wide > .badge { margin-block-end: 4px }
+.senses { margin: 0; padding-inline-start: 1.35em; font-size: .9375rem; line-height: 1.45; color: var(--ink) }
+.senses > li + li { margin-block-start: 3px }
+.senses li::marker { color: var(--ink-3); font-size: .84375rem; font-weight: 600 }
+.senses .senses { margin-block-start: 2px; color: var(--ink-2) }
+.senses .senses > li + li { margin-block-start: 1px }
+.senses .ar { font-size: 1.2em }
+/* Wiktionary's labels for a sense, "obsolete" or "transitive", each in a small box. */
+.qualifier { display: inline-block; margin-inline-end: 5px; padding-inline: 6px; border: 1px solid var(--line-2); border-radius: 4px; background: var(--leaf); font-size: .75rem; line-height: 1.125rem; color: var(--ink-2); white-space: nowrap }
+.about-hw .credit { margin: 10px 0 0; font-size: .8125rem; line-height: 1.45; color: var(--ink-3) }
+.credit a { font-weight: 500 }
+.about-hw .credit .ar { font-size: 1.25em }
+.credit svg { margin-inline-start: 2px; vertical-align: -1px }
+.badge.only { border-style: dashed; border-color: var(--edge); color: var(--ink-2); font-weight: 500 }
+.only-note { margin: 0; padding: 9px 18px 10px; background: var(--tray); border: 1px solid var(--line); border-block-start: 0; font-size: .84375rem; color: var(--ink-2) }
 
 /* Root and related forms: a cloth chip that says which, then a table. On a phone each row stacks its cells, each with its column's name. */
 .context { display: inline-flex; align-items: center; gap: 8px; margin: 14px 0 10px; padding-block: 4px; padding-inline: 12px 4px; border-radius: 8px; background: var(--cloth); color: var(--gilt-2); box-shadow: inset 0 0 0 1px var(--fillet); font: 600 .8125rem/1 var(--f-ui) }
@@ -304,7 +325,10 @@ a.root-tab:hover .rt-go { background: none; text-decoration-thickness: 2px }
 /* Inside the details each entry is brief: the headword and its badges, then each reading's meaning and grammar beside its form. */
 .tok-pop .entries { gap: 10px }
 .tok-pop .entry .head { grid-template-columns: minmax(0, 1fr); grid-template-areas: "lemma"; padding: 4px 14px; border-radius: 10px 10px 0 0 }
-.tok-pop .readings { border-radius: 0 0 10px 10px; background: var(--leaf) }
+.tok-pop .readings { background: var(--leaf) }
+.tok-pop .entry > :last-child { border-end-start-radius: 10px; border-end-end-radius: 10px }
+.tok-pop :is(.about-hw, .only-note) { padding: 8px 14px 10px }
+.tok-pop .senses { font-size: .90625rem }
 .tok-pop .lemma { justify-content: space-between }
 .tok-pop .lemma .ar { font-size: 1.5625rem }
 .tok-pop .tabs { padding-inline: 12px }
@@ -361,6 +385,9 @@ a.root-tab:hover .rt-go { background: none; text-decoration-thickness: 2px }
   .lemma { justify-content: space-between }
   .lemma .ar { font-size: 1.75rem }
   .tabs { padding-inline: 14px }
+  :is(.about-hw, .only-note) { padding-inline: 14px }
+  /* Senses take the width under their label, so sub-senses don't squeeze into the value column. */
+  .facts .wide { grid-column: 1 / -1; margin-block-start: -4px }
   .rd { grid-template-areas: "btn form" "facts facts" "parts parts"; grid-template-rows: auto; column-gap: 14px; padding: 8px 14px 14px }
   .rd .form { font-size: 1.5rem }
   @supports selector(::details-content) {

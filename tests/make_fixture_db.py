@@ -9,17 +9,24 @@ from __future__ import annotations
 
 import re
 import sys
+import unicodedata
 from pathlib import Path
 
 # Enough for the reference words كتب, وبكتابهم, سيكتبون and استخدم, مدرستي's shared letter,
 # a root with an unresolved radical (قال, and مَقال, which Wiktionary can't resolve), a verb with no usable root or measure (لَيْسَ),
 # forms that share a gloss (سابقي: "my former" as singular, dual and plural), سِفْر, the
 # other Arabic word for English "book", آر, at the database's lowest frequency, and إِجارَة, whose two
-# senses are stored under two roots.
-LEMMAS = frozenset({"كَتَب", "كِتاب", "كاتِب", "كُتّاب", "أَكْتَب", "مَدْرَسَة", "ٱِسْتَخْدَم", "قال", "مَقال", "لَيْسَ", "سابِق", "سِفْر", "آر", "إِجارَة"})
+# senses are stored under two roots. For the Wiktionary layer: جِدَّة, whose senses Wiktionary labels
+# obsolete and which has a homograph, and جَزْر, whose gloss has a meaning of each of its two homographs.
+LEMMAS = frozenset({
+    "كَتَب", "كِتاب", "كاتِب", "كُتّاب", "أَكْتَب", "مَدْرَسَة", "ٱِسْتَخْدَم", "قال", "مَقال", "لَيْسَ", "سابِق", "سِفْر", "آر", "إِجارَة",
+    "جِدَّة", "جَزْر",
+})
 
 
 def make_fixture(source: Path, target: Path, lemmas: frozenset[str] = LEMMAS) -> Path:
+    # The database may order a letter's marks otherwise than they are typed here.
+    lemmas = {unicodedata.normalize("NFC", lemma) for lemma in lemmas}
     section = None
     with source.open(encoding="utf-8") as src, target.open("w", encoding="utf-8") as out:
         for line in src:
@@ -28,7 +35,7 @@ def make_fixture(source: Path, target: Path, lemmas: frozenset[str] = LEMMAS) ->
             elif section == "###STEMS###" and line.strip():
                 lex = re.search(r"(?:^|\s)lex:(\S+)", line)
                 # Stored lemmas carry a sense suffix (كَتَب-u_1); the analyzer reports them without it.
-                if not lex or re.split(r"[-_]", lex.group(1))[0] not in lemmas:
+                if not lex or unicodedata.normalize("NFC", re.split(r"[-_]", lex.group(1))[0]) not in lemmas:
                     continue
             out.write(line)
     return target

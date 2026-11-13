@@ -126,7 +126,7 @@ def root_fills(d: Dictionary, db) -> Counter:
     stems, _, _, _ = inventory(db)
     found: Counter = Counter()
     for lemma, pos, root in {(f["lex"], f["pos"], f["root"]) for f in stems if ROOT.fullmatch(f.get("root", "")) and "#" in f["root"]}:
-        entries = d.wiktionary(lemma, pos)
+        entries = d.wiktionary(lemma, pos).entries
         roots = {e.root for e in entries}
         if d.filled_root(lemma, pos, root):
             found["filled: the gloss picks" if len(roots) > 1 else "filled: the entries agree"] += 1

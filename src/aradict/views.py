@@ -9,9 +9,10 @@ from urllib.parse import urlencode
 
 from htpy import Element, Node, a, blockquote, body, br, button, caption, code, dd, details, div, dl, dt, form, fragment, h1, h2, h3, head, header, html, i, input, label, li, link, main, meta, nav, ol, p, path, rect, script, section, span, summary, svg, table, tbody, td, template, textarea, th, thead, title, tr, ul
 
+from . import wiktionary
 from .dictionary import MEASURES, Lookup, Reading, Segment, Token, alphabetical, opened
 from .readable import OBJECT, POS, POSSESSIVE
-from .wiktionary import Entry as WiktionaryEntry
+from .wiktionary import Entry as WiktionaryEntry, Join, Sense
 
 ARABIC = re.compile("[\u0600-\u06ff]")  # Arabic script
 ARABIC_RUN = re.compile("([\u0600-\u06ff]+(?:\\s+[\u0600-\u06ff]+)*)")  # Arabic words, with the spaces between them
@@ -70,11 +71,15 @@ def _measure(r: Reading) -> str | None:
     return (r.measure or "unavailable") if r.pos == "verb" else None
 
 
-def _badges(r: Reading) -> Node:
-    """The part of speech, and a verb's measure, each in its own box."""
+def _badges(r: Reading, homograph: int | None = None) -> Node:
+    """The part of speech, a verb's measure and which of Wiktionary's homographs it is, each in its own box."""
     measure = _measure(r)
     badge = measure and (span(class_="badge measure")[f"Measure {measure}"] if r.measure else span(class_="badge measure na")[f"measure {measure}"])
-    return p(class_="pos")[span(class_="badge")[r.tags[0]], badge and [" ", badge]]
+    return p(class_="pos")[span(class_="badge")[r.tags[0]], badge and [" ", badge], homograph and [" ", _homograph(homograph)]]
+
+
+def _homograph(number: int) -> Node:
+    return span(class_="badge measure")[f"Homograph {number}"]
 
 
 def _how_common(top_percent: float | None) -> Node:
@@ -154,7 +159,7 @@ class Links(NamedTuple):
     lookup: dict[str, str]
     form_counts: dict[tuple[str, str], int]
     root_counts: dict[str, int]
-    wiktionary: dict[tuple[str, str], list[WiktionaryEntry]] = {}
+    wiktionary: dict[tuple[str, str], Join] = {}
     filled_roots: dict[tuple[str, str, str], str] = {}
 
 
@@ -162,39 +167,85 @@ def _url(params: dict[str, str]) -> str:
     return f"/?{urlencode(params)}" if params else "/"
 
 
+def _filled(full: str) -> Node:
+    """What Wiktionary fills in a root CAMeL leaves open: "و filled from Wiktionary; the core dictionary has ق ◌ ل"."""
+    open_root = opened(full)
+    letters = " ".join(letter for letter, open_letter in zip(full.split("."), open_root.split(".")) if open_letter == "#")
+    return [ar(letters), " filled from Wiktionary; the core dictionary has ", _root(open_root)]
+
+
 def _root_tab(root: str | None, links: Links | None, full: str | None = None) -> Node:
     """The root, on a tab above its entry, with any letter Wiktionary fills in (full). With links it
     opens the root's words and says how many there are, or just "words" where they weren't counted."""
     label = [span(class_="rt-k")["Root"], " ", _root(root, full)]
-    if not (links and root):
+    count = links and links.root_counts.get(full or root)
+    if not (links and root) or count == 0:  # none: a root from Wiktionary that the dictionary has no word from
         return span(class_="root-tab" if root else "root-tab na")[label]
-    count = links.root_counts.get(full or root)
     return a(href=_url(links.lookup | {"root": full or root}), class_="root-tab")[label, " ", span(class_="rt-go")[_n(count, "word") if count else "words"]]
 
 
-def _entry(lemma: str, glosses: dict[str, list[Reading]], heading: Element, links: Links | None, brief: bool) -> Node:
-    """A lemma's heading, said once, then its readings, one result per gloss. With links, the
-    root opens the root's words, a lemma with more than one form links to all of them, and the
-    lemma's Wiktionary senses follow its readings. Brief leaves out how common the lemma is, its forms, and the readings' parts."""
+NO_ENTRIES = Join([], None)
+
+
+def _entry(lemma: str, glosses: dict[str, list[Reading]], heading: Element, links: Links | None, brief: bool, join: Join) -> Node:
+    """A lemma in the order of the #21 design (W5): which word it is (its root, the headword with its
+    part of speech and how common it is), what the typed word means (its readings, one result per
+    gloss), then everything about the headword (Wiktionary's senses, its other forms and the credit).
+    With links, the root opens the root's words and a lemma with more than one form links to all of
+    them. Brief leaves out how common the lemma is, its forms, and the readings' parts."""
     first = next(iter(glosses.values()))[0]
     forms = links.form_counts.get((first.lemma, first.pos), 0) if links else 0
     # A lemma's senses may be stored under different roots (إِجارَة "rent" and "protection"): each is offered.
     roots = list(dict.fromkeys(r.root for group in glosses.values() for r in group if r.root)) or [None]
+    # Homographs are numbered as they are shown: the one joined to the lemma first, the others after
+    # every entry; those it keeps all go in Wiktionary's order.
+    homographs = len(join.entries) > 1
+    fills = {root: links and links.filled_roots.get((first.lemma, first.pos, root)) for root in roots}
     return section(class_="entry")[
-        div(class_="tabs")[(_root_tab(root, links, links and links.filled_roots.get((first.lemma, first.pos, root))) for root in roots)],
+        div(class_="tabs")[(_root_tab(root, links, full) for root, full in fills.items())],
         div(class_="head")[
-            div(class_="lemma")[heading[ar(lemma)], _badges(first)],
-            not brief and dl(class_="facts")[
-                dt["Frequency"], dd(class_="freq")[_how_common(first.top_percent)],
-                dt["Forms"], dd[
-                    a(href=_url(links.lookup | {"related": first.lemma, "pos": first.pos}))[f"all {forms} forms", span(class_="sr-only")[" of ", ar(lemma)]]
-                    if forms > 1 else span(class_="nil")["No other forms"]
-                ],
-            ],
+            div(class_="lemma")[heading[ar(lemma)], _badges(first, 1 if homographs and join.joined else None)],
+            not brief and dl(class_="facts")[dt["Frequency"], dd(class_="freq")[_how_common(first.top_percent)]],
         ],
         ul(class_="readings")[(_reading(group, brief) for group in glosses.values())],
-        links and _wiktionary(links.wiktionary.get((first.lemma, first.pos), ())),
+        _about([join.joined] if join.joined else join.entries, homographs and not join.joined, [
+            *([] if brief else [[dt["Forms"], dd[
+                a(href=_url(links.lookup | {"related": first.lemma, "pos": first.pos}))[f"all {forms} forms", span(class_="sr-only")[" of ", ar(lemma)]]
+                if forms > 1 else span(class_="nil")["No other forms"]
+            ]]]),
+            *([dt["Root"], dd[_filled(full)]] for full in fills.values() if full),
+        ]),
     ]
+
+
+def _wiktionary_only(entry: WiktionaryEntry, number: int, heading: Element, links: Links | None) -> Node:
+    """A homograph of a lemma that Wiktionary has and the dictionary doesn't (قَالَ "to nap" beside
+    قَالَ "to say"). Its headword line goes straight to its meanings."""
+    root = entry.root and entry.root.replace(" ", ".")  # Wiktionary spells it ق ي ل, the dictionary ق.ي.ل
+    pos = POS.get(next((camel for camel, name in wiktionary.POS.items() if name == entry.pos), entry.pos), entry.pos)
+    return section(class_="entry")[
+        root and div(class_="tabs")[_root_tab(root, links)],
+        div(class_="head")[div(class_="lemma")[
+            heading[ar(entry.word)],
+            p(class_="pos")[span(class_="badge")[pos], " ", _homograph(number), " ", span(class_="badge only")["Wiktionary only"]],
+        ]],
+        _about([entry]),
+        p(class_="only-note")["Only in Wiktionary: no frequency, measure or word parts."],
+    ]
+
+
+def _about(entries: list[WiktionaryEntry], numbered: bool = False, rows: list = ()) -> Node:
+    """Everything about the headword after its readings: each Wiktionary entry's senses, numbered as
+    homographs where the lemma keeps several, then rows (its other forms, a root Wiktionary fills)
+    and the credit."""
+    # ponytail: one row per fact; #23 adds plural, gender, verbal nouns, relations and regional pronunciations.
+    meanings = [
+        [dt["Meanings"], dd(class_="wide")[numbered and [_homograph(n), " "], _senses(e.senses)]]
+        for n, e in enumerate(entries, 1)
+    ]
+    if not (meanings or rows):
+        return None
+    return div(class_="about-hw")[dl(class_="facts")[meanings, rows], entries and _credit(entries)]
 
 
 def _english(text: str) -> Node:
@@ -202,15 +253,36 @@ def _english(text: str) -> Node:
     return [ar(part) if i % 2 else part for i, part in enumerate(ARABIC_RUN.split(text))]
 
 
-def _wiktionary(entries: Iterable[WiktionaryEntry]) -> Node:
-    """Each Wiktionary entry's senses, numbered, with its credit linked to the source entry."""
-    # ponytail: a plain list in the notice style; the design (#21) places the senses, and #22 applies it.
-    return [
-        div(class_="notice wiktionary")[
-            ol(class_="senses")[(li[_english(": ".join(sense))] for sense in entry.senses)],
-            p[a(href=entry.url)["From Wiktionary, CC BY-SA 4.0"]],
+def _senses(senses: Iterable[Sense], lettered: bool = False) -> Node:
+    """Wiktionary's senses, numbered, each with its labels in small boxes and its sub-senses lettered."""
+    return ol(class_="senses", type="a" if lettered else None)[(
+        li[
+            (span(class_="qualifier")[label[:1].upper() + label[1:]] for label in s.labels),
+            s.labels and span(class_="sr-only")[": "],
+            _english(s.gloss),
+            s.subsenses and _senses(s.subsenses, True),
         ]
-        for entry in entries
+        for s in senses
+    )]
+
+
+LICENCE = "https://creativecommons.org/licenses/by-sa/4.0/"
+EXTERNAL = svg(width="11", height="11", viewBox="0 0 12 12", aria_hidden="true")[
+    path(d="M5 2.5H2.5v7h7V7M7 2.5h2.5V5M9.5 2.5 5.5 6.5", fill="none", stroke="currentColor", stroke_width="1.3", stroke_linecap="round", stroke_linejoin="round")
+]
+
+
+def _credit(entries: Iterable[WiktionaryEntry]) -> Node:
+    """Wiktionary's credit (PRD, Wiktionary layer): its licence and the entries the senses come from,
+    which open in a new tab, so the lookup stays."""
+    pages = {e.url: e.page for e in entries}  # homographs share their page
+    return p(class_="credit")[
+        "From Wiktionary, ", a(href=LICENCE, target="_blank", rel="noopener")["CC BY-SA 4.0", span(class_="sr-only")[", opens in a new tab"]],
+        " · ", "Entries: " if len(pages) > 1 else "Entry: ",
+        [
+            [", " if i else None, a(href=url, target="_blank", rel="noopener")[ar(page), span(class_="sr-only")[" on Wiktionary, opens in a new tab"], EXTERNAL]]
+            for i, (url, page) in enumerate(pages.items())
+        ],
     ]
 
 
@@ -225,12 +297,23 @@ def _n(count: int, noun: str) -> str:
     return f"{count} {noun}{'s' if count != 1 else ''}"
 
 
-def _entries(readings: Iterable[Reading], heading: Element = h2, links: Links | None = None, brief: bool = False) -> Node:
-    """One entry per lemma and part of speech, in the order the readings arrive."""
+def _entries(readings: Iterable[Reading], heading: Element = h2, links: Links | None = None, brief: bool = False, homographs: bool = True) -> Node:
+    """One entry per lemma and part of speech, in the order the readings arrive. Then, unless
+    homographs is false, Wiktionary's homographs that a gloss told apart from the lemma, once each."""
     groups: dict[tuple[str, str], dict[str, list[Reading]]] = {}
     for reading in readings:
         groups.setdefault((reading.lemma, reading.pos), {}).setdefault(reading.gloss, []).append(reading)
-    return div(class_="entries")[(_entry(lemma, glosses, heading, links, brief) for (lemma, _), glosses in groups.items())]
+    joins = {key: links.wiktionary.get(key, NO_ENTRIES) if links else NO_ENTRIES for key in groups}
+    shown = [e for join in joins.values() for e in ([join.joined] if join.joined else join.entries)]
+    apart: list[tuple[WiktionaryEntry, int]] = []
+    for join in joins.values():
+        if homographs and join.joined:
+            others = [e for e in join.entries if e is not join.joined]
+            apart += [(e, n) for n, e in enumerate(others, 2) if e not in shown and e not in (other for other, _ in apart)]
+    return div(class_="entries")[
+        (_entry(lemma, glosses, heading, links, brief, joins[lemma, pos]) for (lemma, pos), glosses in groups.items()),
+        (_wiktionary_only(e, n, heading, links) for e, n in apart),
+    ]
 
 
 def _intro() -> Node:
@@ -307,7 +390,7 @@ def looked_up_en(found: Lookup, links: Links | None = None) -> State:
     their root and related forms with links."""
     query = found.query
     if found.readings:
-        return State(f"{_n(len(found.readings), 'Arabic word')} for “{query}”", [COVERAGE, _entries(found.readings, h2, links)])
+        return State(f"{_n(len(found.readings), 'Arabic word')} for “{query}”", [COVERAGE, _entries(found.readings, h2, links, homographs=False)])
     # Arabic typed here is meant the other way round, so switching direction keeps it.
     arabic = bool(ARABIC.search(query))
     back = f"/?{urlencode({'q': query})}" if arabic else "/"
@@ -416,11 +499,10 @@ def root_view(
         return State(status, [_context("Root", _root(root), lookup), _table(rows, status, view, sort)])
     name = _root(open_root, root)
     status = [f"{_forms(rows)} from the root ", name, unconfirmed and f", {len(unconfirmed)} more not confirmed"]
-    filled = " ".join(letter for letter, open_letter in zip(root.split("."), open_root.split(".")) if open_letter == "#")
     apart = ["Also under ", _root(open_root), " in the core dictionary, ", "letters" if open_root.count("#") > 1 else "letter", " not confirmed"]
     return State(status, [
         _context("Root", name, lookup),
-        p(class_="filled")[ar(filled), " filled from Wiktionary; the core dictionary has ", _root(open_root)],
+        p(class_="filled")[_filled(root)],
         _table(rows, status, view, sort, root),
         unconfirmed and [h2(class_="rv-sub")[apart], _table(unconfirmed, apart, view, sort)],
         p(class_="credit")[
@@ -532,7 +614,7 @@ def _token(t: Token, ids: dict[str, str]) -> Node:
     ]
 
 
-def _details(t: Token, id: str) -> Node:
+def _details(t: Token, id: str, joins: dict[tuple[str, str], Join], filled: dict[tuple[str, str, str], str]) -> Node:
     """A word's readings, grouped by lemma as on the Word page, in a native popover. Each root links
     to its words, and the root view returns to the word's lookup."""
     return div(id=id, class_="tok-pop", popover=True, role="dialog", aria_labelledby=f"{id}-h")[
@@ -541,7 +623,7 @@ def _details(t: Token, id: str) -> Node:
             p[_n(len(t.readings), "reading") if t.readings else "not in the dictionary"],
         ],
         div(class_="tp-body")[
-            _entries(t.readings, h3, Links({"q": t.text}, {}, {}), brief=True) if t.readings else p(class_="tp-msg")[
+            _entries(t.readings, h3, Links({"q": t.text}, {}, {}, joins, filled), brief=True) if t.readings else p(class_="tp-msg")[
                 "AraDict couldn't find this word in its Modern Standard Arabic dictionary."
             ],
         ],
@@ -552,7 +634,7 @@ def _details(t: Token, id: str) -> Node:
     ]
 
 
-def analysed(tokens: list[Token]) -> State:
+def analysed(tokens: list[Token], joins: dict[tuple[str, str], Join] = {}, filled: dict[tuple[str, str, str], str] = {}) -> State:
     """The passage as typed, each word opening its details. A word written twice opens the same
     details. The roots there link without a word count: counting a root's words the first time
     takes about 27 ms, too slow for every root of a long passage."""
@@ -572,7 +654,7 @@ def analysed(tokens: list[Token]) -> State:
             # The passage keeps its spaces and line breaks (white-space: pre-wrap).
             div(class_="passage", lang="ar", dir="rtl")[(_token(t, ids) for t in tokens)],
         ],
-        (_details(t, ids[word]) for word, t in words.items()),
+        (_details(t, ids[word], joins, filled) for word, t in words.items()),
     ])
 
 
