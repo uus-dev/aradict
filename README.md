@@ -26,6 +26,8 @@ To build from a copy you already downloaded, pass its path: `uv run python -m ar
 
 kaikki.org replaces the extraction at the same URL when it publishes a new one. The build then stops and says how to move the pin in `src/aradict/wiktionary.py`.
 
+When a new version of AraDict keeps more from the extraction, the app refuses a dataset an older version built and says so at startup. Run the same command again to rebuild it.
+
 ## Test
 
 ```sh

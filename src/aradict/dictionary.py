@@ -342,11 +342,15 @@ class Dictionary:
         self._frequencies = sorted(logprob for logprob in lemmas.values() if logprob > NO_FREQUENCY)
         self._english = _english_index(analysis for stems in self._db.stem_hash.values() for _, analysis in stems)
         self._wiktionary = wiktionary_path if wiktionary_path and wiktionary_path.is_file() else None
+        if self._wiktionary:
+            wiktionary.check(self._wiktionary)
 
-    def wiktionary(self, lemma: str, pos: str) -> list[wiktionary.Entry]:
-        """A lemma's Wiktionary entries for this part of speech: several when Wiktionary has
-        homographs from different etymologies. [] for a lemma Wiktionary doesn't have, or with no dataset."""
-        return wiktionary.entries(self._wiktionary, lemma, pos) if self._wiktionary else []
+    def wiktionary(self, lemma: str, pos: str) -> wiktionary.Join:
+        """A lemma's Wiktionary entries for this part of speech, several when Wiktionary has homographs
+        from different etymologies, and the one joined to the lemma. No entries for a lemma Wiktionary
+        doesn't have, or with no dataset."""
+        found = wiktionary.entries(self._wiktionary, lemma, pos) if self._wiktionary else []
+        return wiktionary.join(found, (f["gloss"] for _, f in self._lemma_stems.get((lemma, pos), {}).values()))
 
     def measure(self, lemma: str, root: str) -> str | None:
         """A verb's measure: the one template the lemma fits with the root's letters in its

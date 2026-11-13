@@ -96,11 +96,16 @@ def word(
         else:
             found = dictionary().lookup(q, english, filter_diacritics)
             lemmas = {(r.lemma, r.pos) for r in found.readings}
+            joins = {lemma: dictionary().wiktionary(*lemma) for lemma in lemmas}
+            # The roots of the readings, and of Wiktionary's homographs shown on their own.
+            roots = {r.root for r in found.readings if r.root} | {
+                e.root.replace(" ", ".") for join in joins.values() if join.joined for e in join.entries if e is not join.joined and e.root
+            }
             links = views.Links(
                 lookup,
                 {lemma: len(dictionary().related(*lemma)) for lemma in lemmas},
-                {root: dictionary().family_size(root) for root in {r.root for r in found.readings if r.root}},
-                {lemma: dictionary().wiktionary(*lemma) for lemma in lemmas},
+                {root: dictionary().family_size(root) for root in roots},
+                joins,
             )
             state = views.looked_up_en(found, links) if english else views.looked_up(q, found, links)
     except Exception as error:
@@ -126,7 +131,9 @@ def _analyse(text: str, hx_request: str | None = None) -> HTMLResponse:
         state = views.State(f"Your text has {len(text):,} characters. Analyse at most {views.MAX_TEXT:,} at a time: shorten it and try again.")
     else:
         try:
-            state = views.analysed(dictionary().analyze_text(text))
+            tokens = dictionary().analyze_text(text)
+            lemmas = {(r.lemma, r.pos) for t in tokens for r in t.readings}
+            state = views.analysed(tokens, {lemma: dictionary().wiktionary(*lemma) for lemma in lemmas})
         except Exception as error:
             _log_failure("Text analysis failed", error)
             state, status_code = views.TEXT_FAILURE, 500

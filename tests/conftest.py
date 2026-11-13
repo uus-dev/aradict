@@ -1,6 +1,7 @@
 import os
 import threading
 import time
+from contextlib import contextmanager
 from pathlib import Path
 
 import pytest
@@ -76,9 +77,8 @@ def wiktionary_client(fixture_env, fixture_wiktionary):
     dictionary.cache_clear()
 
 
-@pytest.fixture(scope="module")
-def base_url(fixture_env):
-    """A real server on the fixture database, for browser journeys: one per test module."""
+@contextmanager
+def _server():
     server = uvicorn.Server(uvicorn.Config(app, host="127.0.0.1", port=0, log_level="warning"))
     thread = threading.Thread(target=server.run, daemon=True)
     thread.start()
@@ -87,6 +87,24 @@ def base_url(fixture_env):
     yield "http://127.0.0.1:%d" % server.servers[0].sockets[0].getsockname()[1]
     server.should_exit = True
     thread.join(5)
+
+
+@pytest.fixture(scope="module")
+def base_url(fixture_env):
+    """A real server on the fixture database, for browser journeys: one per test module."""
+    with _server() as url:
+        yield url
+
+
+@pytest.fixture(scope="module")
+def wiktionary_base_url(fixture_env, fixture_wiktionary):
+    """A real server on the fixture database and the fixture Wiktionary dataset."""
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setenv("ARADICT_WIKTIONARY_PATH", str(fixture_wiktionary))
+        dictionary.cache_clear()
+        with _server() as url:
+            yield url
+    dictionary.cache_clear()
 
 
 @pytest.fixture(scope="module")
