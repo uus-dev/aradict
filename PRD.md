@@ -314,6 +314,18 @@ Launch as a web application whose home view opens directly on Word lookup, with 
   - From Wiktionary, show numbered senses, plurals and gender, verbal nouns, and transliteration and IPA. Use it to fill unresolved root radicals.
   - Words found only in Wiktionary are looked up through its inflected-form entries. They are shown as entries without the morphology fields the core would provide.
   - Every view that shows Wiktionary content credits it ("From Wiktionary, CC BY-SA 4.0") with a link to the source entry. Adapted Wiktionary text stays under CC BY-SA.
+  - **Presentation** (design W5, chosen in #21): an entry answers its questions in order.
+    1. Which word it is: the root tab, the headword with its part of speech and measure, its transliteration and IPA under it, and its frequency.
+    2. What the typed word means: each reading's meaning, grammar and word parts.
+    3. Everything about the headword:
+       - all its meanings, numbered;
+       - its plural, gender and verbal nouns;
+       - its relations ("verbal noun of …");
+       - its other forms;
+       - regional pronunciations;
+       - the credit.
+    - Token details in the Text view follow the same order, but leave out frequency, other forms and regional pronunciations.
+    - A word only Wiktionary has goes straight from its headword line to its meanings.
   - **Register.** AraDict covers Modern Standard Arabic, as its CAMeL core does. Aratools does too: both are built on the Buckwalter lexicon of MSA news text. Wiktionary also records Classical, obsolete, archaic, rare and dialectal uses. About 4% of its senses carry such a label (2,051 of 47,111 in the pinned extraction), for example كِتاب as an obsolete verbal noun of كَتَبَ, where MSA uses كِتابة.
     - Every sense, form and relation that Wiktionary labels this way is shown with its label, never without it.
     - A label on one side of a relation also shows on the other side: كَتَبَ's list of verbal nouns marks كِتاب as obsolete, too.
