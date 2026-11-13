@@ -303,6 +303,25 @@ def _english_index(stems) -> dict[str, tuple[tuple[str, str, str, str], ...]]:
     return {key: tuple(sorted(found)) for key, found in index.items()}  # sorted: the same order on every run
 
 
+def _says(entry: wiktionary.Entry, pos: str) -> set[str]:
+    """What a Wiktionary entry's senses say, as the English keys a CAMeL gloss is found by:
+    "To say, to tell [with لِ]" says say, said, says, tell, told, tells."""
+    glosses = [s.gloss for sense in entry.senses for s in (sense, *sense.subsenses)]
+    parts = [part.strip().rstrip(".").lower() for gloss in glosses for part in re.split("[,;]", BRACKETED.sub("", gloss))]
+    return _english_keys(";".join(part.removeprefix("to ") if pos == "verb" else part for part in parts), pos)
+
+
+def opened(root: str) -> str:
+    """A root as CAMeL writes it, which always leaves a weak or hamza letter open: "ق.#.ل" for "ق.و.ل"."""
+    return ".".join("#" if letter in WEAK else letter for letter in root.split("."))
+
+
+def fills(root: str, full: str) -> bool:
+    """full ("ق.و.ل") has root's letters, and a weak or hamza letter wherever root leaves one open ("ق.#.ل")."""
+    known, letters = root.split("."), full.split(".")
+    return len(known) == len(letters) and all(k == letter or k == "#" and letter in WEAK for k, letter in zip(known, letters))
+
+
 class Dictionary:
     def __init__(self, db_path: Path, wiktionary_path: Path | None = None):
         """The CAMeL database at db_path, and Wiktionary's entries if a dataset is at wiktionary_path."""
@@ -344,13 +363,59 @@ class Dictionary:
         self._wiktionary = wiktionary_path if wiktionary_path and wiktionary_path.is_file() else None
         if self._wiktionary:
             wiktionary.check(self._wiktionary)
+        self._fills: dict[tuple[str, str, str], str | None] = {}
 
     def wiktionary(self, lemma: str, pos: str) -> wiktionary.Join:
         """A lemma's Wiktionary entries for this part of speech, several when Wiktionary has homographs
-        from different etymologies, and the one joined to the lemma. No entries for a lemma Wiktionary
-        doesn't have, or with no dataset."""
-        found = wiktionary.entries(self._wiktionary, lemma, pos) if self._wiktionary else []
-        return wiktionary.join(found, (f["gloss"] for _, f in self._lemma_stems.get((lemma, pos), {}).values()))
+        from different etymologies, and the one joined to the lemma: its only entry, or the one
+        homograph CAMeL's glosses pick (see picked). No entries for a lemma Wiktionary doesn't have,
+        or with no dataset."""
+        found = self._entries(lemma, pos)
+        picked = found if len(found) < 2 else self.picked(lemma, pos, entries=found)
+        return wiktionary.Join(found, picked[0] if len(picked) == 1 else None)
+
+    def _entries(self, lemma: str, pos: str) -> list[wiktionary.Entry]:
+        return wiktionary.entries(self._wiktionary, lemma, pos) if self._wiktionary else []
+
+    def picked(self, lemma: str, pos: str, root: str | None = None, entries: list[wiktionary.Entry] | None = None) -> list[wiktionary.Entry]:
+        """Of a lemma's Wiktionary homographs, the ones CAMeL's own glosses pick: each entry with a
+        sense that says what one of the lemma's glosses says, in Wiktionary's order. "said" picks
+        قَالَ "to say" over قَالَ "to nap". [] when one of the glosses is said by none of them: the
+        lemma may then be another word, or join two (CAMeL's هال "frighten" and "pour" are two of
+        Wiktionary's). With root, only the glosses of the lemma's stems under it count. A passive's
+        gloss ("be said") isn't compared: its active verb's is. Takes the lemma's entries if given.
+        The one rule for homographs: it decides the entry a lemma joins (wiktionary) and the root that fills its own."""
+        entries = self._entries(lemma, pos) if entries is None else entries
+        says = [_says(e, pos) for e in entries]
+        glosses = {f["gloss"] for _, f in self._lemma_stems.get((lemma, pos), {}).values() if f.get("vox") != "p" and root in (None, f.get("root"))}
+        picked: set[int] = set()
+        for keys in (_english_keys(gloss, pos) for gloss in glosses):
+            saying = {i for i, said in enumerate(says) if keys & said}
+            if not saying:
+                return []
+            picked |= saying
+        return [e for i, e in enumerate(entries) if i in picked]
+
+    def wiktionary_root(self, lemma: str, pos: str, root: str | None = None) -> str | None:
+        """The root Wiktionary gives a lemma, "ق.و.ل": the one all its entries give, or else the one
+        all the entries CAMeL's gloss picks give (see picked). None if they give none, or several."""
+        entries = self._entries(lemma, pos)
+        roots = {e.root for e in entries}
+        if len(roots) > 1:
+            roots = {e.root for e in self.picked(lemma, pos, root, entries)}
+        full = roots.pop() if len(roots) == 1 else None
+        return full and full.replace(" ", ".")
+
+    def filled_root(self, lemma: str, pos: str, root: str) -> str | None:
+        """The lemma's root ("ق.#.ل") with the weak or hamza letters CAMeL leaves open filled from
+        Wiktionary ("ق.و.ل"), where the root Wiktionary gives it (see wiktionary_root) has CAMeL's
+        other letters. None where Wiktionary can't fill it, or disagrees, and for a root with nothing
+        open. Each lemma's is worked out once, then remembered."""
+        # ponytail: unbounded, but CAMeL leaves a letter open in only about 10,500 lemmas' roots.
+        if (lemma, pos, root) not in self._fills:
+            full = "#" in root and self.wiktionary_root(lemma, pos, root)
+            self._fills[lemma, pos, root] = full if full and fills(root, full) else None
+        return self._fills[lemma, pos, root]
 
     def measure(self, lemma: str, root: str) -> str | None:
         """A verb's measure: the one template the lemma fits with the root's letters in its
@@ -476,14 +541,31 @@ class Dictionary:
 
     def root_family(self, root: str) -> list[Reading]:
         """Every form from a root, such as "ك.ت.ب" or, with an unresolved radical, "ق.#.ل", one
-        reading each, in family order."""
-        return self._family(self._root_stems.get(root, ()))
+        reading each, in family order. A root with a weak or hamza letter, which CAMeL always leaves
+        open, has the forms of the lemmas Wiktionary fills to it: "ق.و.ل" has قال's (see filled_root),
+        each still with the root CAMeL gives it."""
+        return self._family([*self._root_stems.get(root, ()), *self._under_open(root)[0]])
+
+    def unconfirmed(self, root: str) -> list[Reading]:
+        """For a root Wiktionary fills to some lemmas ("ق.و.ل"), the forms of the other lemmas still
+        under CAMeL's open root ("ق.#.ل") that Wiktionary can't place: they may be from either
+        root, or from another with those letters. [] for any other root."""
+        return self._family(self._under_open(root)[1])
+
+    def _under_open(self, root: str) -> tuple[list[tuple[str, dict]], list[tuple[str, dict]]]:
+        """The stems under root's open form ("ق.#.ل" for "ق.و.ل"): those of the lemmas Wiktionary
+        fills to root, and, if there are any, those of the lemmas it can't fill."""
+        open_root = opened(root)
+        stems = self._root_stems.get(open_root, []) if open_root != root else []
+        full = {(f["lex"], f["pos"]): self.filled_root(f["lex"], f["pos"], open_root) for _, f in stems}
+        filled = [(key, f) for key, f in stems if full[f["lex"], f["pos"]] == root]
+        return filled, [(key, f) for key, f in stems if filled and full[f["lex"], f["pos"]] is None]
 
     def family_size(self, root: str) -> int:
-        """How many forms root_family lists for a root. Each root is counted once, then remembered."""
-        # ponytail: unbounded, but there are only about 4,500 roots, an int each.
+        """How many forms root_family and unconfirmed list for a root. Each root is counted once, then remembered."""
+        # ponytail: unbounded, but there are only about 4,500 roots, and 800 more that Wiktionary fills, an int each.
         if root not in self._family_sizes:
-            self._family_sizes[root] = len(self.root_family(root))
+            self._family_sizes[root] = len(self.root_family(root)) + len(self.unconfirmed(root))
         return self._family_sizes[root]
 
     def _family(self, stems: Iterable[tuple[str, dict]]) -> list[Reading]:

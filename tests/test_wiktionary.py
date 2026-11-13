@@ -76,14 +76,13 @@ def test_a_lemma_joins_the_homograph_its_glosses_match(real):
     assert len(found.entries) == 2 and senses(found.joined)[0] == "newness, recency"
 
 
-def test_a_lemma_whose_glosses_pick_no_homograph_keeps_them_all(real):
-    # CAMeL glosses جَزْر "slaughter; ebb", one of each of its homographs.
+def test_a_lemma_whose_glosses_pick_no_homograph_or_several_keeps_them_all(real):
+    # CAMeL glosses جَزْر "slaughter; ebb", one of each of its homographs: it picks both.
     found = real.wiktionary("جَزْر", "noun")
-    assert len(found.entries) > 1 and found.joined is None
-    # جَدّ "grandfather; good luck": more of its words are in Wiktionary's جَدّ "good luck, good fortune",
-    # but جَدّ "grandfather, ancestor" has one too.
+    assert len(real.picked("جَزْر", "noun")) == len(found.entries) == 2 and found.joined is None
+    # جَدّ "grandfather; good luck; grandmother": no homograph says "grandmother", so none is picked.
     found = real.wiktionary("جَدّ", "noun")
-    assert len(found.entries) == 2 and found.joined is None
+    assert real.picked("جَدّ", "noun") == [] and len(found.entries) == 2 and found.joined is None
 
 
 def test_a_lemma_with_one_entry_joins_it_whatever_its_glosses(real):
@@ -123,6 +122,51 @@ def test_a_headword_wiktionary_leaves_unvocalized_matches_on_its_letters(real):
 
 def test_the_part_of_speech_must_agree(real):
     assert real.wiktionary("كِتاب", "verb").entries == []
+
+
+# --- Roots filled from Wiktionary (#26) ---------------------------------------------------------
+
+def test_camels_gloss_picks_the_homograph_that_fills_an_open_root(real):
+    # CAMeL's قال (ق.#.ل) "said" matches two Wiktionary entries: قَالَ "to say" (ق و ل) and "to nap" (ق ي ل).
+    assert [e.root for e in real.picked("قال", "verb")] == ["ق و ل"]
+    assert real.filled_root("قال", "verb", "ق.#.ل") == "ق.و.ل"
+
+
+def test_an_open_root_is_filled_where_the_entries_agree(real):
+    assert real.filled_root("قاوَل", "verb", "ق.#.ل") == "ق.و.ل"
+    assert real.filled_root("أَقال", "verb", "ق.#.ل") == "ق.ي.ل"  # the same open root, another letter
+    assert real.filled_root("أَكَل", "verb", "#.ك.ل") == "ء.ك.ل"  # a hamza
+    assert real.filled_root("قَوْل", "noun", "ق.#.ل") is None  # Wiktionary gives this entry no root
+    assert real.filled_root("كَتَب", "verb", "ك.ت.ب") is None  # nothing open
+
+
+def test_a_lemma_whose_wiktionary_entries_disagree_on_the_root_keeps_it_open(real):
+    # مَقال's entries are of ق و ل and ق ي ل, and CAMeL's "article; essay" picks neither.
+    assert real.picked("مَقال", "noun") == [] and real.filled_root("مَقال", "noun", "ق.#.ل") is None
+    # CAMeL's سائِل joins two of Wiktionary's nouns: "liquid" (س ي ل) and "questioner" (س ء ل).
+    assert {e.root for e in real.picked("سائِل", "noun")} == {"س ي ل", "س ء ل"}
+    assert real.filled_root("سائِل", "noun", "س.#.ل") is None
+    # CAMeL's هال "frighten" is Wiktionary's ه و ل, but no entry says its "pour".
+    assert real.picked("هال", "verb") == [] and real.filled_root("هال", "verb", "ه.#.ل") is None
+
+
+def test_a_filled_root_holds_every_lemma_filled_to_it_and_the_open_roots_others_apart(real):
+    family = real.root_family("ق.و.ل")
+    assert {r.lemma for r in family} == {"قال", "قاوَل", "مَقُولَة"}
+    assert {r.root for r in family} == {"ق.#.ل"}  # each form keeps the root CAMeL gives it
+    assert {r.lemma for r in real.root_family("ق.ي.ل")} == {"أَقال", "ٱِسْتَقال", "مَقِيل", "قَيْلُولَة"}
+    # The lemmas Wiktionary can't place are listed apart, as not confirmed; not those it places elsewhere.
+    unconfirmed = {r.lemma for r in real.unconfirmed("ق.و.ل")}
+    assert {"مَقال", "قَوْل", "قَيْل"} <= unconfirmed and not {"قال", "أَقال", "قَيْلُولَة"} & unconfirmed
+    assert real.family_size("ق.و.ل") == len(family) + len(real.unconfirmed("ق.و.ل"))
+    # CAMeL's open root keeps its whole family; a root no lemma is filled to (ق ء ل) has nothing apart.
+    assert len(real.root_family("ق.#.ل")) == 42
+    assert real.unconfirmed("ق.#.ل") == real.unconfirmed("ك.ت.ب") == real.unconfirmed("ق.ء.ل") == []
+
+
+def test_a_root_wiktionary_gives_with_other_letters_is_not_used(real):
+    assert real.wiktionary_root("سِوار", "noun", "س.#.ر") == "ش.ج.ر"
+    assert real.filled_root("سِوار", "noun", "س.#.ر") is None
 
 
 def test_without_the_dataset_a_lemma_has_no_wiktionary_entries(fixture_db, tmp_path):

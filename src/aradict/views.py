@@ -10,7 +10,7 @@ from urllib.parse import urlencode
 from htpy import Element, Node, a, blockquote, body, br, button, caption, code, dd, details, div, dl, dt, form, fragment, h1, h2, h3, head, header, html, i, input, label, li, link, main, meta, nav, ol, p, path, rect, script, section, span, summary, svg, table, tbody, td, template, textarea, th, thead, title, tr, ul
 
 from . import wiktionary
-from .dictionary import MEASURES, Lookup, Reading, Segment, Token, alphabetical
+from .dictionary import MEASURES, Lookup, Reading, Segment, Token, alphabetical, opened
 from .readable import OBJECT, POS, POSSESSIVE
 from .wiktionary import Entry as WiktionaryEntry, Join, Sense
 
@@ -54,9 +54,16 @@ def _page(heading: str, active: str, content: Node) -> Node:
     ]
 
 
-def _root(root: str | None) -> Node:
-    # A "#" marks a weak or hamza radical the database leaves unresolved.
-    return ar(" ".join("◌" if letter == "#" else letter for letter in root.split("."))) if root else span(class_="muted")["unavailable"]
+def _root(root: str | None, full: str | None = None) -> Node:
+    """A root's letters. A "#" marks a weak or hamza radical the database leaves unresolved, shown
+    as ◌, or with full ("ق.و.ل") as full's letter, in a dotted box that says it is from Wiktionary."""
+    if not root:
+        return span(class_="muted")["unavailable"]
+    letters = [
+        (span(class_="fill")[filled, span(class_="sr-only", lang="en")[" (filled from Wiktionary)"]] if full else "◌") if letter == "#" else letter
+        for letter, filled in zip(root.split("."), (full or root).split("."))
+    ]
+    return span(class_="ar", lang="ar", dir="rtl")[[(" " if i else None, letter) for i, letter in enumerate(letters)]]  # a list: the name may show twice
 
 
 def _measure(r: Reading) -> str | None:
@@ -146,26 +153,35 @@ class Links(NamedTuple):
     """What a Word entry links its root and related forms with: the lookup's own URL parameters,
     which every link keeps so that its view can return to the lookup, how many forms each lemma
     (with its part of speech) has, and how many words each root has. Also each lemma's Wiktionary
-    entries, which link to their source."""
+    entries, which link to their source, and the roots Wiktionary fills: by lemma, part of speech and
+    the open root ("ق.#.ل"), the full one ("ق.و.ل")."""
 
     lookup: dict[str, str]
     form_counts: dict[tuple[str, str], int]
     root_counts: dict[str, int]
     wiktionary: dict[tuple[str, str], Join] = {}
+    filled_roots: dict[tuple[str, str, str], str] = {}
 
 
 def _url(params: dict[str, str]) -> str:
     return f"/?{urlencode(params)}" if params else "/"
 
 
-def _root_tab(root: str | None, links: Links | None) -> Node:
-    """The root, on a tab above its entry. With links it opens the root's words and says how many
-    there are, or just "words" where they weren't counted."""
-    label = [span(class_="rt-k")["Root"], " ", _root(root)]
-    count = links and links.root_counts.get(root)
+def _filled(full: str) -> Node:
+    """What Wiktionary fills in a root CAMeL leaves open: "و filled from Wiktionary; the core dictionary has ق ◌ ل"."""
+    open_root = opened(full)
+    letters = " ".join(letter for letter, open_letter in zip(full.split("."), open_root.split(".")) if open_letter == "#")
+    return [ar(letters), " filled from Wiktionary; the core dictionary has ", _root(open_root)]
+
+
+def _root_tab(root: str | None, links: Links | None, full: str | None = None) -> Node:
+    """The root, on a tab above its entry, with any letter Wiktionary fills in (full). With links it
+    opens the root's words and says how many there are, or just "words" where they weren't counted."""
+    label = [span(class_="rt-k")["Root"], " ", _root(root, full)]
+    count = links and links.root_counts.get(full or root)
     if not (links and root) or count == 0:  # none: a root from Wiktionary that the dictionary has no word from
         return span(class_="root-tab" if root else "root-tab na")[label]
-    return a(href=_url(links.lookup | {"root": root}), class_="root-tab")[label, " ", span(class_="rt-go")[_n(count, "word") if count else "words"]]
+    return a(href=_url(links.lookup | {"root": full or root}), class_="root-tab")[label, " ", span(class_="rt-go")[_n(count, "word") if count else "words"]]
 
 
 NO_ENTRIES = Join([], None)
@@ -184,18 +200,20 @@ def _entry(lemma: str, glosses: dict[str, list[Reading]], heading: Element, link
     # Homographs are numbered as they are shown: the one joined to the lemma first, the others after
     # every entry; those it keeps all go in Wiktionary's order.
     homographs = len(join.entries) > 1
+    fills = {root: links and links.filled_roots.get((first.lemma, first.pos, root)) for root in roots}
     return section(class_="entry")[
-        div(class_="tabs")[(_root_tab(root, links) for root in roots)],
+        div(class_="tabs")[(_root_tab(root, links, full) for root, full in fills.items())],
         div(class_="head")[
             div(class_="lemma")[heading[ar(lemma)], _badges(first, 1 if homographs and join.joined else None)],
             not brief and dl(class_="facts")[dt["Frequency"], dd(class_="freq")[_how_common(first.top_percent)]],
         ],
         ul(class_="readings")[(_reading(group, brief) for group in glosses.values())],
-        _about([join.joined] if join.joined else join.entries, homographs and not join.joined, not brief and [
-            dt["Forms"], dd[
+        _about([join.joined] if join.joined else join.entries, homographs and not join.joined, [
+            *([] if brief else [[dt["Forms"], dd[
                 a(href=_url(links.lookup | {"related": first.lemma, "pos": first.pos}))[f"all {forms} forms", span(class_="sr-only")[" of ", ar(lemma)]]
                 if forms > 1 else span(class_="nil")["No other forms"]
-            ],
+            ]]]),
+            *([dt["Root"], dd[_filled(full)]] for full in fills.values() if full),
         ]),
     ]
 
@@ -216,17 +234,18 @@ def _wiktionary_only(entry: WiktionaryEntry, number: int, heading: Element, link
     ]
 
 
-def _about(entries: list[WiktionaryEntry], numbered: bool = False, forms: Node = None) -> Node:
+def _about(entries: list[WiktionaryEntry], numbered: bool = False, rows: list = ()) -> Node:
     """Everything about the headword after its readings: each Wiktionary entry's senses, numbered as
-    homographs where the lemma keeps several, the forms row and the credit."""
+    homographs where the lemma keeps several, then rows (its other forms, a root Wiktionary fills)
+    and the credit."""
     # ponytail: one row per fact; #23 adds plural, gender, verbal nouns, relations and regional pronunciations.
     meanings = [
         [dt["Meanings"], dd(class_="wide")[numbered and [_homograph(n), " "], _senses(e.senses)]]
         for n, e in enumerate(entries, 1)
     ]
-    if not (meanings or forms):
+    if not (meanings or rows):
         return None
-    return div(class_="about-hw")[dl(class_="facts")[meanings, forms], entries and _credit(entries)]
+    return div(class_="about-hw")[dl(class_="facts")[meanings, rows], entries and _credit(entries)]
 
 
 def _english(text: str) -> Node:
@@ -418,10 +437,18 @@ def _sorted(rows: list[Reading], column: str | None, descending: bool) -> list[R
     return sorted((r for r in rows if key(r) is not None), key=key, reverse=descending) + [r for r in rows if key(r) is None]
 
 
-def _family(label: str, name: Node, status: Node, rows: list[Reading], lookup: dict[str, str], view: dict[str, str], sort: str) -> State:
-    """A root's words or a lemma's forms in place of the lookup's results. A chip says which, and
-    closing it returns to the lookup. Each column header links to the list sorted by it, then in
-    reverse, then back in family order; the sorted column says so to assistive technology."""
+def _context(label: str, name: Node, lookup: dict[str, str]) -> Node:
+    """A chip that says which root's words or lemma's forms replace the lookup's results; closing it returns to the lookup."""
+    return p(class_="context")[
+        label, ": ", name,
+        a(href=_url(lookup), class_="dismiss")[span(aria_hidden="true")["×"], span(class_="sr-only")["Back to your lookup" if lookup.get("q") else "Close"]],
+    ]
+
+
+def _table(rows: list[Reading], name: Node, view: dict[str, str], sort: str, full: str | None = None) -> Node:
+    """A root's words or a lemma's forms, named for assistive technology. Each column header links to
+    the list sorted by it, then in reverse, then back in family order (view is the URL's parameters
+    but the sort); the sorted column says so. A row Wiktionary fills to the root full shows full's letters."""
     column, descending = _sort_order(sort)
     order = column and ("descending" if descending else "ascending")
 
@@ -429,29 +456,23 @@ def _family(label: str, name: Node, status: Node, rows: list[Reading], lookup: d
         if key is None:
             return th(scope="col")[text]
         following = {"ascending": f"-{key}", "descending": None}.get(order) if key == column else key
-        return th(scope="col", aria_sort=order if key == column else None)[a(href=_url(lookup | view | ({"sort": following} if following else {})))[text]]
+        return th(scope="col", aria_sort=order if key == column else None)[a(href=_url(view | ({"sort": following} if following else {})))[text]]
 
-    return State(status, [
-        p(class_="context")[
-            label, ": ", name,
-            a(href=_url(lookup), class_="dismiss")[span(aria_hidden="true")["×"], span(class_="sr-only")["Back to your lookup" if lookup.get("q") else "Close"]],
-        ],
-        rows and table(class_="family")[
-            caption(class_="sr-only")[status],
-            thead[tr[(header(key, name) for key, name in COLUMNS)]],
-            tbody[(
-                tr[
-                    td(data_label="Form")[ar(r.form)],
-                    td(data_label="Meaning")[r.gloss],
-                    td(data_label="Part of speech")[span(class_="badge")[r.tags[0]]],
-                    td(data_label="Grammar")[_grammar(r)],
-                    td(data_label="Root")[_root(r.root)],
-                    td(data_label="Measure")[_measure(r)],
-                ]
-                for r in _sorted(rows, column, descending)
-            )],
-        ],
-    ])
+    return rows and table(class_="family")[
+        caption(class_="sr-only")[name],
+        thead[tr[(header(key, name) for key, name in COLUMNS)]],
+        tbody[(
+            tr[
+                td(data_label="Form")[ar(r.form)],
+                td(data_label="Meaning")[r.gloss],
+                td(data_label="Part of speech")[span(class_="badge")[r.tags[0]]],
+                td(data_label="Grammar")[_grammar(r)],
+                td(data_label="Root")[_root(r.root, full if full and r.root == opened(full) else None)],
+                td(data_label="Measure")[_measure(r)],
+            ]
+            for r in _sorted(rows, column, descending)
+        )],
+    ]
 
 
 def _forms(rows: list[Reading]) -> str:
@@ -459,14 +480,36 @@ def _forms(rows: list[Reading]) -> str:
 
 
 def related_view(lemma: str, pos: str, rows: list[Reading], lookup: dict[str, str], sort: str = "") -> State:
-    """A lemma's forms, such as a noun's singular and plural."""
+    """A lemma's forms, such as a noun's singular and plural, in place of the lookup's results."""
     status = [f"{_forms(rows)} of the {POS.get(pos, pos)} ", ar(lemma)]
-    return _family("Related", ar(lemma), status, rows, lookup, {"related": lemma, "pos": pos}, sort)
+    return State(status, [_context("Related", ar(lemma), lookup), _table(rows, status, lookup | {"related": lemma, "pos": pos}, sort)])
 
 
-def root_view(root: str, rows: list[Reading], lookup: dict[str, str], sort: str = "") -> State:
-    """Every form from a root, verbs by measure first."""
-    return _family("Root", _root(root), [f"{_forms(rows)} from the root ", _root(root)], rows, lookup, {"root": root}, sort)
+def root_view(
+    root: str, rows: list[Reading], lookup: dict[str, str], sort: str = "",
+    unconfirmed: list[Reading] | tuple = (), sources: Iterable[tuple[str, str]] = (),
+) -> State:
+    """Every form from a root, verbs by measure first, in place of the lookup's results. Where
+    Wiktionary fills the root's weak or hamza letters, which CAMeL leaves open, the filled letters
+    are marked; then come the forms still under CAMeL's open root that it can't place (unconfirmed),
+    and the credit, linked to each filled lemma's entry (sources: the lemma and its Wiktionary page)."""
+    view, open_root = lookup | {"root": root}, opened(root)
+    if not any(r.root == open_root != root for r in rows):
+        status = [f"{_forms(rows)} from the root ", _root(root)]
+        return State(status, [_context("Root", _root(root), lookup), _table(rows, status, view, sort)])
+    name = _root(open_root, root)
+    status = [f"{_forms(rows)} from the root ", name, unconfirmed and f", {len(unconfirmed)} more not confirmed"]
+    apart = ["Also under ", _root(open_root), " in the core dictionary, ", "letters" if open_root.count("#") > 1 else "letter", " not confirmed"]
+    return State(status, [
+        _context("Root", name, lookup),
+        p(class_="filled")[_filled(root)],
+        _table(rows, status, view, sort, root),
+        unconfirmed and [h2(class_="rv-sub")[apart], _table(unconfirmed, apart, view, sort)],
+        p(class_="credit")[
+            "From Wiktionary, CC BY-SA 4.0: ",
+            ([", " if i else None, a(href=url)[ar(lemma), span(class_="sr-only")[" on Wiktionary"]]] for i, (lemma, url) in enumerate(sources)),
+        ],
+    ])
 
 
 def _keyboard_toggle(field: str) -> Node:
@@ -571,7 +614,7 @@ def _token(t: Token, ids: dict[str, str]) -> Node:
     ]
 
 
-def _details(t: Token, id: str, joins: dict[tuple[str, str], Join]) -> Node:
+def _details(t: Token, id: str, joins: dict[tuple[str, str], Join], filled: dict[tuple[str, str, str], str]) -> Node:
     """A word's readings, grouped by lemma as on the Word page, in a native popover. Each root links
     to its words, and the root view returns to the word's lookup."""
     return div(id=id, class_="tok-pop", popover=True, role="dialog", aria_labelledby=f"{id}-h")[
@@ -580,7 +623,7 @@ def _details(t: Token, id: str, joins: dict[tuple[str, str], Join]) -> Node:
             p[_n(len(t.readings), "reading") if t.readings else "not in the dictionary"],
         ],
         div(class_="tp-body")[
-            _entries(t.readings, h3, Links({"q": t.text}, {}, {}, joins), brief=True) if t.readings else p(class_="tp-msg")[
+            _entries(t.readings, h3, Links({"q": t.text}, {}, {}, joins, filled), brief=True) if t.readings else p(class_="tp-msg")[
                 "AraDict couldn't find this word in its Modern Standard Arabic dictionary."
             ],
         ],
@@ -591,7 +634,7 @@ def _details(t: Token, id: str, joins: dict[tuple[str, str], Join]) -> Node:
     ]
 
 
-def analysed(tokens: list[Token], joins: dict[tuple[str, str], Join] = {}) -> State:
+def analysed(tokens: list[Token], joins: dict[tuple[str, str], Join] = {}, filled: dict[tuple[str, str, str], str] = {}) -> State:
     """The passage as typed, each word opening its details. A word written twice opens the same
     details. The roots there link without a word count: counting a root's words the first time
     takes about 27 ms, too slow for every root of a long passage."""
@@ -611,7 +654,7 @@ def analysed(tokens: list[Token], joins: dict[tuple[str, str], Join] = {}) -> St
             # The passage keeps its spaces and line breaks (white-space: pre-wrap).
             div(class_="passage", lang="ar", dir="rtl")[(_token(t, ids) for t in tokens)],
         ],
-        (_details(t, ids[word], joins) for word, t in words.items()),
+        (_details(t, ids[word], joins, filled) for word, t in words.items()),
     ])
 
 
@@ -667,7 +710,8 @@ def about_page() -> Node:
                 "or one of the rarer measures): all but 46 of about 9,000."
             ],
             p[
-                "In about 1 root in 4, the data leaves a weak or hamza letter open, and AraDict shows it as ", ar("◌"), ". About 5,000 "
+                "In about 1 root in 4, the data leaves a weak or hamza letter open. AraDict fills it in from Wiktionary where "
+                "Wiktionary gives the word's root, and marks it so; otherwise it shows ", ar("◌"), ". About 5,000 "
                 "entries have no root: about 2,700 proper nouns, 1,500 other nouns, 550 adjectives and 200 of other parts of speech."
             ],
         ],

@@ -240,9 +240,9 @@ a.root-tab:hover .rt-go { background: none; text-decoration-thickness: 2px }
 .senses .ar { font-size: 1.2em }
 /* Wiktionary's labels for a sense, "obsolete" or "transitive", each in a small box. */
 .qualifier { display: inline-block; margin-inline-end: 5px; padding-inline: 6px; border: 1px solid var(--line-2); border-radius: 4px; background: var(--leaf); font-size: .75rem; line-height: 1.125rem; color: var(--ink-2); white-space: nowrap }
-.credit { margin: 10px 0 0; font-size: .8125rem; line-height: 1.45; color: var(--ink-3) }
+.about-hw .credit { margin: 10px 0 0; font-size: .8125rem; line-height: 1.45; color: var(--ink-3) }
 .credit a { font-weight: 500 }
-.credit .ar { font-size: 1.25em }
+.about-hw .credit .ar { font-size: 1.25em }
 .credit svg { margin-inline-start: 2px; vertical-align: -1px }
 .badge.only { border-style: dashed; border-color: var(--edge); color: var(--ink-2); font-weight: 500 }
 .only-note { margin: 0; padding: 9px 18px 10px; background: var(--tray); border: 1px solid var(--line); border-block-start: 0; font-size: .84375rem; color: var(--ink-2) }
@@ -265,6 +265,12 @@ a.root-tab:hover .rt-go { background: none; text-decoration-thickness: 2px }
 .family .ar { white-space: nowrap }
 .family .grammar li { white-space: nowrap }  /* wrap between tags, not inside one */
 .family td:first-child .ar { font-size: 1.3125rem; line-height: 1.6 }
+/* A root letter Wiktionary fills: the dotted placeholder now holds it. Then what it says, the words it can't place, and its credit. */
+.fill { display: inline-block; padding: 0 .12em; border: 1.5px dotted currentColor; border-radius: 4px; line-height: 1.15 }
+.filled, .credit { margin: 0 0 10px; font-size: .875rem; color: var(--ink-2) }
+.credit { margin-block-start: 14px }
+:is(.filled, .credit, .rv-sub) .ar { font-size: 1.125rem; line-height: 1 }
+.rv-sub { margin: 22px 0 10px; font: 600 .9375rem/1.4 var(--f-ui); color: var(--ink-2) }
 @media (max-width: 640px) {
   .family, .family :is(thead, tbody, tr, td) { display: block }
   .family thead tr { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 10px 14px; background: var(--tray); border-block-end: 1px solid var(--line); border-radius: 11px 11px 0 0 }

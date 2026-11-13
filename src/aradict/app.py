@@ -16,7 +16,7 @@ from fastapi.staticfiles import StaticFiles
 
 from . import views, wiktionary
 from .data import db_path
-from .dictionary import Dictionary
+from .dictionary import Dictionary, opened
 
 logger = logging.getLogger(__name__)
 
@@ -86,7 +86,10 @@ def word(
         if any(len(value) > views.MAX_QUERY for value in (q, root or "", related or "", pos, sort)):
             state = views.State(f"That's too long. Type at most {views.MAX_QUERY} characters.")
         elif root is not None:
-            state = views.root_view(root, dictionary().root_family(root), lookup, sort)
+            rows = dictionary().root_family(root)
+            filled = dict.fromkeys((r.lemma, r.pos) for r in rows if r.root == opened(root) != root)  # the lemmas Wiktionary filled to it, in order
+            sources = {e.url: lemma for lemma, pos in filled for e in dictionary().wiktionary(lemma, pos).entries}
+            state = views.root_view(root, rows, lookup, sort, dictionary().unconfirmed(root), [(lemma, url) for url, lemma in sources.items()])
         elif related is not None:
             state = views.related_view(related, pos, dictionary().related(related, pos), lookup, sort)
         elif not q:
@@ -97,15 +100,18 @@ def word(
             found = dictionary().lookup(q, english, filter_diacritics)
             lemmas = {(r.lemma, r.pos) for r in found.readings}
             joins = {lemma: dictionary().wiktionary(*lemma) for lemma in lemmas}
-            # The roots of the readings, and of Wiktionary's homographs shown on their own.
-            roots = {r.root for r in found.readings if r.root} | {
+            roots = {(r.lemma, r.pos, r.root) for r in found.readings if r.root}
+            filled = {root: full for root in roots if (full := dictionary().filled_root(*root))}
+            # The roots of the readings, filled where Wiktionary can, and of Wiktionary's homographs shown on their own.
+            counted = {filled.get(root, root[2]) for root in roots} | {
                 e.root.replace(" ", ".") for join in joins.values() if join.joined for e in join.entries if e is not join.joined and e.root
             }
             links = views.Links(
                 lookup,
                 {lemma: len(dictionary().related(*lemma)) for lemma in lemmas},
-                {root: dictionary().family_size(root) for root in roots},
+                {root: dictionary().family_size(root) for root in counted},
                 joins,
+                filled,
             )
             state = views.looked_up_en(found, links) if english else views.looked_up(q, found, links)
     except Exception as error:
@@ -133,7 +139,12 @@ def _analyse(text: str, hx_request: str | None = None) -> HTMLResponse:
         try:
             tokens = dictionary().analyze_text(text)
             lemmas = {(r.lemma, r.pos) for t in tokens for r in t.readings}
-            state = views.analysed(tokens, {lemma: dictionary().wiktionary(*lemma) for lemma in lemmas})
+            roots = {(r.lemma, r.pos, r.root) for t in tokens for r in t.readings if r.root}
+            state = views.analysed(
+                tokens,
+                {lemma: dictionary().wiktionary(*lemma) for lemma in lemmas},
+                {root: full for root in roots if (full := dictionary().filled_root(*root))},
+            )
         except Exception as error:
             _log_failure("Text analysis failed", error)
             state, status_code = views.TEXT_FAILURE, 500

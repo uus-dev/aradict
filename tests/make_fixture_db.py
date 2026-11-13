@@ -13,13 +13,13 @@ import unicodedata
 from pathlib import Path
 
 # Enough for the reference words كتب, وبكتابهم, سيكتبون and استخدم, مدرستي's shared letter,
-# a root with an unresolved radical (قال), a verb with no usable root or measure (لَيْسَ),
+# a root with an unresolved radical (قال, and مَقال, which Wiktionary can't resolve), a verb with no usable root or measure (لَيْسَ),
 # forms that share a gloss (سابقي: "my former" as singular, dual and plural), سِفْر, the
 # other Arabic word for English "book", آر, at the database's lowest frequency, and إِجارَة, whose two
 # senses are stored under two roots. For the Wiktionary layer: جِدَّة, whose senses Wiktionary labels
 # obsolete and which has a homograph, and جَزْر, whose gloss has a meaning of each of its two homographs.
 LEMMAS = frozenset({
-    "كَتَب", "كِتاب", "كاتِب", "كُتّاب", "أَكْتَب", "مَدْرَسَة", "ٱِسْتَخْدَم", "قال", "لَيْسَ", "سابِق", "سِفْر", "آر", "إِجارَة",
+    "كَتَب", "كِتاب", "كاتِب", "كُتّاب", "أَكْتَب", "مَدْرَسَة", "ٱِسْتَخْدَم", "قال", "مَقال", "لَيْسَ", "سابِق", "سِفْر", "آر", "إِجارَة",
     "جِدَّة", "جَزْر",
 })
 

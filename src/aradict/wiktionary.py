@@ -20,7 +20,6 @@ import sqlite3
 import sys
 import time
 import unicodedata
-from collections.abc import Iterable
 from contextlib import closing
 from dataclasses import dataclass
 from hashlib import file_digest
@@ -139,33 +138,11 @@ def entries(dataset: Path, lemma: str, pos: str) -> list[Entry]:
 
 
 class Join(NamedTuple):
-    """A CAMeL lemma's Wiktionary entries, in Wiktionary's order, and the one joined to the lemma:
-    its only entry, or of homographs (قَالَ "say" and قَالَ "nap") the one the lemma's CAMeL glosses
-    pick. None when they pick none, or more than one."""
+    """A CAMeL lemma's Wiktionary entries, in Wiktionary's order, and the one joined to the lemma
+    (see Dictionary.wiktionary); None when there are several and CAMeL's glosses don't pick one."""
 
     entries: list[Entry]
     joined: Entry | None
-
-
-# Words too common to tell two meanings apart.
-COMMON = {"to", "be", "a", "an", "the", "of", "in", "on", "at", "by", "for", "from", "with", "into", "and", "or", "as",
-          "one", "someone", "something", "oneself", "it", "its", "s"}
-
-
-def _words(text: str) -> set[str]:
-    return set(re.findall("[a-z]+", text.casefold())) - COMMON
-
-
-def join(found: list[Entry], glosses: Iterable[str]) -> Join:
-    """Joins a lemma to the one of its homographs whose senses share a word with its CAMeL glosses
-    ("say;tell": قَالَ "to say", "to tell", not قَالَ "to nap"). Where the glosses share words with
-    more than one (جَدّ "grandfather; good luck"), the lemma covers them all, and none is joined."""
-    if len(found) < 2:
-        return Join(found, found[0] if found else None)
-    camel = set().union(*(_words(gloss.replace("_", " ")) for gloss in glosses))
-    # ponytail: whole words only, so "said" misses "say"; a lemma's other stems ("say") usually make up for it.
-    matching = [e for e in found if camel & set().union(*(_words(s.gloss) for sense in e.senses for s in (sense, *sense.subsenses)))]
-    return Join(found, matching[0] if len(matching) == 1 else None)
 
 
 def _entry(data: dict) -> Entry:
