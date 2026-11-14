@@ -178,6 +178,7 @@ def test_a_verb_joins_its_own_measure_only(real):
     ("مُسْتَوَى", "مُسْتَوًى"),  # tanween fath on a final ى
     ("إِنْجلِيزِيّ", "إِنْجْلِيزِيّ"),  # sukun, written or not
     ("ٱِسْتَخْدَم", "اِسْتَخْدَمَ"),  # alif wasla
+    ("الَّذِي", "اَلَّذِي"),  # a vowel on an opening bare ا, which either source may write
     ("أَيْضاً", "أَيْضًا"),  # tanween fath after or before its ا
     ("مُدَرِّس", "مُدَرِّس"),  # shadda and kasra in either order
 ])

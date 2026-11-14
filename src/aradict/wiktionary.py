@@ -135,7 +135,8 @@ def spelling(word: str) -> str:
     differently, and this is the one place that evens that out:
 
     - the marks on a letter in one order (NFC), whichever order they were typed in;
-    - ٱ (alif wasla) as ا;
+    - ٱ (alif wasla) as ا, and no short vowel on an opening bare ا, which only carries a joining
+      hamza and either source may write (الَّذِي, اَلَّذِي);
     - tanween fath on the ا it is written beside (أَيْضاً, أَيْضًا), and on a final ى as a fatha (مُسْتَوَى, مُسْتَوًى);
     - no fatha before a long ا, which CAMeL leaves unwritten (كِتاب, كِتَاب; كُتّاب, كُتَّاب);
     - no short vowel at the end of the word, which CAMeL leaves off its verbs (كَتَب, كَتَبَ; أَشَعّ, أَشَعَّ);
@@ -144,6 +145,7 @@ def spelling(word: str) -> str:
     A lemma either source writes with no marks at all (CAMeL's قال) is matched on its letters alone.
     """
     word = unicodedata.normalize("NFC", word).replace("ٱ", "ا").replace(TANWEEN_FATH + "ا", "ا" + TANWEEN_FATH)
+    word = re.sub(f"^ا[{FATHA}{DAMMA}{KASRA}]", "ا", word)
     word = re.sub(f"{TANWEEN_FATH}(?={SHADDA}?ى$)", FATHA, word)
     word = re.sub(f"{FATHA}(?={SHADDA}?ا)", "", word)
     word = re.sub(f"[{FATHA}{DAMMA}{KASRA}](?={SHADDA}?$)", "", word)  # NFC puts a final vowel before its shadda
