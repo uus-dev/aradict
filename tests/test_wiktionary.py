@@ -2,6 +2,7 @@
 its join to the CAMeL lemmas, checked against the real data."""
 
 import sqlite3
+import unicodedata
 from contextlib import closing
 from hashlib import sha256
 
@@ -327,6 +328,67 @@ def test_a_word_found_whole_is_not_also_looked_for_without_its_attached_words(re
     assert all(wiktionary.key(e.word) != "لد" for e in real.wiktionary_only("ولد"))
     # وبعد is و + بعد, with an entry of its own; و + ب + عد would add عَادَ "return" and وَعَدَ "promise".
     assert {"عَادَ", "وَعَدَ"}.isdisjoint(words(real, "وبعد"))
+
+
+# --- English lookup of Wiktionary's senses (#25) ----------------------------------------------------
+
+def english(real, query: str) -> list[str]:
+    """The headwords of the entries only Wiktionary has that an English lookup finds."""
+    return [e.word for e in real.lookup(query, english=True).wiktionary]
+
+
+def lemmas(real, query: str) -> list[str]:
+    """The lemmas an English lookup finds, in order, their marks in one order (NFC) as the literals here are compared."""
+    return list(dict.fromkeys(unicodedata.normalize("NFC", r.lemma) for r in real.lookup_en(query)))
+
+
+def test_english_finds_a_word_only_wiktionary_has(real):
+    # تَغْرِيدَة "chirp, tweet; a tweet", which the dictionary doesn't have.
+    assert "تَغْرِيدَة" in english(real, "tweet")
+
+
+def test_english_finds_a_lemma_by_a_sense_only_its_wiktionary_entry_has(real):
+    # The dictionary glosses كِتاب "book"; Wiktionary's كِتَاب, which it joins, also says "a marriage contract.".
+    assert "كِتاب" in lemmas(real, "marriage contract") and "كِتاب" in lemmas(real, "a marriage contract")
+    assert "كِتَاب" not in english(real, "marriage contract")  # the lemma's entry, not one of Wiktionary's own
+    assert "كِتاب" not in lemmas(real, "marriage")  # a phrase is matched whole
+
+
+def test_english_shows_each_lemma_once_the_dictionarys_matches_first(real):
+    # Both sources say كِتاب is "book". The dictionary's matches keep their order; then the lemmas only their
+    # Wiktionary entries call a book (سِجِلّ "scroll, book", حَجَزَ "to book", مُصْحَف "volume, tome, book");
+    # then the words only Wiktionary has (نَمْق).
+    found = real.lookup("book", english=True)
+    assert lemmas(real, "book") == ["كِتاب", "سِفْر", "سِجِلّ", "حَجَز", "مُصْحَف"]
+    assert len(set(found.readings)) == len(found.readings)
+    assert [e.word for e in found.wiktionary] == ["نَمْق"] and not any(real.joined(e) for e in found.wiktionary)
+
+
+def test_english_shows_a_lemma_with_no_citation_form_by_its_forms(real):
+    # The dictionary has the noun ساكِن only as its plural سُكّان "residents"; Wiktionary's ساكِن says "inhabitant".
+    assert [r.form for r in real.lookup_en("inhabitant") if (r.lemma, r.pos) == ("ساكِن", "noun")] == ["سُكّان"]
+
+
+def test_english_finds_wiktionarys_senses_by_the_rules_of_the_dictionarys_glosses(real):
+    assert english(real, "Tweet ") == english(real, "tweet")  # case and surrounding whitespace don't matter
+    assert "تَغْرِيدَة" in english(real, "tweets")  # an inflected form finds its base form
+    assert unicodedata.normalize("NFC", "غَرَّد") in lemmas(real, "tweeted")  # Wiktionary's غَرَّدَ "to tweet", which the dictionary's غَرَّد joins
+    # سِجِلّ "register (unit of computer memory)": the bracketed note is not what it is found by.
+    assert "سِجِلّ" in lemmas(real, "register") and "سِجِلّ" not in lemmas(real, "unit of computer memory")
+
+
+def test_english_does_not_search_wiktionarys_labels_or_relations(real):
+    # كَتَّبَ is "(transitive, causative) to cause to write"; جِدَّة "newness" is labelled obsolete.
+    assert "كَتَّب" not in lemmas(real, "causative") and "كَتَّبَ" not in english(real, "causative")
+    assert "جِدَّة" not in lemmas(real, "obsolete") and "جِدَّة" not in english(real, "obsolete")
+    # كُتُب is only "plural of كِتَاب", which relates it to another word rather than saying what it means.
+    assert real.lookup("plural of", english=True).wiktionary == ()
+
+
+def test_english_lists_the_words_only_wiktionary_has_by_how_early_their_entry_says_it(real):
+    # قَالَ "To nap." and طِنْفَسَة "carpet of fine piles, pile rug, nap" say it in their first sense, سِنَة in its second
+    # ("drowsiness"; "slumber; nap"); Wiktionary lists سِنَة first.
+    assert english(real, "nap") == ["قَالَ", "طِنْفَسَة", "سِنَة"]
 
 
 def test_without_the_dataset_a_lemma_has_no_wiktionary_entries(fixture_db, tmp_path):

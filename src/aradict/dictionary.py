@@ -136,7 +136,8 @@ class Lookup:
     mode: str  # "ar" (Arabic script, or Latin letters that stand for no Arabic word), "arabizi" or "en" (English)
     complete: bool  # False when the text has more words than the one looked up
     readings: tuple[Reading, ...]
-    wiktionary: tuple[wiktionary.Entry, ...] = ()  # the word's Wiktionary entries no lemma joins (see wiktionary_only); none for English
+    # The Wiktionary entries no lemma joins: the word's (see wiktionary_only), or, for English, those with a sense that is the phrase.
+    wiktionary: tuple[wiktionary.Entry, ...] = ()
 
 
 def _reading_key(analysis: dict) -> tuple:
@@ -248,6 +249,11 @@ def _by_frequency(r: Reading) -> tuple:
     return r.frequency is None, -(r.frequency or 0), r.lemma
 
 
+def _english_order(r: Reading) -> tuple:
+    """English lookup's order: by frequency, and within a lemma its own form (كِتاب) before others (كُتُب)."""
+    return *_by_frequency(r), MARK.sub("", r.form) != MARK.sub("", r.lemma)
+
+
 # English → Arabic: an index from each English sense of a stem's gloss to the stems with it.
 BRACKETED = re.compile(r"\([^)]*\)|\[[^\]]*\]|<[^>]*>")  # (Egyptian)_cheese, write_[fem.sg.], <verb>
 
@@ -308,12 +314,41 @@ def _english_index(stems) -> dict[str, tuple[tuple[str, str, str, str], ...]]:
     return {key: tuple(sorted(found)) for key, found in index.items()}  # sorted: the same order on every run
 
 
+def _parts(glosses: Iterable[str], pos: str) -> list[str]:
+    """Wiktionary's glosses as the senses of a CAMeL gloss: each part between commas and semicolons, without
+    bracketed notes, in lower case, a verb's without its "to"."""
+    parts = [part.strip().rstrip(".").lower() for gloss in glosses for part in re.split("[,;]", BRACKETED.sub("", gloss))]
+    return [part.removeprefix("to ") if pos == "verb" else part for part in parts]
+
+
 def _says(entry: wiktionary.Entry, pos: str) -> set[str]:
     """What a Wiktionary entry's senses say, as the English keys a CAMeL gloss is found by:
     "To say, to tell [with لِ]" says say, said, says, tell, told, tells."""
-    glosses = [s.gloss for sense in entry.senses for s in (sense, *sense.subsenses)]
-    parts = [part.strip().rstrip(".").lower() for gloss in glosses for part in re.split("[,;]", BRACKETED.sub("", gloss))]
-    return _english_keys(";".join(part.removeprefix("to ") if pos == "verb" else part for part in parts), pos)
+    return _english_keys(";".join(_parts((s.gloss for sense in entry.senses for s in (sense, *sense.subsenses)), pos)), pos)
+
+
+ARTICLE = re.compile("^(a|an|the) ")
+
+
+def _means(glosses: Iterable[str], pos: str) -> set[str]:
+    """The English keys Wiktionary's glosses are found by, as a CAMeL gloss is found (_english_keys): each
+    part of a gloss (_parts), with and without its article ("a marriage contract")."""
+    parts = _parts(glosses, pos)
+    return _english_keys(";".join(dict.fromkeys([*parts, *(ARTICLE.sub("", part) for part in parts)])), pos)
+
+
+def _wiktionary_english(meanings: Iterable[tuple[int, str, list[str]]]) -> dict[str, tuple[int, ...]]:
+    """Each English key with the Wiktionary entries (by id) whose meanings it finds (_means)."""
+    index: dict[str, list[int]] = {}
+    for id, pos, glosses in meanings:
+        for key in _means(glosses, pos):
+            index.setdefault(key, []).append(id)
+    return {key: tuple(ids) for key, ids in index.items()}
+
+
+def _first_meaning(entry: wiktionary.Entry, key: str) -> int:
+    """The number of the first of the entry's senses (with its sub-senses) that the English key finds."""
+    return next((i for i, sense in enumerate(entry.senses) if key in _means([s.gloss for s in (sense, *sense.subsenses)], entry.pos)), len(entry.senses))
 
 
 def opened(root: str) -> str:
@@ -368,6 +403,7 @@ class Dictionary:
         self._wiktionary = wiktionary_path if wiktionary_path and wiktionary_path.is_file() else None
         if self._wiktionary:
             wiktionary.check(self._wiktionary)
+        self._english_wiktionary = _wiktionary_english(wiktionary.meanings(self._wiktionary)) if self._wiktionary else {}
         self._fills: dict[tuple[str, str, str], str | None] = {}
         # The lemmas (with their part of speech) by their letters as Wiktionary's are keyed, to tell the entries none joins.
         self._lemmas: dict[str, list[tuple[str, str]]] = {}
@@ -414,11 +450,15 @@ class Dictionary:
 
     def joined(self, entry: wiktionary.Entry) -> bool:
         """Whether a lemma of the dictionary joins the Wiktionary entry (see wiktionary)."""
-        return any(
-            entry in ([join.joined] if (join := self.wiktionary(lemma, pos)).joined else join.entries)
-            for lemma, pos in self._lemmas.get(wiktionary.letters(entry.word), ())
+        return bool(self.joining(entry))
+
+    def joining(self, entry: wiktionary.Entry) -> list[tuple[str, str]]:
+        """The lemmas of the dictionary (with their part of speech) that join the Wiktionary entry (see wiktionary)."""
+        return [
+            (lemma, pos) for lemma, pos in self._lemmas.get(wiktionary.letters(entry.word), ())
             if wiktionary.wiktionary_pos(pos) == entry.pos and wiktionary.same_word(lemma, entry.word)  # as wiktionary.entries joins them
-        )
+            and entry in ([join.joined] if (join := self.wiktionary(lemma, pos)).joined else join.entries)
+        ]
 
     def _entries(self, lemma: str, pos: str) -> list[wiktionary.Entry]:
         return wiktionary.entries(self._wiktionary, lemma, pos) if self._wiktionary else []
@@ -562,7 +602,8 @@ class Dictionary:
         English for the first word, in Arabic script or Arabizi (see lookup_ar and arabizi)."""
         if english:
             phrase = " ".join(text.split())
-            return Lookup(phrase, "en", True, tuple(self.lookup_en(phrase)))
+            readings, entries = self._english_lookup(phrase)
+            return Lookup(phrase, "en", True, tuple(readings), tuple(entries))
         words = text.split()
         arabizi = self.arabizi(text)
         return Lookup(
@@ -573,17 +614,34 @@ class Dictionary:
     def lookup_en(self, query: str) -> list[Reading]:
         """Arabic words with an English sense that is the query, a phrase matched whole and
         ignoring case, or an inflected form of it ("books", "wrote"). Each reading appears once,
-        verbs in their citation form ("he/it wrote"), most frequent lemma first. Unknown words give []."""
+        verbs in their citation form ("he/it wrote"). First the words the dictionary's glosses say,
+        most frequent lemma first; then, in the same order, the lemmas only the Wiktionary entries
+        they join say it of ("marriage contract": كِتاب). Unknown words give []."""
+        return self._english_lookup(query)[0]
+
+    def _english_lookup(self, query: str) -> tuple[list[Reading], list[wiktionary.Entry]]:
+        """lookup_en's readings, and the Wiktionary entries no lemma joins with a sense that is the query, found
+        by the same rules (_means): those that say it in an earlier sense first, then in Wiktionary's order."""
+        key = _english_key(query)
         found: dict[Reading, None] = {}  # an ordered set
-        for lemma, pos, stem, gloss in self._english.get(_english_key(query), ()):
+        for lemma, pos, stem, gloss in self._english.get(key, ()):
             # The lemma spells a singular noun or an active verb; a plural (كُتُب) or passive (كُتِب) stem spells
             # itself, and an adverb takes tanween (حالِيّاً). A stem that is no word on its own (طُماط, written
             # طُماطَة) gives its lemma's citation form instead.
             forms = (lemma, stem, stem + "اً") if pos == "adv" else (lemma, stem)
             readings = [r for form in dict.fromkeys(forms) for r in self._readings(form, _citation(form, lemma, pos, stem, gloss))]
             found.update(dict.fromkeys(readings or self._readings(lemma, _citation(lemma, lemma, pos))))
-        # Within a lemma, its own form (كِتاب) before others (كُتُب).
-        return sorted(found, key=lambda r: (*_by_frequency(r), MARK.sub("", r.form) != MARK.sub("", r.lemma)))
+        entries = wiktionary.by_id(self._wiktionary, list(ids)) if (ids := self._english_wiktionary.get(key)) else []
+        joining = {e: self.joining(e) for e in entries}
+        shown = {(r.lemma, r.pos) for r in found}
+        # A lemma with no citation form, such as a noun the dictionary has only plurals of (حَبِيب), shows its forms.
+        # ponytail: 7 of the 15,248 lemmas joined to an entry with meanings have neither (لَيْسَ, ما), and are not found so.
+        more = dict.fromkeys(
+            r for lemma, pos in dict.fromkeys(lemma for lemmas in joining.values() for lemma in lemmas) if (lemma, pos) not in shown
+            for r in self._readings(lemma, _citation(lemma, lemma, pos)) or self.related(lemma, pos)
+        )
+        only = sorted((e for e in entries if not joining[e]), key=lambda e: _first_meaning(e, key))
+        return sorted(found, key=_english_order) + sorted(more, key=_english_order), only
 
     def lookup_ar(self, word: str, filter_diacritics: bool = True) -> list[Reading]:
         """Readings for an Arabic word (the first, if several), most frequent lemma first.

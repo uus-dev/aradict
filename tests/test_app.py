@@ -765,7 +765,7 @@ def test_homographs_stay_apart_and_are_labelled(wiktionary_client):
     newness, bank = (next(e for e in jidda if word in e) for word in ("newness", "bank, side"))
     assert "Homograph 1" in heading(newness) and "Homograph 2 Wiktionary only" in text(heading(bank))
     assert jidda.index(newness) < jidda.index(bank)
-    # Looking up an English word shows only the dictionary's entries.
+    # Looking up an English word shows no homograph it doesn't find: not قَالَ "to nap" for "say".
     assert "Wiktionary only" not in wiktionary_client.get("/", params={"q": "say", "lang": "en"}).text
 
 
@@ -1006,3 +1006,52 @@ def test_a_wiktionary_headword_the_dictionary_reads_as_a_form_is_not_called_wikt
 def test_a_word_only_wiktionary_has_is_found_from_its_forms(wiktionary_client, word):
     found = entries(wiktionary_client.get("/", params={"q": word}).text)
     assert ["a tweet" in senses_of(about(e))[-1] for e in found if "Wiktionary only" in text(heading(e))] == [True]
+
+
+# --- English lookup of Wiktionary's senses (#25) ----------------------------------------------------
+
+def english_lookup(client, query: str) -> str:
+    return client.get("/", params={"q": query, "lang": "en"}).text
+
+
+def test_english_shows_a_word_only_wiktionary_has_with_the_credit(wiktionary_client):
+    page = english_lookup(wiktionary_client, "tweet")
+    assert status(page) == "1 entry from Wiktionary for “tweet”"
+    [tweet] = entries(page)
+    assert '<h2><span class="ar" lang="ar" dir="rtl">تَغْرِيدَة</span></h2>' in tweet and text(heading(tweet)).endswith("noun Wiktionary only")
+    assert credit(tweet) == (
+        "From Wiktionary, CC BY-SA 4.0, opens in a new tab · Entry: تغريدة on Wiktionary, opens in a new tab",
+        {"CC BY-SA 4.0, opens in a new tab": LICENCE, "تغريدة on Wiktionary, opens in a new tab": "https://en.wiktionary.org/wiki/تغريدة#Arabic"},
+    )
+    # The coverage note says what English lookup searches.
+    assert "it matches the dictionary's short English glosses and Wiktionary's meanings, a whole word or phrase at a time" in text(page)
+
+
+def test_english_shows_a_lemma_found_by_its_wiktionary_sense_as_its_entry(wiktionary_client):
+    # Only Wiktionary's كِتَاب says "a marriage contract."; the dictionary's كِتاب, which joins it, is shown.
+    page = english_lookup(wiktionary_client, "marriage contract")
+    assert status(page) == "1 Arabic word for “marriage contract”"
+    [kitab] = entries(page)
+    assert '<h2><span class="ar" lang="ar" dir="rtl">كِتاب</span></h2>' in kitab and 'class="reading"' in kitab
+    assert "a marriage contract." in senses_of(about(kitab))
+    assert credit(kitab)[1]["كتاب on Wiktionary, opens in a new tab"] == "https://en.wiktionary.org/wiki/كتاب#Arabic"
+    assert "Wiktionary only" not in kitab
+
+
+def test_english_shows_the_dictionarys_words_then_wiktionarys_own(wiktionary_client):
+    # The dictionary glosses أُفُق "horizon", and its plural آفاق "horizons"; Wiktionary also has آفَاق as a
+    # headword. A reading on the page reads it, so it is marked as from Wiktionary, not as only there (#24).
+    page = english_lookup(wiktionary_client, "horizons")
+    assert status(page) == "2 Arabic words for “horizons”, and 1 more entry from Wiktionary"
+    ufuq, afaq = entries(page)
+    assert "أُفُق</span></h2>" in ufuq and "آفَاق</span></h2>" in afaq
+    assert text(heading(afaq)).endswith("noun Wiktionary") and "Only in Wiktionary" not in afaq
+
+
+def test_english_shows_a_lemma_both_sources_match_once(wiktionary_client):
+    found = entries(english_lookup(wiktionary_client, "book"))
+    assert [e for e in found if "كِتاب</span></h2>" in e or "كِتَاب</span></h2>" in e] == [found[0]]
+    # Every entry with Wiktionary's content credits it, with a link to its source.
+    for query in ("book", "tweet", "marriage contract", "say"):
+        shown = [e for e in entries(english_lookup(wiktionary_client, query)) if "<dt>Meanings</dt>" in e]
+        assert shown and all(credit(e)[0].startswith("From Wiktionary") and " on Wiktionary, opens in a new tab" in credit(e)[0] for e in shown), query

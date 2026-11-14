@@ -532,7 +532,7 @@ def looked_up(text: str, found: Lookup, links: Links | None = None) -> State:
 
 
 COVERAGE = p(class_="notice coverage")[
-    "English → Arabic is limited: it matches the dictionary's short English glosses, a whole word or phrase at a time. "
+    "English → Arabic is limited: it matches the dictionary's short English glosses and Wiktionary's meanings, a whole word or phrase at a time. "
     "A word it doesn't find may still have an Arabic translation, listed under a synonym."
 ]
 
@@ -543,11 +543,17 @@ INITIAL_EN = State(body=[
 
 
 def looked_up_en(found: Lookup, links: Links | None = None) -> State:
-    """The outcome of a completed English → Arabic lookup, with the coverage note. Entries link to
-    their root and related forms with links."""
+    """The outcome of a completed English → Arabic lookup, with the coverage note: the dictionary's words, then
+    the entries only Wiktionary has (Lookup.wiktionary). Entries link to their root and related forms with links."""
     query = found.query
-    if found.readings:
-        return State(f"{_n(len(found.readings), 'Arabic word')} for “{query}”", [COVERAGE, _entries(_results(found.readings, links, homographs=False), h2, links)])
+    if found.readings or found.wiktionary:
+        results = _results(found.readings, links, homographs=False, found=found.wiktionary)
+        more = _more(results)
+        status = (
+            f"{_n(len(found.readings), 'Arabic word')} for “{query}”" + (f", and {more} more {'entry' if more == 1 else 'entries'} from Wiktionary" if more else "")
+            if found.readings else f"{_from_wiktionary(more)} for “{query}”"
+        )
+        return State(status, [COVERAGE, _entries(results, h2, links)])
     # Arabic typed here is meant the other way round, so switching direction keeps it.
     arabic = bool(ARABIC.search(query))
     back = f"/?{urlencode({'q': query})}" if arabic else "/"

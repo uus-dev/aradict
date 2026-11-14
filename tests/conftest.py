@@ -107,6 +107,16 @@ def wiktionary_base_url(fixture_env, fixture_wiktionary):
     dictionary.cache_clear()
 
 
+@pytest.fixture
+def wiktionary_url(base_url, fixture_wiktionary):
+    """The server at base_url, reading the fixture Wiktionary dataset for one test."""
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setenv("ARADICT_WIKTIONARY_PATH", str(fixture_wiktionary))
+        dictionary.cache_clear()
+        yield base_url
+        dictionary.cache_clear()
+
+
 @pytest.fixture(scope="module")
 def browser():
     """Chromium, shared by a test module's journeys."""
