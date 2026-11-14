@@ -221,9 +221,11 @@ def _entry(lemma: str, glosses: dict[str, list[Reading]], heading: Element, link
     ]
 
 
-def _wiktionary_only(entry: WiktionaryEntry, number: int | None, heading: Element, links: Links | None, brief: bool) -> Node:
+def _wiktionary_only(entry: WiktionaryEntry, number: int | None, heading: Element, links: Links | None, brief: bool, read: bool = False) -> Node:
     """A word Wiktionary has and the dictionary doesn't: a homograph of a lemma (قَالَ "to nap" beside
-    قَالَ "to say"), or a word of its own (تَغْرِيدَة "tweet"). Its headword line goes straight to its meanings."""
+    قَالَ "to say"), or a word of its own (تَغْرِيدَة "tweet"). Its headword line goes straight to its meanings.
+    A headword the dictionary reads as another lemma's form (read: آفَاق, the plural of أُفُق) is marked as
+    from Wiktionary, not as only there."""
     root = entry.root and entry.root.replace(" ", ".")  # Wiktionary spells it ق ي ل, the dictionary ق.ي.ل
     pos = POS.get(next((camel for camel, name in wiktionary.POS.items() if name == entry.pos), entry.pos), entry.pos)
     return section(class_="entry")[
@@ -231,10 +233,10 @@ def _wiktionary_only(entry: WiktionaryEntry, number: int | None, heading: Elemen
         div(class_="head")[div(class_="lemma")[
             heading[ar(entry.word)],
             _say([entry]),
-            p(class_="pos")[span(class_="badge")[pos], number and [" ", _homograph(number)], " ", span(class_="badge only")["Wiktionary only"]],
+            p(class_="pos")[span(class_="badge")[pos], number and [" ", _homograph(number)], " ", span(class_="badge only")["Wiktionary" if read else "Wiktionary only"]],
         ]],
         _about([entry], brief=brief),
-        p(class_="only-note")["Only in Wiktionary: no frequency, measure or word parts."],
+        not read and p(class_="only-note")["Only in Wiktionary: no frequency, measure or word parts."],
     ]
 
 
@@ -373,12 +375,15 @@ def _n(count: int, noun: str) -> str:
 class Results(NamedTuple):
     """A word's results, in the order they are shown: the readings, one entry per lemma and part of speech
     (groups, each with its Wiktionary entries, joins); the entries only Wiktionary has (apart), each with its
-    homograph number if it has one; and, last, the entries that only relate the word to another (also)."""
+    homograph number if it has one; and, last, the entries that only relate the word to another (also).
+    Of the entries apart, read holds those a reading reads as another lemma's form (آفَاق, the plural of
+    أُفُق): they are Wiktionary's headwords, but not words only Wiktionary has."""
 
     groups: dict[tuple[str, str], dict[str, list[Reading]]]
     joins: dict[tuple[str, str], Join]
     apart: list[tuple[WiktionaryEntry, int | None]]
     also: list[WiktionaryEntry]
+    read: frozenset[WiktionaryEntry] = frozenset()
 
 
 def _results(readings: Iterable[Reading], links: Links | None = None, homographs: bool = True, found: Iterable[WiktionaryEntry] = ()) -> Results:
@@ -404,8 +409,11 @@ def _results(readings: Iterable[Reading], links: Links | None = None, homographs
     for e in only:
         numbered[headword[e]] += 1
         apart.append((e, numbered[headword[e]] if sharing[headword[e]] > 1 else None))
-    shows = {_unattached(r) for group in groups.values() for rs in group.values() for r in rs}
-    return Results(groups, joins, apart, [e for e in found if not e.senses and _bare(e.word) not in shows])
+    readings = [r for group in groups.values() for rs in group.values() for r in rs]
+    shows = {_unattached(r) for r in readings}
+    reads = {(wiktionary.wiktionary_pos(r.pos), _unattached(r)) for r in readings}
+    read = frozenset(e for e in only if (e.pos, _bare(e.word)) in reads)
+    return Results(groups, joins, apart, [e for e in found if not e.senses and _bare(e.word) not in shows], read)
 
 
 def _bare(word: str) -> str:
@@ -423,7 +431,7 @@ def _entries(results: Results, heading: Element = h2, links: Links | None = None
     return [
         div(class_="entries")[
             (_entry(lemma, glosses, heading, links, brief, results.joins[lemma, pos]) for (lemma, pos), glosses in results.groups.items()),
-            (_wiktionary_only(e, n, heading, links, brief) for e, n in results.apart),
+            (_wiktionary_only(e, n, heading, links, brief, e in results.read) for e, n in results.apart),
         ],
         _also(results.also, heading),
     ]

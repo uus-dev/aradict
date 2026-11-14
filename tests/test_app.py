@@ -991,6 +991,17 @@ def test_a_word_in_neither_source_still_has_no_entry(wiktionary_client):
     assert status(page) == "No entry for قخغثص" and 'class="empty"' in page and 'class="entry"' not in page
 
 
+def test_a_wiktionary_headword_the_dictionary_reads_as_a_form_is_not_called_wiktionary_only(wiktionary_client):
+    # Wiktionary has آفَاق "horizons" as a headword; the dictionary reads it as the plural of أُفُق. Its
+    # entry is still shown, but saying the word is only in Wiktionary would be false.
+    found = entries(wiktionary_client.get("/", params={"q": "آفاق"}).text)
+    horizon = [e for e in found if "أُفُق" in heading(e)]
+    afaq = [e for e in found if "آفَاق" in heading(e)]
+    assert horizon and afaq
+    assert "Wiktionary only" not in text(heading(afaq[0])) and "Wiktionary" in text(heading(afaq[0]))
+    assert "Only in Wiktionary" not in afaq[0] and senses_of(about(afaq[0]))
+
+
 @pytest.mark.parametrize("word", ["تغريدات", "والتغريدات", "تَغْرِيدَة"])
 def test_a_word_only_wiktionary_has_is_found_from_its_forms(wiktionary_client, word):
     found = entries(wiktionary_client.get("/", params={"q": word}).text)

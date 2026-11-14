@@ -17,7 +17,10 @@ from pathlib import Path
 from aradict.wiktionary import letters
 from make_fixture_db import LEMMAS
 
-ONLY = frozenset({"تَغْرِيدَة"})  # "a tweet", which the dictionary reads as تَغْرِيد "his twittering"
+ONLY = frozenset({
+    "تَغْرِيدَة",  # "a tweet", which the dictionary reads as تَغْرِيد "his twittering"
+    "آفَاق",  # a headword of its own in Wiktionary, the plural of أُفُق in the dictionary
+})
 
 
 def make_fixture(source: Path, target: Path, lemmas: frozenset[str] = LEMMAS | ONLY) -> Path:
