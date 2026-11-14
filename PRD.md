@@ -154,6 +154,7 @@ Launch as a web application whose home view opens directly on Word lookup, with 
 99. As a reader of current Arabic, I want words that entered the language recently (for example تغريدة "tweet") to be found, including in their inflected forms, so that modern texts are covered.
 100. As a visitor, I want content taken from Wiktionary clearly credited and linked to its source entry, so that I know where it comes from and can read more.
 101. As a user, I want a word that is only in one source to still show everything that source knows, so that a gap in one source never hides a result.
+107. As a learner looking up an English word, I want meanings that only Wiktionary gives (for example "tweet" or "marriage contract") to find their Arabic words too, so that English lookup reaches the same entries as Arabic lookup. (Added in Milestone 2, #25; numbered after the Milestone 3 stories.)
 
 ### Conjugation and declension (Milestone 3)
 
@@ -313,6 +314,7 @@ Launch as a web application whose home view opens directly on Word lookup, with 
   - Wiktionary text is CC BY-SA 4.0 / GFDL, which is not compatible with GPL v2-only. It is therefore never merged into a file or database with the GPL data. The two are joined at request time by vocalized lemma and part of speech.
   - From Wiktionary, show numbered senses, plurals and gender, verbal nouns, and transliteration and IPA. Use it to fill unresolved root radicals.
   - Words found only in Wiktionary are looked up through its inflected-form entries. They are shown as entries without the morphology fields the core would provide.
+  - English lookup also searches Wiktionary's senses, with the same matching rules as the core glosses. A lemma both sources match appears once, and results from Wiktionary carry the credit.
   - Every view that shows Wiktionary content credits it ("From Wiktionary, CC BY-SA 4.0") with a link to the source entry. Adapted Wiktionary text stays under CC BY-SA.
   - **Presentation** (design W5, chosen in #21): an entry answers its questions in order.
     1. Which word it is: the root tab, the headword with its part of speech and measure, its transliteration and IPA under it, and its frequency.
@@ -527,7 +529,7 @@ It rejected SAMA 3.1 and BAMA 2.0 (paid LDC licenses that don't allow redistribu
 ### Milestones
 
 1. **Milestone 1 (first release):** stories 1–95, built on the CAMeL core, including frequency ranking and derived measures.
-2. **Milestone 2:** Wiktionary enrichment (stories 96–101).
+2. **Milestone 2:** Wiktionary enrichment (stories 96–101 and 107).
 3. **Milestone 3:** conjugation and declension tables (stories 102–106).
 
 Deferred: context-aware disambiguation, example sentences, and audio.
