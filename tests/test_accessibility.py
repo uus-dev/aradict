@@ -44,6 +44,13 @@ PAGES = {
         page.goto(f"{base_url}/?{urlencode({'q': 'كتاب', 'diacritics': 'off'})}"),
         page.locator("details.regional summary").first.click(),
     ],
+    # A word only Wiktionary has beside the dictionary's reading (#24), and entries that only relate a word to another.
+    "only": lambda page, base_url: page.goto(f"{base_url}/?q={quote('تغريدة')}"),
+    "also": lambda page, base_url: page.goto(f"{base_url}/?q={quote('كتب')}"),
+    "text-only": lambda page, base_url: [
+        page.goto(f"{base_url}/text?{urlencode({'q': 'تغريدتي كتب'})}"), page.locator(".tok").first.click(),
+        expect(page.get_by_role("dialog")).to_be_visible(),
+    ],
     "root": lambda page, base_url: page.goto(f"{base_url}/?{urlencode({'q': 'كتب', 'root': 'ك.ت.ب'})}"),
     "related": lambda page, base_url: page.goto(f"{base_url}/?{urlencode({'q': 'كتاب', 'related': 'كِتاب', 'pos': 'noun'})}"),
     "about": lambda page, base_url: page.goto(f"{base_url}/about"),
@@ -57,7 +64,7 @@ def test_pages_pass_axe(base_url, browser, name, width, scheme):
     context = browser.new_context(viewport={"width": width, "height": 800}, color_scheme=scheme)
     page = context.new_page()
     PAGES[name](page, base_url)
-    if name in ("word", "text", "homographs", "labels", "forms"):
+    if name in ("word", "text", "homographs", "labels", "forms", "only", "also", "text-only"):
         expect(page.locator(".credit:visible").first).to_contain_text("From Wiktionary")  # its content is checked too
     results = Axe().run(page, options=WCAG)
     context.close()

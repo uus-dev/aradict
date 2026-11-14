@@ -102,10 +102,10 @@ def word(
             joins = {lemma: dictionary().wiktionary(*lemma) for lemma in lemmas}
             roots = {(r.lemma, r.pos, r.root) for r in found.readings if r.root}
             filled = {root: full for root in roots if (full := dictionary().filled_root(*root))}
-            # The roots of the readings, filled where Wiktionary can, and of Wiktionary's homographs shown on their own.
-            counted = {filled.get(root, root[2]) for root in roots} | {
-                e.root.replace(" ", ".") for join in joins.values() if join.joined for e in join.entries if e is not join.joined and e.root
-            }
+            # The roots of the readings, filled where Wiktionary can, and of the entries only Wiktionary has: the
+            # homographs shown on their own, and the word's own (Lookup.wiktionary).
+            only = [e for join in joins.values() if join.joined for e in join.entries if e is not join.joined] + list(found.wiktionary)
+            counted = {filled.get(root, root[2]) for root in roots} | {e.root.replace(" ", ".") for e in only if e.root}
             links = views.Links(
                 lookup,
                 {lemma: len(dictionary().related(*lemma)) for lemma in lemmas},

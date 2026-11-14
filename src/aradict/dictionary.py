@@ -12,7 +12,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from . import readable, wiktionary
-from .readable import ALIFS, MARK, SHADDA, VOWEL, Segment
+from .readable import ALIFS, MARK, SHADDA, STEM_KEY, VOWEL, Segment
 
 LOOK_ALIKES = str.maketrans({"ی": "ي", "ک": "ك", "ـ": None})  # Persian/Urdu letters; tatweel
 # The database leaves the fatha before a long ا unwritten (كِتاب): a letter, maybe a shadda, then ا.
@@ -25,8 +25,6 @@ TOKEN = re.compile(
     "|(?P<space>\\s+)|(?P<foreign>[^\\W\\d_\u0600-\u06ff]+)|(?P<punctuation>.)",
     re.S,
 )
-# The database keys stems by their bare letters: أ, إ, آ and ٱ as ا, ى as ي, and ة as ه.
-STEM_KEY = ALIFS | str.maketrans("ىة", "يه")
 SUGGESTIONS = 25
 NO_FREQUENCY = -99.0  # the log-probability the database gives a lemma it has no figure for
 
@@ -55,6 +53,11 @@ SPELLING_LIMIT = 2048  # spellings tried per word, at most about 0.3 s for the l
 ARABIZI_LONGEST = 24  # letters; wabimudarrisatihim has 18
 # Every mark but tanween fath, which a spelling must match (شكراً), so a final ا isn't a case ending.
 UNSPELLED = re.compile(f"(?!\u064b){MARK.pattern}")
+
+# The attached words Milestone 1 reads, as wiktionary_lookup strips them from a word: a conjunction, then a
+# preposition, then the article (لِ with الـ is لِلـ), all optional; or a pronoun at the end.
+PROCLITICS = sorted({(c + p + a).replace("لال", "لل") for c in ("", "و", "ف") for p in ("", "ب", "ل") for a in ("", "ال")} - {""})
+ENCLITICS = ("ه", "ها", "هم", "هن", "هما", "ك", "كم", "كن", "كما", "ي", "ني", "نا")
 
 # Verb measures as the consonants of the lemma (the perfect "he" form), vowels left out and
 # shadda kept. Digits stand for the root's letters in order (1 2 3 are ف ع ل), so a template
@@ -114,13 +117,14 @@ class Reading:
 
 @dataclass(frozen=True)
 class Token:
-    """One run of a passage, at passage[start:end]. A word with no reading is "unknown"."""
+    """One run of a passage, at passage[start:end]. A word with no reading and no Wiktionary entry is "unknown"."""
 
     text: str
     kind: str  # word, unknown, number, space (line breaks too), foreign (non-Arabic letters) or punctuation
     start: int
     end: int
     readings: tuple[Reading, ...] = ()
+    wiktionary: tuple[wiktionary.Entry, ...] = ()  # a word's Wiktionary entries no lemma joins (see wiktionary_only)
 
 
 @dataclass(frozen=True)
@@ -132,6 +136,7 @@ class Lookup:
     mode: str  # "ar" (Arabic script, or Latin letters that stand for no Arabic word), "arabizi" or "en" (English)
     complete: bool  # False when the text has more words than the one looked up
     readings: tuple[Reading, ...]
+    wiktionary: tuple[wiktionary.Entry, ...] = ()  # the word's Wiktionary entries no lemma joins (see wiktionary_only); none for English
 
 
 def _reading_key(analysis: dict) -> tuple:
@@ -364,6 +369,10 @@ class Dictionary:
         if self._wiktionary:
             wiktionary.check(self._wiktionary)
         self._fills: dict[tuple[str, str, str], str | None] = {}
+        # The lemmas (with their part of speech) by their letters as Wiktionary's are keyed, to tell the entries none joins.
+        self._lemmas: dict[str, list[tuple[str, str]]] = {}
+        for lemma, pos in self._lemma_stems:
+            self._lemmas.setdefault(wiktionary.letters(lemma), []).append((lemma, pos))
 
     def wiktionary(self, lemma: str, pos: str) -> wiktionary.Join:
         """A lemma's Wiktionary entries for this part of speech, several when Wiktionary has homographs
@@ -373,6 +382,43 @@ class Dictionary:
         found = self._entries(lemma, pos)
         picked = found if len(found) < 2 else self.picked(lemma, pos, entries=found)
         return wiktionary.Join(found, picked[0] if len(picked) == 1 else None)
+
+    def wiktionary_only(self, word: str, filter_diacritics: bool = True) -> list[wiktionary.Entry]:
+        """The Wiktionary entries of an Arabic word (the first, if several) that no lemma of the dictionary
+        joins (see wiktionary), in Wiktionary's order: words only Wiktionary has, such as تَغْرِيدَة "tweet",
+        and entries that only relate a word to another. An entry is the word's when it gives the word as one
+        of its spellings (Entry.spellings: its headword, plural, definite and case forms, conjugation),
+        compared as lookup_ar compares them, hamza and diacritics too. A word no entry spells is tried without
+        the attached words Milestone 1 reads (PROCLITICS, ENCLITICS), fewest letters first: والتغريدات is
+        و + التغريدات, تغريدتها is تغريدة + ها. No entries for a word Wiktionary doesn't have, or with no dataset."""
+        word = _first_word(word)
+        if not (word and self._wiktionary):
+            return []
+        typed, letters = _typed(word), _key(word)
+        cuts = []  # (letters cut off, the stem's letters, the stem as typed)
+        for start, end in itertools.product(["", *PROCLITICS], ["", *ENCLITICS]):
+            stem, rest = letters[len(start):len(letters) - len(end)], typed[len(start):len(typed) - len(end)]
+            if letters.startswith(start) and letters.endswith(end) and len(stem) > 1 and not (end and start.endswith(("ال", "لل"))):
+                cuts.append((len(start) + len(end), stem, rest))
+                if end and stem.endswith("ت"):  # ة is written ت before a pronoun
+                    cuts.append((len(start) + len(end), stem[:-1] + "ه", [*rest[:-1], ("ة", rest[-1][1])]))
+        for _, group in itertools.groupby(sorted(cuts, key=lambda cut: cut[0]), key=lambda cut: cut[0]):
+            stems = [(stem, rest) for _, stem, rest in group]
+            found = [
+                e for e in wiktionary.by_form(self._wiktionary, [stem for stem, _ in stems])
+                if any(wiktionary.key(s) == stem and _agrees(rest, s, filter_diacritics) for stem, rest in stems for s in e.spellings)
+            ]
+            if found:
+                return [e for e in found if not self.joined(e)]
+        return []
+
+    def joined(self, entry: wiktionary.Entry) -> bool:
+        """Whether a lemma of the dictionary joins the Wiktionary entry (see wiktionary)."""
+        return any(
+            entry in ([join.joined] if (join := self.wiktionary(lemma, pos)).joined else join.entries)
+            for lemma, pos in self._lemmas.get(wiktionary.letters(entry.word), ())
+            if wiktionary.wiktionary_pos(pos) == entry.pos and wiktionary.same_word(lemma, entry.word)  # as wiktionary.entries joins them
+        )
 
     def _entries(self, lemma: str, pos: str) -> list[wiktionary.Entry]:
         return wiktionary.entries(self._wiktionary, lemma, pos) if self._wiktionary else []
@@ -398,13 +444,40 @@ class Dictionary:
 
     def wiktionary_root(self, lemma: str, pos: str, root: str | None = None) -> str | None:
         """The root Wiktionary gives a lemma, "ق.و.ل": the one all its entries give, or else the one
-        all the entries CAMeL's gloss picks give (see picked). None if they give none, or several."""
+        all the entries CAMeL's gloss picks give (see picked). None if they give none, or several.
+        An entry that gives no root but relates its word to another ("verbal noun of أَثَارَ") has that word's (_root)."""
         entries = self._entries(lemma, pos)
-        roots = {e.root for e in entries}
+        roots = {self._root(e) for e in entries}
         if len(roots) > 1:
-            roots = {e.root for e in self.picked(lemma, pos, root, entries)}
+            roots = {self._root(e) for e in self.picked(lemma, pos, root, entries)}
         full = roots.pop() if len(roots) == 1 else None
         return full and full.replace(" ", ".")
+
+    def _root(self, entry: wiktionary.Entry) -> str | None:
+        """An entry's root, "ق و ل". One that gives none but relates its word to others, with or without meanings of
+        its own (إِثَارَة is only "verbal noun of أَثَارَ"; قَوْل is "speech" and "verbal noun of قَالَ"), has theirs if
+        they agree (see _related_root): a verbal noun, participle, plural or other spelling of a word has its root."""
+        if entry.root or not entry.relations:
+            return entry.root
+        roots = {self._related_root(r.word) for r in entry.relations}
+        return roots.pop() if len(roots) == 1 else None
+
+    def _related_root(self, word: str) -> str | None:
+        """The root of a word an entry relates its own to (أَثَارَ in "verbal noun of أَثَارَ"), where it is
+        unambiguous: the one all the word's entries give; or else, of homographs (قَالَ "say" ق و ل, قَالَ "nap"
+        ق ي ل), the root of the one the dictionary's lemma of the word joins, which its glosses pick (see
+        wiktionary). None if neither is one root: a word's root is never guessed. Wiktionary writes the word as
+        its own headword, so the entries spelled exactly so are its (the verb وَلَدَ, not the noun وَلَد), if any."""
+        entries = wiktionary.entries(self._wiktionary, word)
+        exact = unicodedata.normalize("NFC", word)
+        entries = [e for e in entries if unicodedata.normalize("NFC", e.word) == exact] or entries
+        roots = {e.root for e in entries}
+        if len(roots) > 1:
+            roots = {
+                join.joined.root for lemma, pos in self._lemmas.get(wiktionary.letters(word), ())
+                if wiktionary.same_word(lemma, word) and (join := self.wiktionary(lemma, pos)).joined in entries
+            }
+        return roots.pop() if len(roots) == 1 else None
 
     def filled_root(self, lemma: str, pos: str, root: str) -> str | None:
         """The lemma's root ("ق.#.ل") with the weak or hamza letters CAMeL leaves open filled from
@@ -494,7 +567,7 @@ class Dictionary:
         arabizi = self.arabizi(text)
         return Lookup(
             arabizi or (words[0] if words else ""), "arabizi" if arabizi else "ar", len(words) <= 1,
-            tuple(self.lookup_ar(arabizi or text, filter_diacritics)),
+            tuple(self.lookup_ar(arabizi or text, filter_diacritics)), tuple(self.wiktionary_only(arabizi or text, filter_diacritics)),
         )
 
     def lookup_en(self, query: str) -> list[Reading]:
@@ -593,19 +666,20 @@ class Dictionary:
         return next((readings[0] for word in words if (readings := self._readings(word, keep))), None)
 
     def analyze_text(self, text: str) -> list[Token]:
-        """Every run of the passage in order, each word with its readings. A word written twice is
-        looked up once. The passage's diacritics filter their own word's readings."""
-        seen: dict[str, tuple[Reading, ...]] = {}
+        """Every run of the passage in order, each word with its readings and the Wiktionary entries
+        only Wiktionary has. A word written twice is looked up once. The passage's diacritics filter
+        their own word's readings and entries."""
+        seen: dict[str, tuple[tuple[Reading, ...], tuple[wiktionary.Entry, ...]]] = {}
         tokens = []
         for match in TOKEN.finditer(text):
             kind, word = match.lastgroup, match.group()
-            readings = ()
+            found: tuple = ((), ())
             if kind == "word":
                 if word not in seen:
-                    seen[word] = tuple(self.lookup_ar(word))
-                readings = seen[word]
-                kind = "word" if readings else "unknown"
-            tokens.append(Token(word, kind, match.start(), match.end(), readings))
+                    seen[word] = tuple(self.lookup_ar(word)), tuple(self.wiktionary_only(word))
+                found = seen[word]
+                kind = "word" if any(found) else "unknown"
+            tokens.append(Token(word, kind, match.start(), match.end(), *found))
         return tokens
 
     def suggest(self, text: str, filter_diacritics: bool = True) -> list[str]:
@@ -615,7 +689,8 @@ class Dictionary:
         diacritics must agree as for lookup_ar.
 
         When the word starts with an attached prefix (وكتا), its stem is completed and the
-        prefix kept. Completions that read fewer letters as a prefix come first."""
+        prefix kept. Completions that read fewer letters as a prefix come first. Then, while
+        there is room, the headwords of words only Wiktionary has (تغري: تَغْرِيدَة), shortest first."""
         word = _first_word(text)
         typed, letters = _typed(word), _key(word)
         suggestions: list[str] = []
@@ -624,6 +699,13 @@ class Dictionary:
                 break
             completions = self._complete(typed, letters, i, SUGGESTIONS - len(suggestions), filter_diacritics)
             suggestions += [c for c in completions if c not in suggestions]
+        if letters and self._wiktionary and len(suggestions) < SUGGESTIONS:
+            said = {wiktionary.spelling(s) for s in suggestions}
+            # ponytail: the first 100 headwords by length; a prefix with more that disagree with its marks may miss some.
+            for e in wiktionary.by_prefix(self._wiktionary, letters, 100):
+                if len(suggestions) < SUGGESTIONS and wiktionary.spelling(e.word) not in said and _agrees(typed, e.word, filter_diacritics, whole=False) and not self.joined(e):
+                    said.add(wiktionary.spelling(e.word))
+                    suggestions.append(e.word)
         return suggestions
 
     def _complete(self, typed: list, letters: str, i: int, wanted: int, check_marks: bool) -> list[str]:

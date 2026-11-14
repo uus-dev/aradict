@@ -27,7 +27,7 @@ from pathlib import Path
 from typing import NamedTuple
 from urllib.request import urlopen
 
-from .readable import MARK, SHADDA
+from .readable import MARK, SHADDA, STEM_KEY
 
 # kaikki.org's extraction of 2026-10-30, from the English Wiktionary dump of 2026-10-01.
 # ponytail: the URL isn't dated. kaikki.org overwrites the file with each new extraction, after which
@@ -41,8 +41,10 @@ WIKI = "https://en.wiktionary.org/wiki/"
 
 # What the build keeps: raised whenever that changes, so that an older dataset is rebuilt, not misread.
 # 1 (#20) kept each sense's text; 2 (#22) its labels and sub-senses too; 3 (#23) its relations, entries
-# that are only relations, the forms' transliterations and only the pronunciations that are the entry's own.
-LAYOUT = 3
+# that are only relations, the forms' transliterations and only the pronunciations that are the entry's own;
+# 4 (#24) indexes every entry by the letters of its headword and of each form it lists, for words only Wiktionary has,
+# and leaves a verb's participles and verbal nouns, which are other words, out of its conjugation.
+LAYOUT = 4
 
 
 def dataset_path() -> Path:
@@ -52,7 +54,7 @@ def dataset_path() -> Path:
 
 def check(dataset: Path) -> None:
     """Refuses a dataset an older build wrote, saying how to build it again."""
-    with closing(sqlite3.connect(f"{dataset.resolve().as_uri()}?mode=ro", uri=True)) as db:
+    with closing(_connect(dataset)) as db:
         layout = db.execute("PRAGMA user_version").fetchone()[0]
     if layout != LAYOUT:
         raise RuntimeError(
@@ -96,7 +98,7 @@ class Entry:
     senses: tuple[Sense, ...]  # its meanings, in Wiktionary's order; none for an entry that is only relations (كُتُب)
     relations: tuple[Relation, ...]  # "verbal noun of كَتَبَ", in Wiktionary's order; never meanings
     forms: tuple[Form, ...]  # the headword line's forms: the headword with its gender, كُتُب "plural"
-    inflections: tuple[str, ...]  # each spelling in its declension or conjugation table, once
+    inflections: tuple[str, ...]  # each spelling in its declension or conjugation table, once; not its participles or verbal nouns
     romanization: str | None  # kitāb
     ipa: tuple[tuple[str, str], ...]  # each pronunciation with where it is said, "" for Modern Standard Arabic
     root: str | None  # its letters, "ك ت ب"; None when Wiktionary gives none, or two
@@ -106,6 +108,12 @@ class Entry:
     def page(self) -> str:
         """The Wiktionary page's title: the headword without its marks, كتاب."""
         return self.url.removeprefix(WIKI).removesuffix("#Arabic").replace("_", " ")
+
+    @property
+    def spellings(self) -> tuple[str, ...]:
+        """Every spelling of the word the entry gives: its headword, the forms of its headword line (its plural,
+        an adjective's feminine) and its declension or conjugation; not its verbal nouns, which are other words."""
+        return (self.word, *(f.form for f in self.forms if not OTHER_WORDS & set(f.tags)), *self.inflections)
 
 
 # --- The join -------------------------------------------------------------------------------
@@ -147,16 +155,53 @@ def letters(word: str) -> str:
     return MARK.sub("", spelling(word))
 
 
-def entries(dataset: Path, lemma: str, pos: str) -> list[Entry]:
-    """The Wiktionary entries of a CAMeL lemma with this part of speech, in Wiktionary's order.
-    Homographs from different etymologies (قَالَ "say" and قَالَ "nap") are separate entries. An
+def key(word: str) -> str:
+    """A word's letters as Arabic lookup compares them (Dictionary.lookup_ar): no marks or tatweel, alif's
+    hamza forms and wasla as ا, ى as ي and ة as ه. Each spelling of an entry is indexed so, for by_form."""
+    return MARK.sub("", unicodedata.normalize("NFC", word).replace("ـ", "")).translate(STEM_KEY)
+
+
+WORD = re.compile("[ء-ي]+")  # a key that is one Arabic word: not "-" for an empty cell of a table, nor a phrase
+
+
+def _connect(dataset: Path) -> sqlite3.Connection:
+    return sqlite3.connect(f"{dataset.absolute().as_uri()}?mode=ro", uri=True)  # absolute, not resolve: no lstat per folder per query
+
+
+def by_form(dataset: Path, keys: list[str]) -> list[Entry]:
+    """The entries with a spelling (Entry.spellings) whose key is one of keys, in Wiktionary's order."""
+    with closing(_connect(dataset)) as db:
+        rows = db.execute(f"SELECT entry FROM entry WHERE id IN (SELECT entry FROM form WHERE key IN ({', '.join('?' * len(keys))})) ORDER BY id", keys)
+        return [_entry(json.loads(row)) for row, in rows]
+
+
+def by_prefix(dataset: Path, prefix: str, limit: int) -> list[Entry]:
+    """Up to limit entries with meanings whose headword, one word, has a key that starts with prefix's,
+    shortest first, then alphabetical."""
+    with closing(_connect(dataset)) as db:
+        rows = db.execute(
+            "SELECT entry FROM entry WHERE key >= ? AND key < ? AND key NOT LIKE '% %' AND json_array_length(entry, '$.senses')"
+            " ORDER BY length(key), key, id LIMIT ?",
+            (key(prefix), key(prefix) + "￿", limit),
+        )
+        return [_entry(json.loads(row)) for row, in rows]
+
+
+def entries(dataset: Path, lemma: str, pos: str | None = None) -> list[Entry]:
+    """The Wiktionary entries of a CAMeL lemma with this part of speech (any, without pos), in Wiktionary's
+    order. Homographs from different etymologies (قَالَ "say" and قَالَ "nap") are separate entries. An
     entry that is only relations stands for the lemma only where no entry with meanings does: the
     lemma كُتّاب is the Quran school, not the plural of كَاتِب, but the lemma كَتْب is "verbal noun of كَتَبَ"."""
-    with closing(sqlite3.connect(f"{dataset.resolve().as_uri()}?mode=ro", uri=True)) as db:
-        rows = db.execute("SELECT entry FROM entry WHERE letters = ? AND pos = ? ORDER BY rowid", (letters(lemma), wiktionary_pos(pos)))
-        found = [_entry(json.loads(row)) for row, in rows]
-    found = [e for e in found if not MARK.search(lemma) or not MARK.search(e.word) or spelling(e.word) == spelling(lemma)]
+    with closing(_connect(dataset)) as db:
+        rows = db.execute("SELECT entry FROM entry WHERE letters = ? AND pos = coalesce(?, pos) ORDER BY id", (letters(lemma), pos and wiktionary_pos(pos)))
+        found = [e for row, in rows if same_word(lemma, (e := _entry(json.loads(row))).word)]
     return [e for e in found if e.senses] or found
+
+
+def same_word(lemma: str, headword: str) -> bool:
+    """Whether a CAMeL lemma and a Wiktionary headword with its letters spell the same word: the join's
+    spellings agree, or one of them has no marks to tell."""
+    return not MARK.search(lemma) or not MARK.search(headword) or spelling(headword) == spelling(lemma)
 
 
 class Join(NamedTuple):
@@ -186,6 +231,8 @@ def _entry(data: dict) -> Entry:
 KEPT_POS = {"noun", "name", "adj", "verb", "adv", "pron", "prep", "conj", "particle", "intj", "num", "abbrev"}
 # Form tags that describe the extraction, not the word.
 NOT_FORMS = {"romanization", "table-tags", "inflection-template"}
+# Forms that are other words, each with its own entry: a verb's verbal nouns and participles (كِتَابَة, كَاتِب).
+OTHER_WORDS = {"noun-from-verb", "participle"}
 ROOT_CATEGORY = "Arabic terms belonging to the root "
 
 
@@ -337,7 +384,7 @@ def from_kaikki(item: dict) -> dict | None:
         "senses": senses,
         "relations": relations,
         "forms": head,
-        "inflections": list(dict.fromkeys(f["form"] for f in forms if "source" in f)),
+        "inflections": list(dict.fromkeys(f["form"] for f in forms if "source" in f and not OTHER_WORDS & set(f.get("tags", ())))),
         "romanization": romanization,
         # Modern Standard Arabic's only where they are the entry's own; kaikki.org can't tell whose the regional ones are.
         "ipa": [(said, where) for said, where in ipa if where or not romanization or says(said, romanization)],
@@ -370,13 +417,21 @@ def build(source: Path, target: Path) -> int:
     partial.unlink(missing_ok=True)
     target.parent.mkdir(parents=True, exist_ok=True)
     with closing(sqlite3.connect(partial)) as db, source.open(encoding="utf-8") as lines:
-        db.execute("CREATE TABLE entry (letters TEXT NOT NULL, pos TEXT NOT NULL, entry TEXT NOT NULL)")
+        # An explicit id: VACUUM may renumber a plain rowid, which the form table refers to.
+        db.execute("CREATE TABLE entry (id INTEGER PRIMARY KEY, letters TEXT NOT NULL, pos TEXT NOT NULL, key TEXT NOT NULL, entry TEXT NOT NULL)")
+        db.execute("CREATE TABLE form (key TEXT NOT NULL, entry INTEGER NOT NULL, PRIMARY KEY (key, entry)) WITHOUT ROWID")
         kept = [entry for line in lines if (entry := from_kaikki(json.loads(line)))]
         _share_labels(kept)
-        db.executemany("INSERT INTO entry VALUES (?, ?, ?)", (
-            (letters(entry["word"]), entry["pos"], json.dumps(entry, ensure_ascii=False, separators=(",", ":"))) for entry in kept
+        db.executemany("INSERT INTO entry VALUES (?, ?, ?, ?, ?)", (
+            (id, letters(entry["word"]), entry["pos"], key(entry["word"]), json.dumps(entry, ensure_ascii=False, separators=(",", ":")))
+            for id, entry in enumerate(kept, 1)
+        ))
+        db.executemany("INSERT INTO form VALUES (?, ?)", (  # of words only, not of phrases such as عَادَ أَدْرَاجَهُ
+            (k, id) for id, entry in enumerate(kept, 1) if WORD.fullmatch(key(entry["word"]))
+            for k in dict.fromkeys(map(key, _entry(entry).spellings)) if WORD.fullmatch(k)
         ))
         db.execute("CREATE INDEX entry_letters ON entry (letters, pos)")
+        db.execute("CREATE INDEX entry_key ON entry (key)")
         db.execute(f"PRAGMA user_version = {LAYOUT}")
         db.commit()
         count = db.execute("SELECT count(*) FROM entry").fetchone()[0]

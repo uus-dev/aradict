@@ -25,7 +25,7 @@ from pathlib import Path
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
-from . import views
+from . import views, wiktionary
 from .data import EXPECTED, VERSION, db_path
 from .dictionary import ROOT, Dictionary, Reading
 from .readable import IRREGULAR_PLURALS, MARK, SHADDA, head_noun, is_participle
@@ -135,6 +135,13 @@ def root_fills(d: Dictionary, db) -> Counter:
         else:
             found["homographs left open" if roots - {None} else "no root on Wiktionary" if entries else "no Wiktionary entry"] += 1
     return found
+
+
+def wiktionary_only(d: Dictionary, dataset: Path) -> tuple[int, int]:
+    """How many of the entries with meanings in a Wiktionary dataset (d's), each a headword of one word with
+    one part of speech, no lemma of the dictionary joins: the words only Wiktionary has (#24); and of how many."""
+    found = wiktionary.by_prefix(dataset, "", sys.maxsize)
+    return sum(not d.joined(e) for e in found), len(found)
 
 
 def _sample_words(db) -> list[str]:

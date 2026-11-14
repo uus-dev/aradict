@@ -7,6 +7,8 @@ import unicodedata
 from urllib.parse import parse_qs, unquote, urlencode, urlsplit
 from urllib.request import urlopen
 
+import pytest
+
 
 def test_word_page_lists_readings_grouped_by_lemma(client):
     page = client.get("/", params={"q": "كتب"})
@@ -903,3 +905,93 @@ def test_wiktionary_content_is_always_inside_an_entry_with_the_credit(wiktionary
     pages.append(wiktionary_client.post("/text", data={"text": "كتب كتاب قال"}).text)
     shown = [e for page in pages for e in entries(page) if '<p class="say">' in e or "<dt>Meanings</dt>" in e or " of</dt>" in e]
     assert len(shown) > 10 and all('<p class="credit">' in e for e in shown)
+
+
+# --- Words only Wiktionary has (#24) -------------------------------------------------------------
+
+def status(page: str) -> str:
+    return text(re.search(r'<p id="status"[^>]*>(.*?)</p>', page).group(1))
+
+
+def test_a_word_only_wiktionary_has_is_shown_beside_the_dictionarys_reading(wiktionary_client):
+    # The dictionary reads تغريدة as تَغْرِيد "his twittering"; Wiktionary's تَغْرِيدَة "a tweet" follows as
+    # its own entry, which shows all Wiktionary has and none of what only the dictionary has.
+    page = wiktionary_client.get("/", params={"q": "تغريدة"}).text
+    twittering, tweet = entries(page)
+    assert "his/its twittering" in twittering
+    assert status(page) == "1 reading for تغريدة, and 1 more entry from Wiktionary"
+    assert '<h2><span class="ar" lang="ar" dir="rtl">تَغْرِيدَة</span></h2>' in tweet
+    assert text(heading(tweet)).startswith("Root غ ر د") and text(heading(tweet)).endswith("noun Wiktionary only")
+    assert text(re.search(r'<p class="say">(.*?)</p>', heading(tweet)).group(1)) == "Pronunciation: taḡrīda /taɣ.riː.da/"
+    assert [sense.split(": ")[-1] for sense in senses_of(about(tweet))] == ["chirp, tweet", "a tweet"]
+    assert words(row(about(tweet), "Plural")) == [("تَغْرِيدَات taḡrīdāt", "/?q=تَغْرِيدَات")]
+    assert text(row(about(tweet), "Gender")) == "feminine"
+    assert credit(tweet)[1]["تغريدة on Wiktionary, opens in a new tab"] == "https://en.wiktionary.org/wiki/تغريدة#Arabic"
+    assert 'class="reading"' not in tweet and "Frequency" not in tweet and "Measure" not in tweet and "Word parts" not in tweet
+    assert text(re.search(r'<p class="only-note">(.*?)</p>', tweet).group(1)) == "Only in Wiktionary: no frequency, measure or word parts."
+
+
+def test_entries_that_only_relate_the_word_to_another_are_listed_after_its_entries(wiktionary_client):
+    # كتب: the dictionary's كِتاب (as كُتُب) and كَتَب; Wiktionary's own كَتَّبَ "cause to write"; then two
+    # entries with no meaning of their own. Its كُتُب "plural of كِتَاب" is a reading already, so it isn't listed.
+    page = wiktionary_client.get("/", params={"q": "كتب"}).text
+    assert status(page) == "3 readings for كتب, and 3 more entries from Wiktionary"
+    kitab, katab, kattaba = entries(page)
+    assert "كَتَّبَ" in heading(kattaba) and text(heading(kattaba)).endswith("verb Wiktionary only")
+    also = re.search(r'<section class="also">(.*?)</section>', page).group(1)
+    assert text(re.search(r"<h2>(.*?)</h2>", also).group(1)) == "Also in Wiktionary"
+    assert [text(item) for item in re.findall(r"<li>(.*?)</li>", also)] == [
+        "katb: Verbal noun of كَتَبَ katabaكَتْب", "kitāb: Classical Arabic spelling of كِتَاب kitābكِتٰب",
+    ]
+    assert links(also)["كَتَبَ"] == {"q": ["كَتَبَ"]}
+    assert credit(also)[1] == {"CC BY-SA 4.0, opens in a new tab": LICENCE, "كتب on Wiktionary, opens in a new tab": "https://en.wiktionary.org/wiki/كتب#Arabic"}
+    assert page.index('<section class="also">') > page.index("كَتَّبَ")
+    assert "كُتُب</span></p>" not in also
+
+
+def test_in_the_text_view_a_word_only_wiktionary_has_opens_its_entry(wiktionary_client):
+    # The dictionary can't read تغريدتي "my tweet"; it reads تغريدة as "his twittering", which Wiktionary has too.
+    page = wiktionary_client.post("/text", data={"text": "تغريدتي تغريدة قخغثص"}).text
+    passage = passage_of(page)
+    assert re.findall(r'class="tok (\w+)"', passage) == ["word", "word", "unknown"]
+    assert [text(said) for said in re.findall(r'<span class="sr-only" lang="en">(.*?)</span>', passage)] == [
+        ", 1 entry from Wiktionary", ", 1 reading, 1 more from Wiktionary", ", not in the dictionary",
+    ]
+    assert status(page) == "3 words, 1 not in the dictionary"
+    only, both, unknown = (page[page.index(f'<div id="{i}"'):] for i in ("w0", "w1", "w2"))
+    only, both = only[:only.index('<div id="w1"')], both[:both.index('<div id="w2"')]
+    assert text(re.search(r'<div class="tp-head">(.*?)</div>', only).group(1)) == "تغريدتي1 entry from Wiktionary"
+    [tweet] = entries(only)
+    assert "a tweet" in senses_of(about(tweet))[-1] and text(heading(tweet)).endswith("noun Wiktionary only")
+    assert "not in the dictionary" not in only and "Open in Word lookup" in only
+    twittering, tweet = entries(both)
+    assert "his/its twittering" in twittering and "a tweet" in senses_of(about(tweet))[-1]
+    assert "Frequency" not in both and "Word parts" not in both and "<dt>Regional</dt>" not in both
+    assert "not in the dictionary" in unknown
+
+
+def test_autocomplete_offers_the_words_only_wiktionary_has_after_the_dictionarys(wiktionary_client):
+    offered = wiktionary_client.get("/suggest", params={"q": "تغري"}).json()
+    assert "تَغْرِيد" in offered and offered[-1] == "تَغْرِيدَة" and offered.count("تَغْرِيدَة") == 1
+    assert "تَغْرِيدَة" not in wiktionary_client.get("/suggest", params={"q": "تُغري"}).json()  # typed vowels must agree
+
+
+def test_about_says_newer_words_may_come_from_wiktionary(client):
+    coverage = client.get("/about").text
+    coverage = coverage[coverage.index('id="coverage"'):coverage.index('id="typing"')]
+    assert "Where English Wiktionary has such a word, as it has the one for “tweet”" in coverage and "“Wiktionary only”" in coverage
+
+
+def test_a_word_wiktionary_adds_nothing_to_is_counted_as_before(client):
+    assert status(client.get("/", params={"q": "كتب"}).text) == "3 readings for كتب"
+
+
+def test_a_word_in_neither_source_still_has_no_entry(wiktionary_client):
+    page = wiktionary_client.get("/", params={"q": "قخغثص"}).text
+    assert status(page) == "No entry for قخغثص" and 'class="empty"' in page and 'class="entry"' not in page
+
+
+@pytest.mark.parametrize("word", ["تغريدات", "والتغريدات", "تَغْرِيدَة"])
+def test_a_word_only_wiktionary_has_is_found_from_its_forms(wiktionary_client, word):
+    found = entries(wiktionary_client.get("/", params={"q": word}).text)
+    assert ["a tweet" in senses_of(about(e))[-1] for e in found if "Wiktionary only" in text(heading(e))] == [True]
