@@ -189,6 +189,21 @@ def by_prefix(dataset: Path, prefix: str, limit: int) -> list[Entry]:
         return [_entry(json.loads(row)) for row, in rows]
 
 
+def by_id(dataset: Path, ids: list[int]) -> list[Entry]:
+    """The entries with these ids, in Wiktionary's order."""
+    with closing(_connect(dataset)) as db:
+        rows = db.execute(f"SELECT entry FROM entry WHERE id IN ({', '.join('?' * len(ids))}) ORDER BY id", ids)
+        return [_entry(json.loads(row)) for row, in rows]
+
+
+def meanings(dataset: Path) -> list[tuple[int, str, list[str]]]:
+    """Each entry with meanings, as its id, its part of speech and the glosses of its senses and sub-senses,
+    without their labels: Wiktionary's qualifiers and register labels aren't what the word means."""
+    with closing(_connect(dataset)) as db:
+        rows = db.execute("SELECT id, pos, json_extract(entry, '$.senses') FROM entry WHERE json_array_length(entry, '$.senses') ORDER BY id")
+        return [(id, pos, [s["gloss"] for sense in json.loads(senses) for s in (sense, *sense["subsenses"])]) for id, pos, senses in rows]
+
+
 def entries(dataset: Path, lemma: str, pos: str | None = None) -> list[Entry]:
     """The Wiktionary entries of a CAMeL lemma with this part of speech (any, without pos), in Wiktionary's
     order. Homographs from different etymologies (قَالَ "say" and قَالَ "nap") are separate entries. An

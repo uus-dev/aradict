@@ -9,8 +9,6 @@ import pytest
 from axe_playwright_python.sync_playwright import Axe
 from playwright.sync_api import expect
 
-from aradict.app import dictionary
-
 WCAG = {"runOnly": {"type": "tag", "values": ["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa", "best-practice"]}}
 
 
@@ -46,6 +44,9 @@ PAGES = {
     ],
     # A word only Wiktionary has beside the dictionary's reading (#24), and entries that only relate a word to another.
     "only": lambda page, base_url: page.goto(f"{base_url}/?q={quote('تغريدة')}"),
+    # English results (#25): the dictionary's words, then a headword Wiktionary has and the dictionary reads as a plural.
+    "english": lambda page, base_url: page.goto(f"{base_url}/?{urlencode({'q': 'horizons', 'lang': 'en'})}"),
+    "english-only": lambda page, base_url: page.goto(f"{base_url}/?{urlencode({'q': 'tweet', 'lang': 'en'})}"),
     "also": lambda page, base_url: page.goto(f"{base_url}/?q={quote('كتب')}"),
     "text-only": lambda page, base_url: [
         page.goto(f"{base_url}/text?{urlencode({'q': 'تغريدتي كتب'})}"), page.locator(".tok").first.click(),
@@ -64,21 +65,11 @@ def test_pages_pass_axe(base_url, browser, name, width, scheme):
     context = browser.new_context(viewport={"width": width, "height": 800}, color_scheme=scheme)
     page = context.new_page()
     PAGES[name](page, base_url)
-    if name in ("word", "text", "homographs", "labels", "forms", "only", "also", "text-only"):
+    if name in ("word", "text", "homographs", "labels", "forms", "only", "english", "english-only", "also", "text-only"):
         expect(page.locator(".credit:visible").first).to_contain_text("From Wiktionary")  # its content is checked too
     results = Axe().run(page, options=WCAG)
     context.close()
     assert results.violations_count == 0, results.generate_report()
-
-
-@pytest.fixture
-def wiktionary_url(base_url, fixture_wiktionary):
-    """The server at base_url, reading the fixture Wiktionary dataset for one test."""
-    with pytest.MonkeyPatch.context() as patch:
-        patch.setenv("ARADICT_WIKTIONARY_PATH", str(fixture_wiktionary))
-        dictionary.cache_clear()
-        yield base_url
-        dictionary.cache_clear()
 
 
 @pytest.mark.parametrize("scheme", ["light", "dark"])
