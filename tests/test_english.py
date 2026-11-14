@@ -137,7 +137,7 @@ def test_an_english_lookup_credits_a_word_only_wiktionary_has(wiktionary_url, br
     entry = page.locator(".entry")
     expect(entry).to_have_count(1)
     expect(entry.get_by_role("heading", level=2)).to_have_text("تَغْرِيدَة")
-    expect(entry.locator(".badge.only")).to_have_text("Wiktionary only")
+    expect(entry.locator(".badge.only")).to_have_text("Wiktionary")
     expect(entry.locator(".credit")).to_be_visible()
     expect(entry.locator(".credit")).to_contain_text("From Wiktionary, CC BY-SA 4.0")
     source = entry.get_by_role("link", name="تغريدة on Wiktionary, opens in a new tab")

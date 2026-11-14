@@ -1018,7 +1018,9 @@ def test_english_shows_a_word_only_wiktionary_has_with_the_credit(wiktionary_cli
     page = english_lookup(wiktionary_client, "tweet")
     assert status(page) == "1 entry from Wiktionary for “tweet”"
     [tweet] = entries(page)
-    assert '<h2><span class="ar" lang="ar" dir="rtl">تَغْرِيدَة</span></h2>' in tweet and text(heading(tweet)).endswith("noun Wiktionary only")
+    assert '<h2><span class="ar" lang="ar" dir="rtl">تَغْرِيدَة</span></h2>' in tweet
+    # English lookup doesn't read the word in Arabic, so it can't tell whether only Wiktionary has it.
+    assert text(heading(tweet)).endswith("noun Wiktionary") and "Only in Wiktionary" not in tweet
     assert credit(tweet) == (
         "From Wiktionary, CC BY-SA 4.0, opens in a new tab · Entry: تغريدة on Wiktionary, opens in a new tab",
         {"CC BY-SA 4.0, opens in a new tab": LICENCE, "تغريدة on Wiktionary, opens in a new tab": "https://en.wiktionary.org/wiki/تغريدة#Arabic"},

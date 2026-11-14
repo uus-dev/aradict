@@ -386,7 +386,7 @@ class Results(NamedTuple):
     read: frozenset[WiktionaryEntry] = frozenset()
 
 
-def _results(readings: Iterable[Reading], links: Links | None = None, homographs: bool = True, found: Iterable[WiktionaryEntry] = ()) -> Results:
+def _results(readings: Iterable[Reading], links: Links | None = None, homographs: bool = True, found: Iterable[WiktionaryEntry] = (), read_all: bool = False) -> Results:
     """One entry per lemma and part of speech, in the order the readings arrive. Then, unless homographs
     is false, Wiktionary's homographs that a gloss told apart from the lemma, once each. Then the word's
     entries that no lemma joins (found, see Dictionary.wiktionary_only): those with meanings, numbered as
@@ -412,7 +412,8 @@ def _results(readings: Iterable[Reading], links: Links | None = None, homographs
     readings = [r for group in groups.values() for rs in group.values() for r in rs]
     shows = {_unattached(r) for r in readings}
     reads = {(wiktionary.wiktionary_pos(r.pos), _unattached(r)) for r in readings}
-    read = frozenset(e for e in only if (e.pos, _bare(e.word)) in reads)
+    # read_all: an English lookup reads no Arabic word, so it can't tell whether only Wiktionary has an entry.
+    read = frozenset(e for e in only if read_all or (e.pos, _bare(e.word)) in reads)
     return Results(groups, joins, apart, [e for e in found if not e.senses and _bare(e.word) not in shows], read)
 
 
@@ -547,7 +548,7 @@ def looked_up_en(found: Lookup, links: Links | None = None) -> State:
     the entries only Wiktionary has (Lookup.wiktionary). Entries link to their root and related forms with links."""
     query = found.query
     if found.readings or found.wiktionary:
-        results = _results(found.readings, links, homographs=False, found=found.wiktionary)
+        results = _results(found.readings, links, homographs=False, found=found.wiktionary, read_all=True)
         more = _more(results)
         status = (
             f"{_n(len(found.readings), 'Arabic word')} for “{query}”" + (f", and {more} more {'entry' if more == 1 else 'entries'} from Wiktionary" if more else "")
