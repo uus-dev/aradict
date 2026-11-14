@@ -16,7 +16,7 @@ To use a database stored elsewhere, set `ARADICT_DB_PATH` to its `morphology.db`
 
 ### Wiktionary senses (optional)
 
-Entries can also list English Wiktionary's senses. They come from a pinned kaikki.org extraction, kept as a dataset of its own. One command downloads the extraction (about 870 MB, into `data/wiktionary/`), checks it against its pinned SHA-256 and builds the dataset (`data/wiktionary/wiktionary.db`):
+Entries can also show English Wiktionary's senses, plurals, gender, verbal nouns, relations and pronunciation. They come from a pinned kaikki.org extraction, kept as a dataset of its own. One command downloads the extraction (about 870 MB, into `data/wiktionary/`), checks it against its pinned SHA-256 and builds the dataset (`data/wiktionary/wiktionary.db`):
 
 ```sh
 uv run python -m aradict.wiktionary

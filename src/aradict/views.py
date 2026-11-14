@@ -189,10 +189,10 @@ NO_ENTRIES = Join([], None)
 
 def _entry(lemma: str, glosses: dict[str, list[Reading]], heading: Element, links: Links | None, brief: bool, join: Join) -> Node:
     """A lemma in the order of the #21 design (W5): which word it is (its root, the headword with its
-    part of speech and how common it is), what the typed word means (its readings, one result per
-    gloss), then everything about the headword (Wiktionary's senses, its other forms and the credit).
-    With links, the root opens the root's words and a lemma with more than one form links to all of
-    them. Brief leaves out how common the lemma is, its forms, and the readings' parts."""
+    part of speech, how to say it and how common it is), what the typed word means (its readings, one
+    result per gloss), then everything about the headword (see _about). With links, the root opens the
+    root's words and a lemma with more than one form links to all of them. Brief leaves out how common
+    the lemma is, its forms, its regional pronunciations and the readings' parts."""
     first = next(iter(glosses.values()))[0]
     forms = links.form_counts.get((first.lemma, first.pos), 0) if links else 0
     # A lemma's senses may be stored under different roots (إِجارَة "rent" and "protection"): each is offered.
@@ -201,24 +201,25 @@ def _entry(lemma: str, glosses: dict[str, list[Reading]], heading: Element, link
     # every entry; those it keeps all go in Wiktionary's order.
     homographs = len(join.entries) > 1
     fills = {root: links and links.filled_roots.get((first.lemma, first.pos, root)) for root in roots}
+    shown = [join.joined] if join.joined else join.entries
     return section(class_="entry")[
         div(class_="tabs")[(_root_tab(root, links, full) for root, full in fills.items())],
         div(class_="head")[
-            div(class_="lemma")[heading[ar(lemma)], _badges(first, 1 if homographs and join.joined else None)],
+            div(class_="lemma")[heading[ar(lemma)], _say(shown), _badges(first, 1 if homographs and join.joined else None)],
             not brief and dl(class_="facts")[dt["Frequency"], dd(class_="freq")[_how_common(first.top_percent)]],
         ],
         ul(class_="readings")[(_reading(group, brief) for group in glosses.values())],
-        _about([join.joined] if join.joined else join.entries, homographs and not join.joined, [
+        _about(shown, homographs and not join.joined, [
             *([] if brief else [[dt["Forms"], dd[
                 a(href=_url(links.lookup | {"related": first.lemma, "pos": first.pos}))[f"all {forms} forms", span(class_="sr-only")[" of ", ar(lemma)]]
                 if forms > 1 else span(class_="nil")["No other forms"]
             ]]]),
             *([dt["Root"], dd[_filled(full)]] for full in fills.values() if full),
-        ]),
+        ], brief),
     ]
 
 
-def _wiktionary_only(entry: WiktionaryEntry, number: int, heading: Element, links: Links | None) -> Node:
+def _wiktionary_only(entry: WiktionaryEntry, number: int, heading: Element, links: Links | None, brief: bool) -> Node:
     """A homograph of a lemma that Wiktionary has and the dictionary doesn't (قَالَ "to nap" beside
     قَالَ "to say"). Its headword line goes straight to its meanings."""
     root = entry.root and entry.root.replace(" ", ".")  # Wiktionary spells it ق ي ل, the dictionary ق.ي.ل
@@ -227,25 +228,89 @@ def _wiktionary_only(entry: WiktionaryEntry, number: int, heading: Element, link
         root and div(class_="tabs")[_root_tab(root, links)],
         div(class_="head")[div(class_="lemma")[
             heading[ar(entry.word)],
+            _say([entry]),
             p(class_="pos")[span(class_="badge")[pos], " ", _homograph(number), " ", span(class_="badge only")["Wiktionary only"]],
         ]],
-        _about([entry]),
+        _about([entry], brief=brief),
         p(class_="only-note")["Only in Wiktionary: no frequency, measure or word parts."],
     ]
 
 
-def _about(entries: list[WiktionaryEntry], numbered: bool = False, rows: list = ()) -> Node:
-    """Everything about the headword after its readings: each Wiktionary entry's senses, numbered as
-    homographs where the lemma keeps several, then rows (its other forms, a root Wiktionary fills)
-    and the credit."""
-    # ponytail: one row per fact; #23 adds plural, gender, verbal nouns, relations and regional pronunciations.
-    meanings = [
-        [dt["Meanings"], dd(class_="wide")[numbered and [_homograph(n), " "], _senses(e.senses)]]
-        for n, e in enumerate(entries, 1)
-    ]
-    if not (meanings or rows):
+def _say(entries: list[WiktionaryEntry]) -> Node:
+    """How to say the headword, under it: Wiktionary's transliteration and Modern Standard Arabic
+    pronunciation, where all the headword's entries agree on them."""
+    said = {(e.romanization, ", ".join(ipa for ipa, where in e.ipa if not where)) for e in entries}
+    romanization, ipa = said.pop() if len(said) == 1 else (None, "")
+    if not (romanization or ipa):
         return None
-    return div(class_="about-hw")[dl(class_="facts")[meanings, rows], entries and _credit(entries)]
+    return p(class_="say")[
+        span(class_="sr-only")["Pronunciation: "],
+        romanization and span(class_="tr", lang="ar-Latn")[romanization], romanization and ipa and " ", ipa and span(class_="ipa")[ipa],
+    ]
+
+
+# The rows of a headword line's forms, by their tags (an adjective's "feminine", a noun's female
+# equivalent), and the order of those rows, with the headword's own gender after its plurals.
+FORM_ROWS = {
+    "plural": "Plural", "common plural": "Plural", "masculine plural": "Masculine plural", "feminine plural": "Feminine plural",
+    "feminine": "Feminine", "masculine": "Masculine", "noun-from-verb": "Verbal noun",
+}
+ORDER = ["Plural", "Masculine plural", "Feminine plural", "Gender", "Feminine", "Masculine", "Verbal noun"]
+
+
+def _facts(e: WiktionaryEntry) -> list[tuple[int, str, Node]]:
+    """What a Wiktionary entry says about its headword, each as (its place in the #21 order, its label,
+    what it says): its meanings, its plurals, gender and verbal nouns, then its relations ("verbal noun of")."""
+    forms: dict[str, dict[str, wiktionary.Form]] = {}  # by row, each form once
+    for f in e.forms:
+        if label := FORM_ROWS.get(" ".join(sorted(set(f.tags) - wiktionary.REGISTER_LABELS))):
+            forms.setdefault(label, {}).setdefault(f.form, f)
+    canonical = next((f.tags for f in e.forms if "canonical" in f.tags), ())
+    gender = [g for g in ("masculine", "feminine") if g in canonical and e.pos != "verb"]
+    relations: dict[str, list[wiktionary.Relation]] = {}
+    for r in e.relations:
+        relations.setdefault(r.kind, []).append(r)
+    return [
+        *([(0, "Meanings", _senses(e.senses))] if e.senses else []),
+        *((1 + ORDER.index(label), f"{label}s" if len(fs) > 1 and label.endswith(("plural", "noun")) else label,
+           _words((f.form, f.romanization, [tag for tag in f.tags if tag in wiktionary.REGISTER_LABELS]) for f in fs.values()))
+          for label, fs in sorted(forms.items(), key=lambda item: ORDER.index(item[0]))),
+        *([(1 + ORDER.index("Gender"), "Gender", ul(class_="grammar")[(li[g] for g in gender)])] if gender else []),
+        *((1 + len(ORDER), kind[:1].upper() + kind[1:], _words((r.word, r.romanization, r.labels) for r in rs)) for kind, rs in relations.items()),
+    ]
+
+
+def _words(words: Iterable[tuple[str, str | None, Iterable[str]]]) -> Node:
+    """Words Wiktionary gives, each opening its own lookup, with its transliteration and any labels."""
+    return ul(class_="words")[(
+        li[a(href=_url({"q": word}))[ar(word)], romanization and [" ", span(class_="tr", lang="ar-Latn")[romanization]], ([" ", _label(label)] for label in labels)]
+        for word, romanization, labels in words
+    )]
+
+
+def _regional(e: WiktionaryEntry) -> Node:
+    """An entry's regional pronunciations, behind a native disclosure."""
+    said = [(where, ipa) for ipa, where in e.ipa if where]
+    return said and details(class_="regional")[summary[_n(len(said), "pronunciation")], dl[([dt[where], dd[ipa]] for where, ipa in said)]]
+
+
+def _about(entries: list[WiktionaryEntry], numbered: bool = False, rows: list = (), brief: bool = False) -> Node:
+    """Everything about the headword after its readings, in the order of the #21 design (W5): what each
+    Wiktionary entry says (see _facts), numbered as homographs where the lemma keeps several; then rows
+    (its other forms, a root Wiktionary fills); then, unless brief, regional pronunciations; and the credit,
+    which so covers all of it and the pronunciation under the headword."""
+    facts = sorted(((place, n, label, said) for n, e in enumerate(entries, 1) for place, label, said in _facts(e)), key=lambda fact: fact[:2])
+    regional = [] if brief else [(n, said) for n, e in enumerate(entries, 1) if (said := _regional(e))]
+    if not (facts or rows):
+        return None
+    return div(class_="about-hw")[
+        dl(class_="facts")[
+            ([dt[label], dd(class_="wide" if label == "Meanings" else None)[numbered and [_homograph(n), " "], said]] for _, n, label, said in facts),
+            rows,
+            ([dt["Regional"], dd[numbered and [_homograph(n), " "], said]] for n, said in regional),
+        ],
+        entries and _credit(entries),
+    ]
 
 
 def _english(text: str) -> Node:
@@ -257,13 +322,18 @@ def _senses(senses: Iterable[Sense], lettered: bool = False) -> Node:
     """Wiktionary's senses, numbered, each with its labels in small boxes and its sub-senses lettered."""
     return ol(class_="senses", type="a" if lettered else None)[(
         li[
-            (span(class_="qualifier")[label[:1].upper() + label[1:]] for label in s.labels),
+            (_label(label) for label in s.labels),
             s.labels and span(class_="sr-only")[": "],
             _english(s.gloss),
             s.subsenses and _senses(s.subsenses, True),
         ]
         for s in senses
     )]
+
+
+def _label(label: str) -> Node:
+    """One of Wiktionary's labels, "obsolete" or "transitive", in a small box."""
+    return span(class_="qualifier")[label[:1].upper() + label[1:]]
 
 
 LICENCE = "https://creativecommons.org/licenses/by-sa/4.0/"
@@ -312,7 +382,7 @@ def _entries(readings: Iterable[Reading], heading: Element = h2, links: Links | 
             apart += [(e, n) for n, e in enumerate(others, 2) if e not in shown and e not in (other for other, _ in apart)]
     return div(class_="entries")[
         (_entry(lemma, glosses, heading, links, brief, joins[lemma, pos]) for (lemma, pos), glosses in groups.items()),
-        (_wiktionary_only(e, n, heading, links) for e, n in apart),
+        (_wiktionary_only(e, n, heading, links, brief) for e, n in apart),
     ]
 
 

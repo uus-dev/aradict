@@ -39,6 +39,11 @@ PAGES = {
     # Wiktionary's homographs, one only Wiktionary has, and senses with labels and sub-senses.
     "homographs": lambda page, base_url: page.goto(f"{base_url}/?q={quote('قال')}"),
     "labels": lambda page, base_url: page.goto(f"{base_url}/?q={quote('جدة')}"),
+    # Plurals, gender, verbal nouns, relations and pronunciations (#23), the regional ones opened.
+    "forms": lambda page, base_url: [
+        page.goto(f"{base_url}/?{urlencode({'q': 'كتاب', 'diacritics': 'off'})}"),
+        page.locator("details.regional summary").first.click(),
+    ],
     "root": lambda page, base_url: page.goto(f"{base_url}/?{urlencode({'q': 'كتب', 'root': 'ك.ت.ب'})}"),
     "related": lambda page, base_url: page.goto(f"{base_url}/?{urlencode({'q': 'كتاب', 'related': 'كِتاب', 'pos': 'noun'})}"),
     "about": lambda page, base_url: page.goto(f"{base_url}/about"),
@@ -52,7 +57,7 @@ def test_pages_pass_axe(base_url, browser, name, width, scheme):
     context = browser.new_context(viewport={"width": width, "height": 800}, color_scheme=scheme)
     page = context.new_page()
     PAGES[name](page, base_url)
-    if name in ("word", "text", "homographs", "labels"):
+    if name in ("word", "text", "homographs", "labels", "forms"):
         expect(page.locator(".credit:visible").first).to_contain_text("From Wiktionary")  # its content is checked too
     results = Axe().run(page, options=WCAG)
     context.close()
@@ -127,6 +132,10 @@ def test_dense_results_never_scroll_sideways_on_a_narrow_phone(base_url, browser
     expect(page.get_by_role("table")).to_be_visible()
     assert not scrolls_sideways(page)
 
+    PAGES["forms"](page, base_url)
+    expect(page.locator(".regional dl").first).to_be_visible()
+    assert not scrolls_sideways(page)
+
     passage = "وبكتابهم سيكتبون كتب الكتاب، قخغثص https://example.com/a/very/long/address/that/does/not/break 2026\n" * 6
     page.goto(f"{base_url}/text")
     page.get_by_role("textbox", name="Arabic text").fill(passage)
@@ -158,7 +167,7 @@ TIGHT = """() => [...document.querySelectorAll('[lang="ar"]')].filter(e => e.che
 }).map(e => e.outerHTML.slice(0, 80))"""
 
 
-@pytest.mark.parametrize("name", ["word", "text", "homographs", "labels", "root", "about"])
+@pytest.mark.parametrize("name", ["word", "text", "homographs", "labels", "forms", "root", "about"])
 def test_text_zoomed_to_200_percent_stays_usable(base_url, browser, name):
     # A 1280 × 800 window zoomed to 200% lays the page out in 640 × 400 CSS pixels.
     context = browser.new_context(viewport={"width": 640, "height": 400}, device_scale_factor=2)
@@ -253,6 +262,15 @@ def test_core_flows_by_keyboard_alone(base_url, browser):
     tab_to(page, ".dismiss")
     page.keyboard.press("Enter")
     expect(status).to_have_text("3 readings for وبكتابهم")
+
+    # Open a headword's regional pronunciations, then look up its plural (#23).
+    page.goto(f"{base_url}/?q={quote('كتاب')}")
+    tab_to(page, "details.regional summary")
+    page.keyboard.press("Enter")
+    expect(page.locator(".regional dl").first).to_be_visible()
+    tab_to(page, f".words a[href='/?{urlencode({'q': 'كُتُب'})}']", "Shift+Tab")
+    page.keyboard.press("Enter")
+    expect(status).to_contain_text("for كُتُب")
 
     # Analyse a passage and open, then close, a word's details.
     page.goto(f"{base_url}/text")
