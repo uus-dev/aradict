@@ -25,7 +25,7 @@ from pathlib import Path
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
-from . import views
+from . import views, wiktionary
 from .data import EXPECTED, VERSION, db_path
 from .dictionary import ROOT, Dictionary, Reading
 from .readable import IRREGULAR_PLURALS, MARK, SHADDA, head_noun, is_participle
@@ -116,6 +116,32 @@ def coverage(d: Dictionary, db) -> dict:
             for lemma, root in verb_roots.items()
         ),
     }
+
+
+def root_fills(d: Dictionary, db) -> Counter:
+    """How Wiktionary (d's dataset) does at filling the roots CAMeL leaves open, counted by entry
+    and open root: filled, as its entries agree or as CAMeL's gloss picks one of them; not filled,
+    as its root disagrees with CAMeL's letters, as its entries give several roots that the gloss
+    can't choose between (homographs), as no entry gives a root, or as it has no entry."""
+    stems, _, _, _ = inventory(db)
+    found: Counter = Counter()
+    for lemma, pos, root in {(f["lex"], f["pos"], f["root"]) for f in stems if ROOT.fullmatch(f.get("root", "")) and "#" in f["root"]}:
+        entries = d.wiktionary(lemma, pos).entries
+        roots = {e.root for e in entries}
+        if d.filled_root(lemma, pos, root):
+            found["filled: the gloss picks" if len(roots) > 1 else "filled: the entries agree"] += 1
+        elif d.wiktionary_root(lemma, pos, root):
+            found["disagrees with CAMeL's letters"] += 1
+        else:
+            found["homographs left open" if roots - {None} else "no root on Wiktionary" if entries else "no Wiktionary entry"] += 1
+    return found
+
+
+def wiktionary_only(d: Dictionary, dataset: Path) -> tuple[int, int]:
+    """How many of the entries with meanings in a Wiktionary dataset (d's), each a headword of one word with
+    one part of speech, no lemma of the dictionary joins: the words only Wiktionary has (#24); and of how many."""
+    found = wiktionary.by_prefix(dataset, "", sys.maxsize)
+    return sum(not d.joined(e) for e in found), len(found)
 
 
 def _sample_words(db) -> list[str]:

@@ -14,9 +14,9 @@ from fastapi import FastAPI, Header, Request
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 
-from . import views
+from . import views, wiktionary
 from .data import db_path
-from .dictionary import Dictionary
+from .dictionary import Dictionary, opened
 
 logger = logging.getLogger(__name__)
 
@@ -42,7 +42,7 @@ def _log_failure(what: str, error: Exception) -> None:
 
 @lru_cache(maxsize=1)
 def dictionary() -> Dictionary:
-    return Dictionary(db_path())
+    return Dictionary(db_path(), wiktionary.dataset_path())
 
 
 @asynccontextmanager
@@ -61,7 +61,7 @@ app.mount("/static", StaticFiles(directory=Path(__file__).parent / "static"), na
 MAX_BODY = 64_000
 
 
-LOOKUP = ("q", "diacritics", "lang")  # the URL parameters of a lookup
+LOOKUP = ("q", "diacritics", "lang", "show")  # the URL parameters of a lookup
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -70,6 +70,7 @@ def word(
     q: str = "",
     diacritics: Literal["on", "off"] = "on",
     lang: Literal["ar", "en"] = "ar",  # the language typed: Arabic → English, or English → Arabic
+    show: Literal["", "all"] = "",  # all: every entry of an English lookup, not only the first views.SHOWN
     root: str | None = None,
     related: str | None = None,
     pos: str = "",
@@ -86,7 +87,10 @@ def word(
         if any(len(value) > views.MAX_QUERY for value in (q, root or "", related or "", pos, sort)):
             state = views.State(f"That's too long. Type at most {views.MAX_QUERY} characters.")
         elif root is not None:
-            state = views.root_view(root, dictionary().root_family(root), lookup, sort)
+            rows = dictionary().root_family(root)
+            filled = dict.fromkeys((r.lemma, r.pos) for r in rows if r.root == opened(root) != root)  # the lemmas Wiktionary filled to it, in order
+            sources = {e.url: lemma for lemma, pos in filled for e in dictionary().wiktionary(lemma, pos).entries}
+            state = views.root_view(root, rows, lookup, sort, dictionary().unconfirmed(root), [(lemma, url) for url, lemma in sources.items()])
         elif related is not None:
             state = views.related_view(related, pos, dictionary().related(related, pos), lookup, sort)
         elif not q:
@@ -95,12 +99,23 @@ def word(
             state = views.State("Type a word: letters, not only numbers or symbols.")
         else:
             found = dictionary().lookup(q, english, filter_diacritics)
+            shown = views.first_entries(found) if english and show != "all" else found  # what the links are for
+            lemmas = {(r.lemma, r.pos) for r in shown.readings}
+            joins = {lemma: dictionary().wiktionary(*lemma) for lemma in lemmas}
+            roots = {(r.lemma, r.pos, r.root) for r in shown.readings if r.root}
+            filled = {root: full for root in roots if (full := dictionary().filled_root(*root))}
+            # The roots of the readings, filled where Wiktionary can, and of the entries only Wiktionary has: the
+            # homographs shown on their own, and the word's own (Lookup.wiktionary).
+            only = [e for join in joins.values() if join.joined for e in join.entries if e is not join.joined] + list(shown.wiktionary)
+            counted = {filled.get(root, root[2]) for root in roots} | {e.root.replace(" ", ".") for e in only if e.root}
             links = views.Links(
                 lookup,
-                {lemma: len(dictionary().related(*lemma)) for lemma in {(r.lemma, r.pos) for r in found.readings}},
-                {root: dictionary().family_size(root) for root in {r.root for r in found.readings if r.root}},
+                {lemma: len(dictionary().related(*lemma)) for lemma in lemmas},
+                {root: dictionary().family_size(root) for root in counted},
+                joins,
+                filled,
             )
-            state = views.looked_up_en(found, links) if english else views.looked_up(q, found, links)
+            state = views.looked_up_en(found, links, show == "all") if english else views.looked_up(q, found, links)
     except Exception as error:
         _log_failure("Lookup failed", error)
         state, status_code = views.FAILURE, 500
@@ -124,7 +139,14 @@ def _analyse(text: str, hx_request: str | None = None) -> HTMLResponse:
         state = views.State(f"Your text has {len(text):,} characters. Analyse at most {views.MAX_TEXT:,} at a time: shorten it and try again.")
     else:
         try:
-            state = views.analysed(dictionary().analyze_text(text))
+            tokens = dictionary().analyze_text(text)
+            lemmas = {(r.lemma, r.pos) for t in tokens for r in t.readings}
+            roots = {(r.lemma, r.pos, r.root) for t in tokens for r in t.readings if r.root}
+            state = views.analysed(
+                tokens,
+                {lemma: dictionary().wiktionary(*lemma) for lemma in lemmas},
+                {root: full for root in roots if (full := dictionary().filled_root(*root))},
+            )
         except Exception as error:
             _log_failure("Text analysis failed", error)
             state, status_code = views.TEXT_FAILURE, 500

@@ -1,5 +1,6 @@
 """The accessibility pass (#15): automated axe checks, reflow on a narrow phone, text zoom, and the
-core flows by keyboard alone, in Chromium against a real server on the fixture database."""
+core flows by keyboard alone, in Chromium against a real server on the fixture database, with
+Wiktionary's senses and credit (#22)."""
 
 import re
 from urllib.parse import quote, urlencode
@@ -9,6 +10,11 @@ from axe_playwright_python.sync_playwright import Axe
 from playwright.sync_api import expect
 
 WCAG = {"runOnly": {"type": "tag", "values": ["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa", "best-practice"]}}
+
+
+@pytest.fixture(scope="module")
+def base_url(wiktionary_base_url):
+    return wiktionary_base_url
 
 
 def open_word(page, base_url):
@@ -28,6 +34,24 @@ def open_text(page, base_url):
 PAGES = {
     "word": open_word,
     "text": open_text,
+    # Wiktionary's homographs, one only Wiktionary has, and senses with labels and sub-senses.
+    "homographs": lambda page, base_url: page.goto(f"{base_url}/?q={quote('قال')}"),
+    "labels": lambda page, base_url: page.goto(f"{base_url}/?q={quote('جدة')}"),
+    # Plurals, gender, verbal nouns, relations and pronunciations (#23), the regional ones opened.
+    "forms": lambda page, base_url: [
+        page.goto(f"{base_url}/?{urlencode({'q': 'كتاب', 'diacritics': 'off'})}"),
+        page.locator("details.regional summary").first.click(),
+    ],
+    # A word only Wiktionary has beside the dictionary's reading (#24), and entries that only relate a word to another.
+    "only": lambda page, base_url: page.goto(f"{base_url}/?q={quote('تغريدة')}"),
+    # English results (#25): the dictionary's words, then a headword Wiktionary has and the dictionary reads as a plural.
+    "english": lambda page, base_url: page.goto(f"{base_url}/?{urlencode({'q': 'horizons', 'lang': 'en'})}"),
+    "english-only": lambda page, base_url: page.goto(f"{base_url}/?{urlencode({'q': 'tweet', 'lang': 'en'})}"),
+    "also": lambda page, base_url: page.goto(f"{base_url}/?q={quote('كتب')}"),
+    "text-only": lambda page, base_url: [
+        page.goto(f"{base_url}/text?{urlencode({'q': 'تغريدتي كتب'})}"), page.locator(".tok").first.click(),
+        expect(page.get_by_role("dialog")).to_be_visible(),
+    ],
     "root": lambda page, base_url: page.goto(f"{base_url}/?{urlencode({'q': 'كتب', 'root': 'ك.ت.ب'})}"),
     "related": lambda page, base_url: page.goto(f"{base_url}/?{urlencode({'q': 'كتاب', 'related': 'كِتاب', 'pos': 'noun'})}"),
     "about": lambda page, base_url: page.goto(f"{base_url}/about"),
@@ -41,9 +65,26 @@ def test_pages_pass_axe(base_url, browser, name, width, scheme):
     context = browser.new_context(viewport={"width": width, "height": 800}, color_scheme=scheme)
     page = context.new_page()
     PAGES[name](page, base_url)
+    if name in ("word", "text", "homographs", "labels", "forms", "only", "english", "english-only", "also", "text-only"):
+        expect(page.locator(".credit:visible").first).to_contain_text("From Wiktionary")  # its content is checked too
     results = Axe().run(page, options=WCAG)
     context.close()
     assert results.violations_count == 0, results.generate_report()
+
+
+@pytest.mark.parametrize("scheme", ["light", "dark"])
+@pytest.mark.parametrize("width", [360, 1280])
+def test_a_root_filled_from_wiktionary_passes_axe(wiktionary_url, browser, width, scheme):
+    # قال's root tab, with و filled in, and the root view of ق و ل.
+    context = browser.new_context(viewport={"width": width, "height": 800}, color_scheme=scheme)
+    page = context.new_page()
+    for params in ({"q": "قال"}, {"q": "قال", "root": "ق.و.ل"}):
+        page.goto(f"{wiktionary_url}/?{urlencode(params)}")
+        expect(page.locator(".fill").first).to_be_visible()
+        results = Axe().run(page, options=WCAG)
+        assert results.violations_count == 0, results.generate_report()
+        assert not scrolls_sideways(page)
+    context.close()
 
 
 def test_the_dark_scheme_follows_the_system_setting(base_url, browser):
@@ -89,6 +130,10 @@ def test_dense_results_never_scroll_sideways_on_a_narrow_phone(base_url, browser
     expect(page.get_by_role("table")).to_be_visible()
     assert not scrolls_sideways(page)
 
+    PAGES["forms"](page, base_url)
+    expect(page.locator(".regional dl").first).to_be_visible()
+    assert not scrolls_sideways(page)
+
     passage = "وبكتابهم سيكتبون كتب الكتاب، قخغثص https://example.com/a/very/long/address/that/does/not/break 2026\n" * 6
     page.goto(f"{base_url}/text")
     page.get_by_role("textbox", name="Arabic text").fill(passage)
@@ -120,7 +165,7 @@ TIGHT = """() => [...document.querySelectorAll('[lang="ar"]')].filter(e => e.che
 }).map(e => e.outerHTML.slice(0, 80))"""
 
 
-@pytest.mark.parametrize("name", ["word", "text", "root", "about"])
+@pytest.mark.parametrize("name", ["word", "text", "homographs", "labels", "forms", "root", "about"])
 def test_text_zoomed_to_200_percent_stays_usable(base_url, browser, name):
     # A 1280 × 800 window zoomed to 200% lays the page out in 640 × 400 CSS pixels.
     context = browser.new_context(viewport={"width": 640, "height": 400}, device_scale_factor=2)
@@ -215,6 +260,15 @@ def test_core_flows_by_keyboard_alone(base_url, browser):
     tab_to(page, ".dismiss")
     page.keyboard.press("Enter")
     expect(status).to_have_text("3 readings for وبكتابهم")
+
+    # Open a headword's regional pronunciations, then look up its plural (#23).
+    page.goto(f"{base_url}/?q={quote('كتاب')}")
+    tab_to(page, "details.regional summary")
+    page.keyboard.press("Enter")
+    expect(page.locator(".regional dl").first).to_be_visible()
+    tab_to(page, f".words a[href='/?{urlencode({'q': 'كُتُب'})}']", "Shift+Tab")
+    page.keyboard.press("Enter")
+    expect(status).to_contain_text("for كُتُب")
 
     # Analyse a passage and open, then close, a word's details.
     page.goto(f"{base_url}/text")

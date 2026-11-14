@@ -14,6 +14,20 @@ uv run aradict
 
 To use a database stored elsewhere, set `ARADICT_DB_PATH` to its `morphology.db`. Set `PORT` to use another port.
 
+### Wiktionary senses (optional)
+
+Entries can also show English Wiktionary's senses, plurals, gender, verbal nouns, relations and pronunciation. They come from a pinned kaikki.org extraction, kept as a dataset of its own. One command downloads the extraction (about 870 MB, into `data/wiktionary/`), checks it against its pinned SHA-256 and builds the dataset (`data/wiktionary/wiktionary.db`):
+
+```sh
+uv run python -m aradict.wiktionary
+```
+
+To build from a copy you already downloaded, pass its path: `uv run python -m aradict.wiktionary path/to/kaikki.org-dictionary-Arabic.jsonl`. To use a dataset stored elsewhere, set `ARADICT_WIKTIONARY_PATH`. Without the dataset, the app works as before.
+
+kaikki.org replaces the extraction at the same URL when it publishes a new one. The build then stops and says how to move the pin in `src/aradict/wiktionary.py`.
+
+When a new version of AraDict keeps more from the extraction, the app refuses a dataset an older version built and says so at startup. Run the same command again to rebuild it.
+
 ## Test
 
 ```sh
@@ -21,7 +35,7 @@ uv run playwright install chromium
 uv run pytest
 ```
 
-Contract tests run against the real database. App and browser tests use a small database that `tests/make_fixture_db.py` builds from it, keeping only a few lemmas.
+Contract tests run against the real database and the real Wiktionary dataset. App and browser tests use a small database that `tests/make_fixture_db.py` builds from it, keeping only a few lemmas, and a small Wiktionary dataset that `tests/make_fixture_wiktionary.py` builds for the same lemmas. Tests that need data you haven't downloaded are skipped.
 
 ## Documents
 
@@ -40,6 +54,6 @@ This program is distributed in the hope that it will be useful, but WITHOUT ANY 
 Dictionary data is not stored in this repository and keeps its own licenses:
 
 - The CAMeL Tools MSA morphology database (`calima-msa-r13`) is licensed under GPL version 2. It is derived from the Buckwalter Arabic Morphological Analyzer 1.0, portions (c) 2002 QAMUS LLC, (c) 2002 Trustees of the University of Pennsylvania, and portions (c) 2006 Jon Dehdari.
-- English Wiktionary content (planned for Milestone 2) is licensed under CC BY-SA 4.0 and GFDL. It is kept as a separate dataset and credited wherever it is shown.
+- English Wiktionary content, from kaikki.org's extraction, is licensed under CC BY-SA 4.0 and GFDL. It is kept as a separate dataset, never merged with the GPL data, and credited wherever it is shown.
 
 Bundled assets keep their own licenses: [htmx](https://htmx.org/) 2.0.11 under the Zero-Clause BSD license, and the [Scheherazade New](https://software.sil.org/scheherazade/) font by SIL under the SIL Open Font License. Their license texts are in `src/aradict/static/vendor/`.

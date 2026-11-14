@@ -129,6 +129,22 @@ def test_the_arabic_field_reads_in_the_direction_of_what_is_typed(base_url, brow
     assert box.evaluate("e => e.matches(':dir(rtl)')")
 
 
+def test_an_english_lookup_credits_a_word_only_wiktionary_has(wiktionary_url, browser):
+    page = browser.new_page()
+    page.goto(f"{wiktionary_url}/?lang=en")
+    page.get_by_label("English word").press_sequentially("tweet")
+    expect(page.get_by_role("status")).to_have_text("1 entry from Wiktionary for “tweet”")
+    entry = page.locator(".entry")
+    expect(entry).to_have_count(1)
+    expect(entry.get_by_role("heading", level=2)).to_have_text("تَغْرِيدَة")
+    expect(entry.locator(".badge.only")).to_have_text("Wiktionary")
+    expect(entry.locator(".credit")).to_be_visible()
+    expect(entry.locator(".credit")).to_contain_text("From Wiktionary, CC BY-SA 4.0")
+    source = entry.get_by_role("link", name="تغريدة on Wiktionary, opens in a new tab")
+    expect(source).to_have_attribute("href", "https://en.wiktionary.org/wiki/تغريدة#Arabic")
+    expect(source).to_have_attribute("target", "_blank")
+
+
 def test_english_lookup_without_javascript(base_url, browser):
     page = browser.new_context(java_script_enabled=False, viewport={"width": 390, "height": 844}).new_page()
     page.goto(base_url)

@@ -154,6 +154,7 @@ Launch as a web application whose home view opens directly on Word lookup, with 
 99. As a reader of current Arabic, I want words that entered the language recently (for example تغريدة "tweet") to be found, including in their inflected forms, so that modern texts are covered.
 100. As a visitor, I want content taken from Wiktionary clearly credited and linked to its source entry, so that I know where it comes from and can read more.
 101. As a user, I want a word that is only in one source to still show everything that source knows, so that a gap in one source never hides a result.
+107. As a learner looking up an English word, I want meanings that only Wiktionary gives (for example "tweet" or "marriage contract") to find their Arabic words too, so that English lookup reaches the same entries as Arabic lookup. (Added in Milestone 2, #25; numbered after the Milestone 3 stories.)
 
 ### Conjugation and declension (Milestone 3)
 
@@ -309,11 +310,30 @@ Launch as a web application whose home view opens directly on Word lookup, with 
   - The number of entries kept is configurable, with a sensible default, and the history can be cleared.
   - History is never sent to a server.
 - **Wiktionary layer (Milestone 2):**
-  - Import English Wiktionary's Arabic entries from the kaikki.org extraction on a schedule, into a separate dataset.
+  - Import English Wiktionary's Arabic entries from a pinned, dated kaikki.org extraction, checked by SHA-256 like the core database, into a separate dataset. It is refreshed by moving the pin and rebuilding; a scheduled refresh waits until the site is hosted.
   - Wiktionary text is CC BY-SA 4.0 / GFDL, which is not compatible with GPL v2-only. It is therefore never merged into a file or database with the GPL data. The two are joined at request time by vocalized lemma and part of speech.
   - From Wiktionary, show numbered senses, plurals and gender, verbal nouns, and transliteration and IPA. Use it to fill unresolved root radicals.
   - Words found only in Wiktionary are looked up through its inflected-form entries. They are shown as entries without the morphology fields the core would provide.
+  - English lookup also searches Wiktionary's senses, with the same matching rules as the core glosses. A lemma both sources match appears once, and results from Wiktionary carry the credit.
   - Every view that shows Wiktionary content credits it ("From Wiktionary, CC BY-SA 4.0") with a link to the source entry. Adapted Wiktionary text stays under CC BY-SA.
+  - **Presentation** (design W5, chosen in #21): an entry answers its questions in order.
+    1. Which word it is: the root tab, the headword with its part of speech and measure, its transliteration and IPA under it, and its frequency.
+    2. What the typed word means: each reading's meaning, grammar and word parts.
+    3. Everything about the headword:
+       - all its meanings, numbered;
+       - its plural, gender and verbal nouns;
+       - its relations ("verbal noun of …");
+       - its other forms;
+       - regional pronunciations;
+       - the credit.
+    - Token details in the Text view follow the same order, but leave out frequency, other forms and regional pronunciations.
+    - A word only Wiktionary has goes straight from its headword line to its meanings.
+    - When a reading's lemma is common (in the top 10% of lemmas by frequency), Wiktionary's other entries for the word fold under one closed "N more entries from Wiktionary" disclosure, together with those that only relate it to another word. Rare words and senses (من "aphid") then don't push the common reading's neighbours down. They are folded, never dropped. A word whose readings are less common or have no frequency (تغريدة) shows them open.
+    - An English lookup shows its first 25 entries, with a link to show all of them: "male given name" has 344.
+  - **Register.** AraDict covers Modern Standard Arabic, as its CAMeL core does. Aratools does too: both are built on the Buckwalter lexicon of MSA news text. Wiktionary also records Classical, obsolete, archaic, rare and dialectal uses. About 4% of its senses carry such a label (2,051 of 47,111 in the pinned extraction), for example كِتاب as an obsolete verbal noun of كَتَبَ, where MSA uses كِتابة.
+    - Every sense, form and relation that Wiktionary labels this way is shown with its label, never without it.
+    - A label on one side of a relation also shows on the other side: كَتَبَ's list of verbal nouns marks كِتاب as obsolete, too.
+    - These uses are labelled, not hidden, so that a reader of older texts can still find them.
 - **Conjugation and declension tables (Milestone 3):**
   - Generate tables from the lemma using CAMeL Tools' generator over the core database:
     - verbs: perfect; imperfect (indicative, subjunctive, jussive); imperative; active and passive; all persons;
@@ -511,7 +531,7 @@ It rejected SAMA 3.1 and BAMA 2.0 (paid LDC licenses that don't allow redistribu
 ### Milestones
 
 1. **Milestone 1 (first release):** stories 1–95, built on the CAMeL core, including frequency ranking and derived measures.
-2. **Milestone 2:** Wiktionary enrichment (stories 96–101).
+2. **Milestone 2:** Wiktionary enrichment (stories 96–101 and 107).
 3. **Milestone 3:** conjugation and declension tables (stories 102–106).
 
 Deferred: context-aware disambiguation, example sentences, and audio.

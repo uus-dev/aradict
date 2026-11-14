@@ -70,7 +70,7 @@ main.wrap { padding-block: 28px 48px }
 .site nav a[aria-current="page"] { color: var(--ink); border-color: var(--line-2); background: var(--tray); font-weight: 600 }
 
 /* Boxes, labels and buttons */
-:is(.search, .text-in, .passage-box, .intro, .empty, .about) { background: var(--leaf); border: 1px solid var(--line); border-radius: 12px; box-shadow: var(--shadow) }
+:is(.search, .text-in, .passage-box, .intro, .empty, .about, .also) { background: var(--leaf); border: 1px solid var(--line); border-radius: 12px; box-shadow: var(--shadow) }
 .lbl { display: block; margin: 0; font-size: .84375rem; font-weight: 600; color: var(--ink-2) }
 :is(.search, .text-in) [type="submit"], .tp-foot :is(a, button), .retry button, .history .tools button {
   display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 2.5rem; padding-inline: 16px; border-radius: 8px;
@@ -138,16 +138,17 @@ main.wrap { padding-block: 28px 48px }
 .history .tools input { width: 4.5em; min-height: 1.875rem; padding: 0 6px; border: 1px solid var(--edge); border-radius: 6px; background: var(--leaf); color: var(--ink) }
 .history .tools button { min-height: 1.875rem; padding-inline: 10px; font-size: .84375rem }
 
-/* A small button that opens and closes, with a chevron that turns: recent lookups and word parts. */
-:is(.history, .parts) summary { display: inline-flex; align-items: center; gap: 7px; width: fit-content; min-height: 1.875rem; padding-block: 0; padding-inline: 9px 10px; border: 1px solid var(--edge); border-radius: 6px; background: var(--leaf); color: var(--ink-2); font: 600 .84375rem/1 var(--f-ui); list-style: none }
-:is(.history, .parts) summary::-webkit-details-marker { display: none }
-:is(.history, .parts) summary::before { content: ""; width: 6px; height: 6px; border: solid currentColor; border-width: 1.6px 1.6px 0 0; rotate: 45deg; translate: -1px 0 }
-:is(.history, .parts) summary:hover { background: var(--tray-2); color: var(--ink) }
-:is(.history, .parts)[open] summary { border-color: var(--ink-2); color: var(--ink) }
-:is(.history, .parts)[open] summary::before { rotate: 135deg; translate: 0 -2px }
+/* A small button that opens and closes, with a chevron that turns: recent lookups, word parts and regional pronunciations. */
+:is(.history, .parts, .regional, .more) summary { display: inline-flex; align-items: center; gap: 7px; width: fit-content; min-height: 1.875rem; padding-block: 0; padding-inline: 9px 10px; border: 1px solid var(--edge); border-radius: 6px; background: var(--leaf); color: var(--ink-2); font: 600 .84375rem/1 var(--f-ui); list-style: none }
+:is(.history, .parts, .regional, .more) summary::-webkit-details-marker { display: none }
+:is(.history, .parts, .regional, .more) summary::before { content: ""; width: 6px; height: 6px; border: solid currentColor; border-width: 1.6px 1.6px 0 0; rotate: 45deg; translate: -1px 0 }
+:is(.history, .parts, .regional, .more) summary:hover { background: var(--tray-2); color: var(--ink) }
+:is(.history, .parts, .regional, .more)[open] summary { border-color: var(--ink-2); color: var(--ink) }
+:is(.history, .parts, .regional, .more)[open] summary::before { rotate: 135deg; translate: 0 -2px }
 
 /* Entries: the root's cloth tab, then a framed box with the headword and its labelled facts, then the readings on a tray. */
 .entries { display: grid; gap: 12px; margin-block-start: 12px }
+.more { margin-block-start: 16px }
 .tabs { position: relative; z-index: 1; display: flex; flex-wrap: wrap-reverse; justify-content: flex-end; gap: 4px 24px; padding-inline: 20px; margin-block-end: -1px }
 .root-tab { position: relative; display: inline-flex; align-items: center; gap: 0; min-height: 2rem; padding-block: 0; padding-inline: 11px 6px; border-radius: 8px 8px 0 0; background: var(--cloth); color: var(--gilt); box-shadow: inset 0 1px 0 var(--fillet); text-decoration: none; font: 600 .78125rem/1 var(--f-ui); white-space: nowrap }
 /* Concave feet, so the tab grows out of the box's edge instead of sitting on it. */
@@ -166,8 +167,12 @@ span.root-tab { padding-inline-end: 2px }
 a.root-tab:hover .rt-go { background: none; text-decoration-thickness: 2px }
 
 .entry .head { display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "facts lemma"; align-items: center; gap: 8px 28px; padding: 14px 18px; background: var(--leaf); border: 1px solid var(--line); border-block-end: 0; border-radius: 12px 12px 0 0 }
-.lemma { grid-area: lemma; display: flex; flex-direction: row-reverse; align-items: center; gap: 12px }
-.lemma :is(h2, h3) { margin: 0; font-size: inherit; font-weight: inherit }
+/* The headword, how to say it under it (#21, W5), and its badges beside both. */
+.lemma { grid-area: lemma; display: grid; grid-template-columns: auto auto; grid-template-areas: "pos hw" "pos say"; justify-content: end; align-items: center; column-gap: 12px }
+.lemma :is(h2, h3) { grid-area: hw; justify-self: end; margin: 0; font-size: inherit; font-weight: inherit }
+.lemma .pos { grid-area: pos }
+.say { grid-area: say; justify-self: end; margin: -6px 0 0; font-size: .84375rem; line-height: 1.3; text-align: end; color: var(--ink-2) }
+.say .tr { font-weight: 500; color: var(--ink) }
 .lemma .ar { display: block; color: var(--ink); font: 700 1.875rem/1.55 var(--f-ar) }
 .pos { display: flex; flex-wrap: wrap; gap: 5px; margin: 0 }
 .badge { display: inline-block; padding-inline: 9px; border: 1px solid var(--ink-2); border-radius: 6px; color: var(--ink); font: 600 .8125rem/1.375rem var(--f-ui); white-space: nowrap }
@@ -176,7 +181,8 @@ a.root-tab:hover .rt-go { background: none; text-decoration-thickness: 2px }
 .badge.na { border-style: dashed }
 
 /* Facts: each piece of information has a labelled row, its label in a fixed gutter. */
-.facts { display: grid; grid-template-columns: 4.75rem minmax(0, 1fr); gap: 6px 10px; align-items: baseline; margin: 0 }
+/* A label gutter wide enough for "Verbal noun of" on one line, as in the #21 design (W5). */
+.facts { display: grid; grid-template-columns: 6.25rem minmax(0, 1fr); gap: 6px 10px; align-items: baseline; margin: 0 }
 .facts dt { font-size: .8125rem; font-weight: 600; line-height: 1.375rem; color: var(--ink-3) }
 .facts dd { min-width: 0; margin: 0; line-height: 1.375rem; overflow-wrap: anywhere }
 .facts a { font-weight: 500 }
@@ -190,7 +196,8 @@ a.root-tab:hover .rt-go { background: none; text-decoration-thickness: 2px }
 .pct { font-size: .875rem; color: var(--ink-3) }
 
 /* Readings: the form on the right, its meaning and grammar labelled on the left, its parts on demand below. */
-.readings { margin: 0; padding: 0; list-style: none; background: var(--tray); border: 1px solid var(--line); border-radius: 0 0 12px 12px; box-shadow: var(--shadow) }
+.readings { margin: 0; padding: 0; list-style: none; background: var(--tray); border: 1px solid var(--line); box-shadow: var(--shadow) }
+.entry > :last-child { border-end-start-radius: 12px; border-end-end-radius: 12px }
 .reading + .reading { border-block-start: 1px solid var(--line) }
 .rd { display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "facts form" "facts btn" "parts parts"; grid-template-rows: auto 1fr auto; column-gap: 28px; padding: 12px 18px 14px }
 .rd + .rd { border-block-start: 1px dashed var(--line-2) }
@@ -226,6 +233,46 @@ a.root-tab:hover .rt-go { background: none; text-decoration-thickness: 2px }
 .chip.suffix :is(.ar, .kind) { color: var(--suf) }
 .note { margin: 8px 0 0; font-size: .8125rem; color: var(--ink-2) }
 
+/* Everything about the headword, after its readings (#21, design W5): Wiktionary's numbered senses,
+   the other forms, then the credit. A homograph only Wiktionary has goes from its headword to its senses. */
+.about-hw { padding: 12px 18px 14px; background: var(--leaf); border: 1px solid var(--line); border-block-start: 0; box-shadow: var(--shadow) }
+.head + .about-hw { border-block-start: 1px solid var(--line) }
+.facts .wide > .badge { margin-block-end: 4px }
+.senses { margin: 0; padding-inline-start: 1.35em; font-size: .9375rem; line-height: 1.45; color: var(--ink) }
+.senses > li + li { margin-block-start: 3px }
+.senses li::marker { color: var(--ink-3); font-size: .84375rem; font-weight: 600 }
+.senses .senses { margin-block-start: 2px; color: var(--ink-2) }
+.senses .senses > li + li { margin-block-start: 1px }
+.senses .ar { font-size: 1.2em }
+/* Wiktionary's labels for a sense, "obsolete" or "transitive", each in a small box. */
+.qualifier { display: inline-block; margin-inline-end: 5px; padding-inline: 6px; border: 1px solid var(--line-2); border-radius: 4px; background: var(--leaf); font-size: .75rem; line-height: 1.125rem; color: var(--ink-2); white-space: nowrap }
+.about-hw .credit { margin: 10px 0 0; font-size: .8125rem; line-height: 1.45; color: var(--ink-3) }
+.credit a { font-weight: 500 }
+.about-hw .credit .ar { font-size: 1.25em }
+.credit svg { margin-inline-start: 2px; vertical-align: -1px }
+/* Words Wiktionary gives (plurals, verbal nouns, the word a relation is to), each a link to its own lookup, and regional pronunciations on demand. */
+.words { display: flex; flex-wrap: wrap; margin: 0; padding: 0; list-style: none }
+.words li + li::before { content: "·" / ""; margin-inline: 7px; color: var(--ink-3) }
+.words .ar { font-size: 1.1875rem; line-height: 1 }
+.words .qualifier { margin-inline: 5px 0 }
+.tr { color: var(--ink-2) }
+.regional dl { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 1px 12px; margin: 6px 0 0; font-size: .875rem; line-height: 1.5 }
+.regional dt { font-size: inherit; font-weight: 400; line-height: inherit }
+.regional dd { margin: 0 }
+.badge.only { border-style: dashed; border-color: var(--edge); color: var(--ink-2); font-weight: 500 }
+.only-note { margin: 0; padding: 9px 18px 10px; background: var(--tray); border: 1px solid var(--line); border-block-start: 0; font-size: .84375rem; color: var(--ink-2) }
+/* Also in Wiktionary (#24): entries that only relate the word to another, after its entries, each with its spelling at the end. */
+.also { margin-block-start: 44px; padding: 14px 18px }
+.also :is(h2, h3) { margin: 0; font: 600 .9375rem/1.4 var(--f-ui) }
+.also-sub { margin: 2px 0 0; font-size: .84375rem; color: var(--ink-3) }
+.also ul { margin: 8px 0 10px; padding: 0; list-style: none }
+.also li { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: baseline; column-gap: 16px; padding-block: 6px }
+.also li + li { border-block-start: 1px solid var(--line) }
+.also li p { margin: 0 }
+.also .form .ar { font: 400 1.4375rem/1.5 var(--f-ar); color: var(--ink) }
+.also .credit { margin: 0; font-size: .8125rem; line-height: 1.45; color: var(--ink-3) }
+.tok-pop .also { margin-block-start: 10px; padding: 8px 14px 10px; border-radius: 10px }
+
 /* Root and related forms: a cloth chip that says which, then a table. On a phone each row stacks its cells, each with its column's name. */
 .context { display: inline-flex; align-items: center; gap: 8px; margin: 14px 0 10px; padding-block: 4px; padding-inline: 12px 4px; border-radius: 8px; background: var(--cloth); color: var(--gilt-2); box-shadow: inset 0 0 0 1px var(--fillet); font: 600 .8125rem/1 var(--f-ui) }
 .context .ar { color: var(--gilt); font: 700 1.25rem/1.4 var(--f-ar); word-spacing: 3px }
@@ -244,6 +291,12 @@ a.root-tab:hover .rt-go { background: none; text-decoration-thickness: 2px }
 .family .ar { white-space: nowrap }
 .family .grammar li { white-space: nowrap }  /* wrap between tags, not inside one */
 .family td:first-child .ar { font-size: 1.3125rem; line-height: 1.6 }
+/* A root letter Wiktionary fills: the dotted placeholder now holds it. Then what it says, the words it can't place, and its credit. */
+.fill { display: inline-block; padding: 0 .12em; border: 1.5px dotted currentColor; border-radius: 4px; line-height: 1.15 }
+.filled, .credit { margin: 0 0 10px; font-size: .875rem; color: var(--ink-2) }
+.credit { margin-block-start: 14px }
+:is(.filled, .credit, .rv-sub) .ar { font-size: 1.125rem; line-height: 1 }
+.rv-sub { margin: 22px 0 10px; font: 600 .9375rem/1.4 var(--f-ui); color: var(--ink-2) }
 @media (max-width: 640px) {
   .family, .family :is(thead, tbody, tr, td) { display: block }
   .family thead tr { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 10px 14px; background: var(--tray); border-block-end: 1px solid var(--line); border-radius: 11px 11px 0 0 }
@@ -298,7 +351,11 @@ a.root-tab:hover .rt-go { background: none; text-decoration-thickness: 2px }
 /* Inside the details each entry is brief: the headword and its badges, then each reading's meaning and grammar beside its form. */
 .tok-pop .entries { gap: 10px }
 .tok-pop .entry .head { grid-template-columns: minmax(0, 1fr); grid-template-areas: "lemma"; padding: 4px 14px; border-radius: 10px 10px 0 0 }
-.tok-pop .readings { border-radius: 0 0 10px 10px; background: var(--leaf) }
+.tok-pop .readings { background: var(--leaf) }
+.tok-pop .entry > :last-child { border-end-start-radius: 10px; border-end-end-radius: 10px }
+.tok-pop :is(.about-hw, .only-note) { padding: 8px 14px 10px }
+.tok-pop .senses { font-size: .90625rem }
+.tok-pop .facts { grid-template-columns: 5.75rem minmax(0, 1fr) }
 .tok-pop .lemma { justify-content: space-between }
 .tok-pop .lemma .ar { font-size: 1.5625rem }
 .tok-pop .tabs { padding-inline: 12px }
@@ -350,11 +407,15 @@ a.root-tab:hover .rt-go { background: none; text-decoration-thickness: 2px }
   #q { height: 2.75rem }
   :is(.search, .text-in) [type="submit"] { min-height: 2.75rem }
   .search [data-keyboard] { width: 36px; height: 36px }
-  .facts { grid-template-columns: 4.375rem minmax(0, 1fr) }
+  .facts { grid-template-columns: 5.75rem minmax(0, 1fr) }
   .entry .head { grid-template-columns: minmax(0, 1fr); grid-template-areas: "lemma" "facts"; gap: 6px; padding: 8px 14px 14px }
   .lemma { justify-content: space-between }
   .lemma .ar { font-size: 1.75rem }
   .tabs { padding-inline: 14px }
+  :is(.about-hw, .only-note) { padding-inline: 14px }
+  .also { padding: 12px 14px }
+  /* Senses take the width under their label, so sub-senses don't squeeze into the value column. */
+  .facts .wide { grid-column: 1 / -1; margin-block-start: -4px }
   .rd { grid-template-areas: "btn form" "facts facts" "parts parts"; grid-template-rows: auto; column-gap: 14px; padding: 8px 14px 14px }
   .rd .form { font-size: 1.5rem }
   @supports selector(::details-content) {

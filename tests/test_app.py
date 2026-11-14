@@ -4,8 +4,12 @@ import html
 import logging
 import re
 import unicodedata
-from urllib.parse import parse_qs, urlencode, urlsplit
+from urllib.parse import parse_qs, unquote, urlencode, urlsplit
 from urllib.request import urlopen
+
+import pytest
+
+from aradict import views
 
 
 def test_word_page_lists_readings_grouped_by_lemma(client):
@@ -477,17 +481,18 @@ def text(markup: str) -> str:
 
 
 def heading(entry: str) -> str:
-    return entry.split('<ul class="readings">')[0]
+    """An entry's headword line: its root, headword and badges and how common it is."""
+    return re.split('<ul class="readings">|<div class="about-hw">', entry)[0]
 
 
 def test_entries_link_to_their_root_and_related_forms_keeping_the_lookup(client):
     kitab, katib, kuttab = entries(client.get("/", params={"q": "كتاب", "diacritics": "off"}).text)
     lookup = {"q": ["كتاب"], "diacritics": ["off"]}
-    assert links(heading(kitab)) == {
+    assert links(kitab) == {
         "Root ك ت ب 16 words": lookup | {"root": ["ك.ت.ب"]},
         "all 2 forms of كِتاب": lookup | {"related": ["كِتاب"], "pos": ["noun"]},
     }
-    assert "all 4 forms of كاتِب" in links(heading(katib))  # writer and clerk, and two plurals
+    assert "all 4 forms of كاتِب" in links(katib)  # writer and clerk, and two plurals
 
 
 def test_an_entry_offers_each_of_its_roots(client):
@@ -504,10 +509,10 @@ def test_an_entry_offers_each_of_its_roots(client):
 def test_no_root_or_related_forms_means_no_link(client):
     adjective = entries(client.get("/", params={"q": "كاتب"}).text)[-1]
     assert '<p class="pos"><span class="badge">adjective</span></p>' in adjective
-    assert list(links(heading(adjective))) == ["Root ك ت ب 16 words"]  # كاتِب "writing" has one form
-    assert '<span class="nil">No other forms</span>' in heading(adjective)
+    assert list(links(adjective)) == ["Root ك ت ب 16 words"]  # كاتِب "writing" has one form
+    assert '<span class="nil">No other forms</span>' in adjective
     laysa = entries(client.get("/", params={"q": "ليس"}).text)[0]
-    assert links(heading(laysa)) == {}
+    assert links(laysa) == {}
     assert "related=" not in client.post("/text", data={"text": "كتاب"}).text  # token details leave out the forms
 
 
@@ -623,10 +628,23 @@ def test_english_lookup_shows_arabic_entries_like_arabic_lookup(client):
     assert entries(same) == [re.sub("q=book", "q=Book+", e) for e in entries(page)]
 
 
+def test_an_english_lookup_shows_its_first_entries_and_links_to_all(client, monkeypatch):
+    monkeypatch.setattr(views, "SHOWN", 1)  # as if "book" had more than views.SHOWN entries
+    page = client.get("/", params={"q": "book", "lang": "en"}).text
+    assert page.count('class="entry"') == 1 and "2 Arabic words for “book”" in page
+    rest = re.search(r'<p class="show-all">(.*?)</p>', page).group(1)
+    assert text(rest) == "Showing the first 1 entries. Show all entries"
+    assert links(rest) == {"Show all entries": {"q": ["book"], "lang": ["en"], "show": ["all"]}}
+    page = client.get("/", params={"q": "book", "lang": "en", "show": "all"}).text
+    assert page.count('class="entry"') == 2 and 'class="show-all"' not in page
+    kitab = next(e for e in entries(page) if "كِتاب</span></h2>" in e)
+    assert links(kitab)["all 2 forms of كِتاب"]["show"] == ["all"]  # its views return to every entry
+
+
 def test_english_entries_link_to_their_family_which_returns_to_the_english_lookup(client):
     kitab = next(e for e in entries(client.get("/", params={"q": "book", "lang": "en"}).text) if "كِتاب</span></h2>" in e)
     english = {"q": ["book"], "lang": ["en"]}
-    assert links(heading(kitab))["all 2 forms of كِتاب"] == english | {"related": ["كِتاب"], "pos": ["noun"]}
+    assert links(kitab)["all 2 forms of كِتاب"] == english | {"related": ["كِتاب"], "pos": ["noun"]}
     page = client.get("/", params=english | {"root": "ك.ت.ب"}).text
     assert links(context(page)) == {"Back to your lookup": english}
     assert 'lang="en"' in field(page)  # the field stays in English
@@ -672,3 +690,398 @@ def test_english_live_lookup_returns_only_results(client):
     page = client.get("/", params={"q": "books", "lang": "en"}, headers={"HX-Request": "true"}).text
     assert "<form" not in page
     assert page.count('class="entry"') == 2  # the "book" entries
+
+
+def test_an_entry_says_which_word_then_what_the_typed_word_means_then_more_about_the_word(client):
+    # The order of the #21 design (W5): the root, headword and how common it is; the readings; then
+    # everything about the headword, its other forms here.
+    kitab = entries(client.get("/", params={"q": "كتاب"}).text)[0]
+    order = ['class="root-tab"', "<h2>", "<dt>Frequency</dt>", '<ul class="readings">', '<div class="about-hw">', "<dt>Forms</dt>"]
+    assert [kitab.index(part) for part in order] == sorted(kitab.index(part) for part in order)
+    assert "<dt>Forms</dt>" not in heading(kitab)
+
+
+def about(entry: str) -> str:
+    """Everything an entry says about its headword, after the readings."""
+    return entry.split('<div class="about-hw">')[1]
+
+
+def senses_of(part: str) -> list[str]:
+    """The numbered Wiktionary senses listed first in part of a page, in order, as a screen reader reads them."""
+    listed = re.search(r'<ol class="senses">(.*?)</ol></dd>', part).group(1)
+    return [text(sense) for sense in re.findall(r"<li>(.*?)</li>", re.sub('<ol class="senses" type="a">.*?</ol>', "", listed))]
+
+
+def credit(part: str) -> tuple[str, dict[str, str]]:
+    """The Wiktionary credit in part of a page, as a screen reader reads it, and its links by accessible name."""
+    markup = re.search(r'<p class="credit">(.*?)</p>', part).group(1)
+    return text(markup), {text(name): html.unescape(href) for href, name in re.findall(r'<a href="([^"]*)"[^>]*>(.*?)</a>', markup)}
+
+
+LICENCE = "https://creativecommons.org/licenses/by-sa/4.0/"
+
+
+def test_a_word_lists_all_its_wiktionary_senses_numbered_after_its_readings_with_the_credit(wiktionary_client):
+    kitab, katib, kuttab = entries(wiktionary_client.get("/", params={"q": "كتاب", "diacritics": "off"}).text)
+    assert '<span class="ar" lang="ar" dir="rtl">كِتاب</span>' in heading(kitab)
+    assert senses_of(about(kitab)) == [
+        "book", "letter, note, paper, piece of writing, message", "the Scripture, the Qur'an or the Bible",
+        "record, document, deed, contract", "a marriage contract.",
+    ]  # not "verbal noun of كَتَبَ", a relation, not a meaning
+    order = ['<ul class="readings">', "<dt>Meanings</dt>", "<dt>Forms</dt>", '<p class="credit">']
+    assert [kitab.index(part) for part in order] == sorted(kitab.index(part) for part in order)
+    assert credit(kitab) == ("From Wiktionary, CC BY-SA 4.0, opens in a new tab · Entry: كتاب on Wiktionary, opens in a new tab", {
+        "CC BY-SA 4.0, opens in a new tab": LICENCE,
+        "كتاب on Wiktionary, opens in a new tab": "https://en.wiktionary.org/wiki/كتاب#Arabic",
+    })
+    # كُتّاب "Quran school" lists its own sense, not كِتاب's, nor "plural of كاتِب".
+    assert senses_of(about(kuttab)) == ["a traditional school for teaching Qur'an"]
+    assert credit(katib)[1]["كاتب on Wiktionary, opens in a new tab"] == "https://en.wiktionary.org/wiki/كاتب#Arabic"  # كُتّاب "writers" is a form of كاتِب
+
+
+def test_sub_senses_are_lettered_under_their_sense(wiktionary_client):
+    katab = next(e for e in entries(wiktionary_client.get("/", params={"q": "كتب"}).text) if "كَتَب</span></h2>" in e)
+    assert senses_of(katab)[1] == "to produce or generate by writing"
+    assert ('<li>to mark (symbols, shapes, graphs, glyphs, letters, and the like) on a surface, to write, to inscribe'
+            '<ol class="senses" type="a"><li>to draw (figures)</li><li>to cut (figures)</li></ol></li>') in katab
+
+
+def test_a_sense_shows_the_labels_wiktionary_gives_it(wiktionary_client):
+    # Obsolete is in the sense's tags only, which the #20 build dropped (PRD, Wiktionary layer, Register).
+    jidda = next(e for e in entries(wiktionary_client.get("/", params={"q": "جدة"}).text) if "newness" in e)
+    assert senses_of(about(jidda))[:2] == ["Obsolete: newness, recency", "Obsolete: novelty"]
+    assert '<li><span class="qualifier">Obsolete</span><span class="sr-only">: </span>newness, recency</li>' in jidda
+
+
+def test_token_details_show_the_senses_and_credit_but_not_frequency_or_forms(wiktionary_client):
+    page = wiktionary_client.post("/text", data={"text": "كتب"}).text
+    details = page[page.index('<div id="w0"'):]
+    katab = next(e for e in entries(details) if "كَتَب</span></h3>" in e)
+    assert senses_of(about(katab))[0].startswith("to mark (symbols")
+    assert credit(katab)[1]["كتب on Wiktionary, opens in a new tab"] == "https://en.wiktionary.org/wiki/كتب#Arabic"
+    assert "Frequency" not in details and "<dt>Forms</dt>" not in details
+
+
+def test_homographs_stay_apart_and_are_labelled(wiktionary_client):
+    # CAMeL's قال "say; said" joins Wiktionary's قَالَ "to say"; قَالَ "to nap" follows as its own entry.
+    say, nap = entries(wiktionary_client.get("/", params={"q": "قال"}).text)
+    assert '<span class="badge measure">Homograph 1</span>' in heading(say) and senses_of(about(say))[0] == "to say"
+    assert 'class="reading"' in say
+    assert senses_of(about(nap)) == ["To nap.", "To do something at noon.", "To cancel a contract or a promise."]
+    assert '<h2><span class="ar" lang="ar" dir="rtl">قَالَ</span></h2>' in nap
+    assert text(heading(nap)).endswith("verb Homograph 2 Wiktionary only")
+    assert 'class="reading"' not in nap and "Frequency" not in nap
+    # Its root is Wiktionary's, ق ي ل, where the dictionary's قال leaves a letter open. The fixture
+    # dictionary has no word from it, so it opens no root view.
+    assert '<span class="root-tab"><span class="rt-k">Root</span> <span class="ar" lang="ar" dir="rtl">ق ي ل</span></span>' in heading(nap)
+    assert credit(nap)[1]["قال on Wiktionary, opens in a new tab"] == "https://en.wiktionary.org/wiki/قال#Arabic"
+    # Numbered as they are shown: Wiktionary lists جِدَّة "bank" before جِدَّة "newness", which the dictionary has.
+    jidda = entries(wiktionary_client.get("/", params={"q": "جدة"}).text)
+    newness, bank = (next(e for e in jidda if word in e) for word in ("newness", "bank, side"))
+    assert "Homograph 1" in heading(newness) and "Homograph 2 Wiktionary only" in text(heading(bank))
+    assert jidda.index(newness) < jidda.index(bank)
+    # Looking up an English word shows no homograph it doesn't find: not قَالَ "to nap" for "say".
+    assert "Wiktionary only" not in wiktionary_client.get("/", params={"q": "say", "lang": "en"}).text
+
+
+def test_homographs_a_gloss_cannot_tell_apart_stay_under_the_lemma_each_labelled(wiktionary_client):
+    # CAMeL's جَزْر "slaughter; ebb" has a meaning of each of Wiktionary's homographs.
+    [jazr] = [e for e in entries(wiktionary_client.get("/", params={"q": "جزر"}).text) if "جَزْر</span></h2>" in e]
+    meanings = re.findall(r'<dt>Meanings</dt><dd class="wide">(.*?)</dd>', jazr)
+    assert len(meanings) == 2
+    assert text(meanings[0]).startswith("Homograph 1 slaughter") and text(meanings[1]).startswith("Homograph 2 ebb (of the sea)")
+    assert "Homograph" not in heading(jazr)
+
+
+def test_without_the_wiktionary_dataset_entries_show_no_wiktionary_content(client):
+    page = client.get("/", params={"q": "قال"})
+    assert page.status_code == 200 and page.text.count('class="entry"') == 1
+    assert "Wiktionary" not in page.text and "Meanings" not in page.text and "Homograph" not in page.text
+
+
+# --- Roots filled from Wiktionary (#26) -----------------------------------------------------------
+
+FILLED = '<span class="fill">و<span class="sr-only" lang="en"> (filled from Wiktionary)</span></span>'
+
+
+def test_an_open_root_letter_wiktionary_fills_is_marked_and_opens_the_full_roots_family(wiktionary_client):
+    # CAMeL leaves قال's root open (ق ◌ ل); of Wiktionary's two قَالَ, its gloss "said" picks "to say", of ق و ل.
+    qal = entries(wiktionary_client.get("/", params={"q": "قال"}).text)[0]
+    assert links(qal) == {
+        "Root ق و (filled from Wiktionary) ل 7 words": {"q": ["قال"], "root": ["ق.و.ل"]},
+        "all 5 forms of قال": {"q": ["قال"], "related": ["قال"], "pos": ["verb"]},
+        # Its verbal nouns, from Wiktionary (#23), each opening its own lookup.
+        "قَوْل": {"q": ["قَوْل"]}, "مَقَال": {"q": ["مَقَال"]}, "مَقَالَة": {"q": ["مَقَالَة"]},
+    }
+    assert f'<span class="ar" lang="ar" dir="rtl">ق {FILLED} ل</span>' in heading(qal)
+    assert credit(qal)[1]["قال on Wiktionary, opens in a new tab"] == "https://en.wiktionary.org/wiki/قال#Arabic"
+
+
+def test_more_about_a_word_says_which_root_letter_wiktionary_filled(wiktionary_client):
+    # The Root row of the #21 design (W5), after the other forms and before the credit.
+    qal = entries(wiktionary_client.get("/", params={"q": "قال"}).text)[0]
+    row = re.search(r"<dt>Root</dt><dd>(.*?)</dd>", about(qal)).group(1)
+    assert text(row) == "و filled from Wiktionary; the core dictionary has ق ◌ ل"
+    order = ["<dt>Meanings</dt>", "<dt>Forms</dt>", "<dt>Root</dt>", '<p class="credit">']
+    assert [qal.index(part) for part in order] == sorted(qal.index(part) for part in order)
+    # Token details show the filled root too, without the other forms.
+    page = wiktionary_client.post("/text", data={"text": "قال"}).text
+    details = entries(page[page.index('<div id="w0"'):])[0]
+    assert f'<span class="ar" lang="ar" dir="rtl">ق {FILLED} ل</span>' in heading(details)
+    assert re.search(r"<dt>Root</dt><dd>(.*?)</dd>", about(details)) and "<dt>Forms</dt>" not in details
+    # A root with nothing open, or one Wiktionary can't fill, has no such row.
+    assert "<dt>Root</dt>" not in wiktionary_client.get("/", params={"q": "كتاب"}).text
+
+
+def test_a_filled_roots_view_lists_its_words_then_the_open_roots_others_with_the_credit(wiktionary_client):
+    lookup = {"q": ["قال"], "root": ["ق.و.ل"]}
+    page = wiktionary_client.get("/", params=lookup).text
+    filled, apart = page.split('<h2 class="rv-sub">')
+    assert text(context(page)).startswith("Root: ق و (filled from Wiktionary) ل")
+    assert "و filled from Wiktionary; the core dictionary has ق ◌ ل" in text(page)
+    assert "5 forms from the root ق و (filled from Wiktionary) ل, 2 more not confirmed" in text(page)
+    # قال's forms are from ق و ل; مَقال is of ق و ل or ق ي ل on Wiktionary, and CAMeL's gloss picks neither.
+    assert column(filled, "Form") == ["قالَ", "قُلْ", "قِيلَ", "يُقال", "يَقُول"]
+    assert set(column(filled, "Root")) == {"ق و (filled from Wiktionary) ل"}
+    assert text(apart).startswith("Also under ق ◌ ل in the core dictionary, letter not confirmed")
+    assert column(apart, "Form") == ["مَقال", "مَقالات"] and set(column(apart, "Root")) == {"ق ◌ ل"}
+    assert '<a href="https://en.wiktionary.org/wiki/قال#Arabic">' in apart  # the credit, linked to the entry
+    assert "From Wiktionary, CC BY-SA 4.0" in text(apart)
+    # Sorting sorts both lists and keeps the root.
+    by_form = wiktionary_client.get("/", params=lookup | {"sort": "-form"}).text
+    assert column(by_form, "Form")[0] == "يَقُول" and headers(by_form)["Form"] == ("descending", lookup)
+    assert column(by_form.split('<h2 class="rv-sub">')[1], "Form") == ["مَقالات", "مَقال"]
+
+
+# --- Forms, pronunciation and relations from Wiktionary (#23) ------------------------------------
+
+def row(part: str, label: str) -> str:
+    """The value of the labelled row in part of a page."""
+    return re.search(rf"<dt>{label}</dt><dd(?: [^>]*)?>(.*?)</dd>(?=<dt>|</dl>)", part).group(1)
+
+
+def words(part: str) -> list[tuple[str, str]]:
+    """Each word in a row of words, as a screen reader reads it, and the lookup it opens."""
+    return [(text(word), unquote(html.unescape(href))) for href, word in re.findall(r'<li><a href="([^"]*)">(.*?)</li>', part)]
+
+
+def test_a_headword_shows_its_transliteration_and_pronunciation_under_it(wiktionary_client):
+    kitab = entries(wiktionary_client.get("/", params={"q": "كتاب"}).text)[0]
+    say = re.search(r'<p class="say">(.*?)</p>', heading(kitab)).group(1)
+    assert text(say) == "Pronunciation: kitāb /ki.taːb/"
+    assert '<span class="tr" lang="ar-Latn">kitāb</span>' in say  # Arabic in Latin letters, as Arabizi is marked
+    assert heading(kitab).index("</h2>") < heading(kitab).index('<p class="say">')
+    # Token details say it too.
+    page = wiktionary_client.post("/text", data={"text": "كتب"}).text
+    katab = next(e for e in entries(page[page.index('<div id="w0"'):]) if "كَتَب</span></h3>" in e)
+    assert text(re.search(r'<p class="say">(.*?)</p>', heading(katab)).group(1)) == "Pronunciation: kataba /ka.ta.ba/"
+
+
+def test_a_noun_shows_its_plural_and_gender_each_form_opening_its_own_lookup(wiktionary_client):
+    kitab, katib, kuttab = entries(wiktionary_client.get("/", params={"q": "كتاب", "diacritics": "off"}).text)
+    assert words(row(about(kitab), "Plural")) == [("كُتُب kutub", "/?q=كُتُب")]
+    assert text(row(about(kitab), "Gender")) == "masculine"
+    assert words(row(about(kuttab), "Plural")) == [("كَتَاتِيب katātīb", "/?q=كَتَاتِيب")]
+    # After the meanings, before the other forms.
+    order = ["<dt>Meanings</dt>", "<dt>Plural</dt>", "<dt>Gender</dt>", "<dt>Verbal noun of</dt>", "<dt>Forms</dt>", '<p class="credit">']
+    assert [kitab.index(part) for part in order] == sorted(kitab.index(part) for part in order)
+
+
+def test_a_verb_lists_its_verbal_nouns_in_wiktionarys_order_marking_an_obsolete_one(wiktionary_client):
+    # كِتَاب says it is an obsolete verbal noun of كَتَبَ, so كَتَبَ's list says so too (PRD, Wiktionary layer, Register).
+    katab = next(e for e in entries(wiktionary_client.get("/", params={"q": "كتب"}).text) if "كَتَب</span></h2>" in e)
+    assert words(row(about(katab), "Verbal nouns")) == [
+        ("كِتَابَة kitāba", "/?q=كِتَابَة"), ("كَتْب katb", "/?q=كَتْب"), ("كِتَاب kitāb Obsolete", "/?q=كِتَاب"),
+    ]
+
+
+def test_a_relation_is_a_labelled_row_not_a_meaning_and_keeps_its_label(wiktionary_client):
+    kitab = entries(wiktionary_client.get("/", params={"q": "كتاب"}).text)[0]
+    assert words(row(about(kitab), "Verbal noun of")) == [
+        ("كَتَبَ kataba Measure I Obsolete", "/?q=كَتَبَ"), ("كَاتَبَ kātaba Measure III", "/?q=كَاتَبَ"),
+    ]
+    assert '<span class="qualifier">Obsolete</span>' in row(about(kitab), "Verbal noun of")
+    assert "verbal noun" not in text(row(about(kitab), "Meanings"))
+
+
+def test_regional_pronunciations_come_last_collapsed_on_the_word_view_only(wiktionary_client):
+    kitab = entries(wiktionary_client.get("/", params={"q": "كتاب"}).text)[0]
+    regional = re.search(r"<dt>Regional</dt><dd>(.*?</details>)</dd>", about(kitab)).group(1)
+    assert regional.startswith('<details class="regional"><summary>11 pronunciations</summary>')  # closed until opened
+    assert "<dt>Egypt</dt><dd>[keˈtæːb]</dd>" in regional and "<dt>Lebanese Arabic</dt><dd>[kteːb]</dd>" in regional
+    order = ["<dt>Forms</dt>", "<dt>Regional</dt>", '<p class="credit">']
+    assert [kitab.index(part) for part in order] == sorted(kitab.index(part) for part in order)
+    page = wiktionary_client.post("/text", data={"text": "كتاب"}).text
+    assert "<dt>Plural</dt>" in page and "Regional" not in page
+
+
+def test_wiktionary_content_is_always_inside_an_entry_with_the_credit(wiktionary_client):
+    pages = [wiktionary_client.get("/", params={"q": word}).text for word in ("كتاب", "كتب", "قال", "جدة")]
+    pages.append(wiktionary_client.post("/text", data={"text": "كتب كتاب قال"}).text)
+    shown = [e for page in pages for e in entries(page) if '<p class="say">' in e or "<dt>Meanings</dt>" in e or " of</dt>" in e]
+    assert len(shown) > 10 and all('<p class="credit">' in e for e in shown)
+
+
+# --- Words only Wiktionary has (#24) -------------------------------------------------------------
+
+def status(page: str) -> str:
+    return text(re.search(r'<p id="status"[^>]*>(.*?)</p>', page).group(1))
+
+
+def test_a_word_only_wiktionary_has_is_shown_beside_the_dictionarys_reading(wiktionary_client):
+    # The dictionary reads تغريدة as تَغْرِيد "his twittering"; Wiktionary's تَغْرِيدَة "a tweet" follows as
+    # its own entry, which shows all Wiktionary has and none of what only the dictionary has.
+    page = wiktionary_client.get("/", params={"q": "تغريدة"}).text
+    twittering, tweet = entries(page)
+    assert "his/its twittering" in twittering
+    assert status(page) == "1 reading for تغريدة, and 1 more entry from Wiktionary"
+    assert '<h2><span class="ar" lang="ar" dir="rtl">تَغْرِيدَة</span></h2>' in tweet
+    assert text(heading(tweet)).startswith("Root غ ر د") and text(heading(tweet)).endswith("noun Wiktionary only")
+    assert text(re.search(r'<p class="say">(.*?)</p>', heading(tweet)).group(1)) == "Pronunciation: taḡrīda /taɣ.riː.da/"
+    assert [sense.split(": ")[-1] for sense in senses_of(about(tweet))] == ["chirp, tweet", "a tweet"]
+    assert words(row(about(tweet), "Plural")) == [("تَغْرِيدَات taḡrīdāt", "/?q=تَغْرِيدَات")]
+    assert text(row(about(tweet), "Gender")) == "feminine"
+    assert credit(tweet)[1]["تغريدة on Wiktionary, opens in a new tab"] == "https://en.wiktionary.org/wiki/تغريدة#Arabic"
+    assert 'class="reading"' not in tweet and "Frequency" not in tweet and "Measure" not in tweet and "Word parts" not in tweet
+    assert text(re.search(r'<p class="only-note">(.*?)</p>', tweet).group(1)) == "Only in Wiktionary: no frequency, measure or word parts."
+
+
+def test_entries_that_only_relate_the_word_to_another_are_listed_after_its_entries(wiktionary_client):
+    # كتب: the dictionary's كِتاب (as كُتُب) and كَتَب; Wiktionary's own كَتَّبَ "cause to write"; then two
+    # entries with no meaning of their own. Its كُتُب "plural of كِتَاب" is a reading already, so it isn't listed.
+    page = wiktionary_client.get("/", params={"q": "كتب"}).text
+    assert status(page) == "3 readings for كتب, and 3 more entries from Wiktionary"
+    kitab, katab, kattaba = entries(page)
+    assert "كَتَّبَ" in heading(kattaba) and text(heading(kattaba)).endswith("verb Wiktionary only")
+    also = re.search(r'<section class="also">(.*?)</section>', page).group(1)
+    assert text(re.search(r"<h2>(.*?)</h2>", also).group(1)) == "Also in Wiktionary"
+    assert [text(item) for item in re.findall(r"<li>(.*?)</li>", also)] == [
+        "katb: Verbal noun of كَتَبَ katabaكَتْب", "kitāb: Classical Arabic spelling of كِتَاب kitābكِتٰب",
+    ]
+    assert links(also)["كَتَبَ"] == {"q": ["كَتَبَ"]}
+    assert credit(also)[1] == {"CC BY-SA 4.0, opens in a new tab": LICENCE, "كتب on Wiktionary, opens in a new tab": "https://en.wiktionary.org/wiki/كتب#Arabic"}
+    assert page.index('<section class="also">') > page.index("كَتَّبَ")
+    assert "كُتُب</span></p>" not in also
+
+
+def test_a_common_words_wiktionary_entries_wait_behind_one_disclosure(wiktionary_client, monkeypatch):
+    # كَتَبَ is a common lemma, so Wiktionary's rarer كَتَّبَ and the entries that only relate كتب to another
+    # word fold under one closed disclosure, counted as the status counts them.
+    monkeypatch.setattr(views, "COMMON", 100)  # the fixture ranks its few lemmas among themselves
+    page = wiktionary_client.get("/", params={"q": "كتب"}).text
+    fold = page.index('<details class="more"><summary>3 more entries from Wiktionary</summary>')
+    kitab, katab, kattaba = entries(page)
+    assert page.index(kitab) < page.index(katab) < fold < page.index(kattaba) < page.index('<section class="also">')
+    assert '<details class="more">' in wiktionary_client.post("/text", data={"text": "كتب"}).text  # and in its token details
+    # The dictionary has no frequency for تَغْرِيد, so Wiktionary's تَغْرِيدَة "a tweet" stays in view.
+    assert 'class="more"' not in wiktionary_client.get("/", params={"q": "تغريدة"}).text
+
+
+def test_in_the_text_view_a_word_only_wiktionary_has_opens_its_entry(wiktionary_client):
+    # The dictionary can't read تغريدتي "my tweet"; it reads تغريدة as "his twittering", which Wiktionary has too.
+    page = wiktionary_client.post("/text", data={"text": "تغريدتي تغريدة قخغثص"}).text
+    passage = passage_of(page)
+    assert re.findall(r'class="tok (\w+)"', passage) == ["word", "word", "unknown"]
+    assert [text(said) for said in re.findall(r'<span class="sr-only" lang="en">(.*?)</span>', passage)] == [
+        ", 1 entry from Wiktionary", ", 1 reading, 1 more from Wiktionary", ", not in the dictionary",
+    ]
+    assert status(page) == "3 words, 1 not in the dictionary"
+    only, both, unknown = (page[page.index(f'<div id="{i}"'):] for i in ("w0", "w1", "w2"))
+    only, both = only[:only.index('<div id="w1"')], both[:both.index('<div id="w2"')]
+    assert text(re.search(r'<div class="tp-head">(.*?)</div>', only).group(1)) == "تغريدتي1 entry from Wiktionary"
+    [tweet] = entries(only)
+    assert "a tweet" in senses_of(about(tweet))[-1] and text(heading(tweet)).endswith("noun Wiktionary only")
+    assert "not in the dictionary" not in only and "Open in Word lookup" in only
+    twittering, tweet = entries(both)
+    assert "his/its twittering" in twittering and "a tweet" in senses_of(about(tweet))[-1]
+    assert "Frequency" not in both and "Word parts" not in both and "<dt>Regional</dt>" not in both
+    assert "not in the dictionary" in unknown
+
+
+def test_autocomplete_offers_the_words_only_wiktionary_has_after_the_dictionarys(wiktionary_client):
+    offered = wiktionary_client.get("/suggest", params={"q": "تغري"}).json()
+    assert "تَغْرِيد" in offered and offered[-1] == "تَغْرِيدَة" and offered.count("تَغْرِيدَة") == 1
+    assert "تَغْرِيدَة" not in wiktionary_client.get("/suggest", params={"q": "تُغري"}).json()  # typed vowels must agree
+
+
+def test_about_says_newer_words_may_come_from_wiktionary(client):
+    coverage = client.get("/about").text
+    coverage = coverage[coverage.index('id="coverage"'):coverage.index('id="typing"')]
+    assert "Where English Wiktionary has such a word, as it has the one for “tweet”" in coverage and "“Wiktionary only”" in coverage
+
+
+def test_a_word_wiktionary_adds_nothing_to_is_counted_as_before(client):
+    assert status(client.get("/", params={"q": "كتب"}).text) == "3 readings for كتب"
+
+
+def test_a_word_in_neither_source_still_has_no_entry(wiktionary_client):
+    page = wiktionary_client.get("/", params={"q": "قخغثص"}).text
+    assert status(page) == "No entry for قخغثص" and 'class="empty"' in page and 'class="entry"' not in page
+
+
+def test_a_wiktionary_headword_the_dictionary_reads_as_a_form_is_not_called_wiktionary_only(wiktionary_client):
+    # Wiktionary has آفَاق "horizons" as a headword; the dictionary reads it as the plural of أُفُق. Its
+    # entry is still shown, but saying the word is only in Wiktionary would be false.
+    found = entries(wiktionary_client.get("/", params={"q": "آفاق"}).text)
+    horizon = [e for e in found if "أُفُق" in heading(e)]
+    afaq = [e for e in found if "آفَاق" in heading(e)]
+    assert horizon and afaq
+    assert "Wiktionary only" not in text(heading(afaq[0])) and "Wiktionary" in text(heading(afaq[0]))
+    assert "Only in Wiktionary" not in afaq[0] and senses_of(about(afaq[0]))
+
+
+@pytest.mark.parametrize("word", ["تغريدات", "والتغريدات", "تَغْرِيدَة"])
+def test_a_word_only_wiktionary_has_is_found_from_its_forms(wiktionary_client, word):
+    found = entries(wiktionary_client.get("/", params={"q": word}).text)
+    assert ["a tweet" in senses_of(about(e))[-1] for e in found if "Wiktionary only" in text(heading(e))] == [True]
+
+
+# --- English lookup of Wiktionary's senses (#25) ----------------------------------------------------
+
+def english_lookup(client, query: str) -> str:
+    return client.get("/", params={"q": query, "lang": "en"}).text
+
+
+def test_english_shows_a_word_only_wiktionary_has_with_the_credit(wiktionary_client):
+    page = english_lookup(wiktionary_client, "tweet")
+    assert status(page) == "1 entry from Wiktionary for “tweet”"
+    [tweet] = entries(page)
+    assert '<h2><span class="ar" lang="ar" dir="rtl">تَغْرِيدَة</span></h2>' in tweet
+    # English lookup doesn't read the word in Arabic, so it can't tell whether only Wiktionary has it.
+    assert text(heading(tweet)).endswith("noun Wiktionary") and "Only in Wiktionary" not in tweet
+    assert credit(tweet) == (
+        "From Wiktionary, CC BY-SA 4.0, opens in a new tab · Entry: تغريدة on Wiktionary, opens in a new tab",
+        {"CC BY-SA 4.0, opens in a new tab": LICENCE, "تغريدة on Wiktionary, opens in a new tab": "https://en.wiktionary.org/wiki/تغريدة#Arabic"},
+    )
+    # The coverage note says what English lookup searches.
+    assert "it matches the dictionary's short English glosses and Wiktionary's meanings, a whole word or phrase at a time" in text(page)
+
+
+def test_english_shows_a_lemma_found_by_its_wiktionary_sense_as_its_entry(wiktionary_client):
+    # Only Wiktionary's كِتَاب says "a marriage contract."; the dictionary's كِتاب, which joins it, is shown.
+    page = english_lookup(wiktionary_client, "marriage contract")
+    assert status(page) == "1 Arabic word for “marriage contract”"
+    [kitab] = entries(page)
+    assert '<h2><span class="ar" lang="ar" dir="rtl">كِتاب</span></h2>' in kitab and 'class="reading"' in kitab
+    assert "a marriage contract." in senses_of(about(kitab))
+    assert credit(kitab)[1]["كتاب on Wiktionary, opens in a new tab"] == "https://en.wiktionary.org/wiki/كتاب#Arabic"
+    assert "Wiktionary only" not in kitab
+
+
+def test_english_shows_the_dictionarys_words_then_wiktionarys_own(wiktionary_client):
+    # The dictionary glosses أُفُق "horizon", and its plural آفاق "horizons"; Wiktionary also has آفَاق as a
+    # headword. A reading on the page reads it, so it is marked as from Wiktionary, not as only there (#24).
+    page = english_lookup(wiktionary_client, "horizons")
+    assert status(page) == "2 Arabic words for “horizons”, and 1 more entry from Wiktionary"
+    ufuq, afaq = entries(page)
+    assert "أُفُق</span></h2>" in ufuq and "آفَاق</span></h2>" in afaq
+    assert text(heading(afaq)).endswith("noun Wiktionary") and "Only in Wiktionary" not in afaq
+
+
+def test_english_shows_a_lemma_both_sources_match_once(wiktionary_client):
+    found = entries(english_lookup(wiktionary_client, "book"))
+    assert [e for e in found if "كِتاب</span></h2>" in e or "كِتَاب</span></h2>" in e] == [found[0]]
+    # Every entry with Wiktionary's content credits it, with a link to its source.
+    for query in ("book", "tweet", "marriage contract", "say"):
+        shown = [e for e in entries(english_lookup(wiktionary_client, query)) if "<dt>Meanings</dt>" in e]
+        assert shown and all(credit(e)[0].startswith("From Wiktionary") and " on Wiktionary, opens in a new tab" in credit(e)[0] for e in shown), query
