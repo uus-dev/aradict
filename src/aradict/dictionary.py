@@ -444,13 +444,40 @@ class Dictionary:
 
     def wiktionary_root(self, lemma: str, pos: str, root: str | None = None) -> str | None:
         """The root Wiktionary gives a lemma, "ق.و.ل": the one all its entries give, or else the one
-        all the entries CAMeL's gloss picks give (see picked). None if they give none, or several."""
+        all the entries CAMeL's gloss picks give (see picked). None if they give none, or several.
+        An entry that gives no root but relates its word to another ("verbal noun of أَثَارَ") has that word's (_root)."""
         entries = self._entries(lemma, pos)
-        roots = {e.root for e in entries}
+        roots = {self._root(e) for e in entries}
         if len(roots) > 1:
-            roots = {e.root for e in self.picked(lemma, pos, root, entries)}
+            roots = {self._root(e) for e in self.picked(lemma, pos, root, entries)}
         full = roots.pop() if len(roots) == 1 else None
         return full and full.replace(" ", ".")
+
+    def _root(self, entry: wiktionary.Entry) -> str | None:
+        """An entry's root, "ق و ل". One that gives none but relates its word to others, with or without meanings of
+        its own (إِثَارَة is only "verbal noun of أَثَارَ"; قَوْل is "speech" and "verbal noun of قَالَ"), has theirs if
+        they agree (see _related_root): a verbal noun, participle, plural or other spelling of a word has its root."""
+        if entry.root or not entry.relations:
+            return entry.root
+        roots = {self._related_root(r.word) for r in entry.relations}
+        return roots.pop() if len(roots) == 1 else None
+
+    def _related_root(self, word: str) -> str | None:
+        """The root of a word an entry relates its own to (أَثَارَ in "verbal noun of أَثَارَ"), where it is
+        unambiguous: the one all the word's entries give; or else, of homographs (قَالَ "say" ق و ل, قَالَ "nap"
+        ق ي ل), the root of the one the dictionary's lemma of the word joins, which its glosses pick (see
+        wiktionary). None if neither is one root: a word's root is never guessed. Wiktionary writes the word as
+        its own headword, so the entries spelled exactly so are its (the verb وَلَدَ, not the noun وَلَد), if any."""
+        entries = wiktionary.entries(self._wiktionary, word)
+        exact = unicodedata.normalize("NFC", word)
+        entries = [e for e in entries if unicodedata.normalize("NFC", e.word) == exact] or entries
+        roots = {e.root for e in entries}
+        if len(roots) > 1:
+            roots = {
+                join.joined.root for lemma, pos in self._lemmas.get(wiktionary.letters(word), ())
+                if wiktionary.same_word(lemma, word) and (join := self.wiktionary(lemma, pos)).joined in entries
+            }
+        return roots.pop() if len(roots) == 1 else None
 
     def filled_root(self, lemma: str, pos: str, root: str) -> str | None:
         """The lemma's root ("ق.#.ل") with the weak or hamza letters CAMeL leaves open filled from

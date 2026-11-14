@@ -187,13 +187,13 @@ def by_prefix(dataset: Path, prefix: str, limit: int) -> list[Entry]:
         return [_entry(json.loads(row)) for row, in rows]
 
 
-def entries(dataset: Path, lemma: str, pos: str) -> list[Entry]:
-    """The Wiktionary entries of a CAMeL lemma with this part of speech, in Wiktionary's order.
-    Homographs from different etymologies (قَالَ "say" and قَالَ "nap") are separate entries. An
+def entries(dataset: Path, lemma: str, pos: str | None = None) -> list[Entry]:
+    """The Wiktionary entries of a CAMeL lemma with this part of speech (any, without pos), in Wiktionary's
+    order. Homographs from different etymologies (قَالَ "say" and قَالَ "nap") are separate entries. An
     entry that is only relations stands for the lemma only where no entry with meanings does: the
     lemma كُتّاب is the Quran school, not the plural of كَاتِب, but the lemma كَتْب is "verbal noun of كَتَبَ"."""
     with closing(_connect(dataset)) as db:
-        rows = db.execute("SELECT entry FROM entry WHERE letters = ? AND pos = ? ORDER BY id", (letters(lemma), wiktionary_pos(pos)))
+        rows = db.execute("SELECT entry FROM entry WHERE letters = ? AND pos = coalesce(?, pos) ORDER BY id", (letters(lemma), pos and wiktionary_pos(pos)))
         found = [e for row, in rows if same_word(lemma, (e := _entry(json.loads(row))).word)]
     return [e for e in found if e.senses] or found
 

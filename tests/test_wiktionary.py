@@ -210,7 +210,7 @@ def test_an_open_root_is_filled_where_the_entries_agree(real):
     assert real.filled_root("قاوَل", "verb", "ق.#.ل") == "ق.و.ل"
     assert real.filled_root("أَقال", "verb", "ق.#.ل") == "ق.ي.ل"  # the same open root, another letter
     assert real.filled_root("أَكَل", "verb", "#.ك.ل") == "ء.ك.ل"  # a hamza
-    assert real.filled_root("قَوْل", "noun", "ق.#.ل") is None  # Wiktionary gives this entry no root
+    assert real.filled_root("مُقِيم", "noun", "ق.#.م") is None  # Wiktionary gives this entry no root, and relates it to no word
     assert real.filled_root("كَتَب", "verb", "ك.ت.ب") is None  # nothing open
 
 
@@ -226,17 +226,42 @@ def test_a_lemma_whose_wiktionary_entries_disagree_on_the_root_keeps_it_open(rea
 
 def test_a_filled_root_holds_every_lemma_filled_to_it_and_the_open_roots_others_apart(real):
     family = real.root_family("ق.و.ل")
-    assert {r.lemma for r in family} == {"قال", "قاوَل", "مَقُولَة"}
+    # With the verbal nouns of قَالَ, تَقَوَّلَ and قَاوَلَ, whose roots they take (wiktionary_root).
+    assert {r.lemma for r in family} == {"قال", "قاوَل", "مَقُولَة", "قَوْل", "تَقَوُّل", "مُقاوَلَة"}
     assert {r.root for r in family} == {"ق.#.ل"}  # each form keeps the root CAMeL gives it
-    # إِقالَة's only entry says it is the "verbal noun of أَقَالَ" (#23), and gives the root ق ي ل.
-    assert {r.lemma for r in real.root_family("ق.ي.ل")} == {"أَقال", "ٱِسْتَقال", "مَقِيل", "قَيْلُولَة", "إِقالَة"}
+    # إِقالَة's only entry says it is the "verbal noun of أَقَالَ" (#23), and gives the root ق ي ل; ٱِسْتِقالَة
+    # "resignation" gives none, but is the verbal noun of اِسْتَقَالَ, of ق ي ل.
+    assert {r.lemma for r in real.root_family("ق.ي.ل")} == {"أَقال", "ٱِسْتَقال", "مَقِيل", "قَيْلُولَة", "إِقالَة", "ٱِسْتِقالَة"}
     # The lemmas Wiktionary can't place are listed apart, as not confirmed; not those it places elsewhere.
     unconfirmed = {r.lemma for r in real.unconfirmed("ق.و.ل")}
-    assert {"مَقال", "قَوْل", "قَيْل"} <= unconfirmed and not {"قال", "أَقال", "قَيْلُولَة"} & unconfirmed
+    assert {"مَقال", "قَيْل"} <= unconfirmed and not {"قال", "أَقال", "قَيْلُولَة", "قَوْل"} & unconfirmed
     assert real.family_size("ق.و.ل") == len(family) + len(real.unconfirmed("ق.و.ل"))
     # CAMeL's open root keeps its whole family; a root no lemma is filled to (ق ء ل) has nothing apart.
     assert len(real.root_family("ق.#.ل")) == 42
     assert real.unconfirmed("ق.#.ل") == real.unconfirmed("ك.ت.ب") == real.unconfirmed("ق.ء.ل") == []
+
+
+def test_an_entry_that_only_relates_its_word_to_another_takes_that_words_root(real):
+    # Wiktionary's إِثَارَة is only "verbal noun of أَثَارَ", and gives no root of its own; أَثَارَ's is ث و ر.
+    assert real.wiktionary("إِثارَة", "noun").joined.root is None
+    assert real.filled_root("إِثارَة", "noun", "ث.#.ر") == "ث.و.ر"
+    assert real.filled_root("آباء", "noun", "#.ب.#") == "ء.ب.و"  # "plural of أَب"
+    # An entry with meanings of its own too: سِيَاحَة "tourism" is also "verbal noun of سَاحَ" (س ي ح).
+    assert real.filled_root("سِياحَة", "noun", "س.#.ح") == "س.ي.ح"
+    # The word is Wiktionary's headword as written: لِدَة is the verbal noun of the verb وَلَدَ (و ل د), not of the noun وَلَد.
+    assert real.filled_root("لِدَة", "noun", "#.ل.د") == "و.ل.د"
+    # Never guessed: إِهْدَاء is the verbal noun of أَهْدَأَ (ه د ء) and of أَهْدَى (ه د ي);
+    # أَبْنَاء is the plural of اِبْن, which gives no root.
+    assert real.filled_root("إِهْداء", "noun", "ه.د.#") is None
+    assert real.filled_root("أَبْناء", "noun", "ب.ن.#") is None
+
+
+def test_of_a_related_words_homographs_the_one_the_dictionarys_lemma_joins_gives_the_root(real):
+    # قَوْل "speech" is the verbal noun of قَالَ; of Wiktionary's قَالَ "say" (ق و ل) and "nap" (ق ي ل),
+    # CAMeL's قال "said" joins "say" (see picked).
+    assert real.filled_root("قَوْل", "noun", "ق.#.ل") == "ق.و.ل"
+    # نَيْل is the verbal noun of نَالَ, whose homographs are of ن و ل and ن ي ل; CAMeL's نال joins neither.
+    assert real.filled_root("نَيْل", "noun", "ن.#.ل") is None
 
 
 def test_a_root_wiktionary_gives_with_other_letters_is_not_used(real):
