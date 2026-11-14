@@ -61,7 +61,7 @@ app.mount("/static", StaticFiles(directory=Path(__file__).parent / "static"), na
 MAX_BODY = 64_000
 
 
-LOOKUP = ("q", "diacritics", "lang")  # the URL parameters of a lookup
+LOOKUP = ("q", "diacritics", "lang", "show")  # the URL parameters of a lookup
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -70,6 +70,7 @@ def word(
     q: str = "",
     diacritics: Literal["on", "off"] = "on",
     lang: Literal["ar", "en"] = "ar",  # the language typed: Arabic → English, or English → Arabic
+    show: Literal["", "all"] = "",  # all: every entry of an English lookup, not only the first views.SHOWN
     root: str | None = None,
     related: str | None = None,
     pos: str = "",
@@ -98,13 +99,14 @@ def word(
             state = views.State("Type a word: letters, not only numbers or symbols.")
         else:
             found = dictionary().lookup(q, english, filter_diacritics)
-            lemmas = {(r.lemma, r.pos) for r in found.readings}
+            shown = views.first_entries(found) if english and show != "all" else found  # what the links are for
+            lemmas = {(r.lemma, r.pos) for r in shown.readings}
             joins = {lemma: dictionary().wiktionary(*lemma) for lemma in lemmas}
-            roots = {(r.lemma, r.pos, r.root) for r in found.readings if r.root}
+            roots = {(r.lemma, r.pos, r.root) for r in shown.readings if r.root}
             filled = {root: full for root in roots if (full := dictionary().filled_root(*root))}
             # The roots of the readings, filled where Wiktionary can, and of the entries only Wiktionary has: the
             # homographs shown on their own, and the word's own (Lookup.wiktionary).
-            only = [e for join in joins.values() if join.joined for e in join.entries if e is not join.joined] + list(found.wiktionary)
+            only = [e for join in joins.values() if join.joined for e in join.entries if e is not join.joined] + list(shown.wiktionary)
             counted = {filled.get(root, root[2]) for root in roots} | {e.root.replace(" ", ".") for e in only if e.root}
             links = views.Links(
                 lookup,
@@ -113,7 +115,7 @@ def word(
                 joins,
                 filled,
             )
-            state = views.looked_up_en(found, links) if english else views.looked_up(q, found, links)
+            state = views.looked_up_en(found, links, show == "all") if english else views.looked_up(q, found, links)
     except Exception as error:
         _log_failure("Lookup failed", error)
         state, status_code = views.FAILURE, 500

@@ -5,6 +5,7 @@ from __future__ import annotations
 import re
 from collections import Counter
 from collections.abc import Iterable
+from dataclasses import replace
 from typing import NamedTuple
 from urllib.parse import urlencode
 
@@ -428,14 +429,27 @@ def _unattached(r: Reading) -> str:
     return _bare("".join(s.text for s in r.segments if s.role == "stem" or s.role == "suffix" and s.label not in PRONOUNS))
 
 
-def _entries(results: Results, heading: Element = h2, links: Links | None = None, brief: bool = False) -> Node:
-    return [
-        div(class_="entries")[
-            (_entry(lemma, glosses, heading, links, brief, results.joins[lemma, pos]) for (lemma, pos), glosses in results.groups.items()),
-            (_wiktionary_only(e, n, heading, links, brief, e in results.read) for e, n in results.apart),
-        ],
-        _also(results.also, heading),
-    ]
+COMMON = 10  # the top percent of lemmas the "common" and "very common" bands cover (see _how_common)
+
+
+def _entries(results: Results, heading: Element = h2, links: Links | None = None, brief: bool = False, fold: bool = True) -> Node:
+    """The dictionary's entries, then Wiktionary's. With fold, a word the dictionary reads as a common lemma
+    keeps Wiktionary's entries behind one disclosure: they are its rare words and senses (من "aphid"), which
+    would otherwise push the common reading's neighbours down. An English lookup doesn't fold: its entries
+    are different words, not readings of one."""
+    entries = (_entry(lemma, glosses, heading, links, brief, results.joins[lemma, pos]) for (lemma, pos), glosses in results.groups.items())
+    apart = (_wiktionary_only(e, n, heading, links, brief, e in results.read) for e, n in results.apart)
+    readings = (r for glosses in results.groups.values() for group in glosses.values() for r in group)
+    if fold and (more := _more(results)) and any(r.top_percent is not None and r.top_percent <= COMMON for r in readings):
+        return [
+            div(class_="entries")[entries],
+            details(class_="more")[
+                summary[_from_wiktionary(more, "more ")],
+                results.apart and div(class_="entries")[apart],
+                _also(results.also, heading),
+            ],
+        ]
+    return [div(class_="entries")[entries, apart], _also(results.also, heading)]
 
 
 def _also(entries: list[WiktionaryEntry], heading: Element) -> Node:
@@ -464,8 +478,9 @@ def _more(results: Results) -> int:
     return len(results.apart) + len(results.also)
 
 
-def _from_wiktionary(count: int) -> str:
-    return f"{count} {'entry' if count == 1 else 'entries'} from Wiktionary"
+def _from_wiktionary(count: int, more: str = "") -> str:
+    """"3 entries from Wiktionary", or with more, "3 more entries from Wiktionary"."""
+    return f"{count} {more}{'entry' if count == 1 else 'entries'} from Wiktionary"
 
 
 def _intro() -> Node:
@@ -505,7 +520,7 @@ def looked_up(text: str, found: Lookup, links: Links | None = None) -> State:
         results = _results(found.readings, links, found=found.wiktionary)
         more = _more(results)
         status = (
-            [f"{_n(len(found.readings), 'reading')} for ", ar(found.query), f", and {more} more {'entry' if more == 1 else 'entries'} from Wiktionary" if more else None]
+            [f"{_n(len(found.readings), 'reading')} for ", ar(found.query), f", and {_from_wiktionary(more, 'more ')}" if more else None]
             if found.readings else [f"{_from_wiktionary(more)} for ", ar(found.query)]
         )
         return State(status, [notice, _entries(results, h2, links)], arabizi)
@@ -543,18 +558,37 @@ INITIAL_EN = State(body=[
 ])
 
 
-def looked_up_en(found: Lookup, links: Links | None = None) -> State:
+SHOWN = 25  # the entries an English lookup shows before "Show all"
+
+
+def first_entries(found: Lookup) -> Lookup:
+    """An English lookup with only the readings and Wiktionary entries of its first SHOWN entries: a common
+    meaning has hundreds ("male given name"), which would take seconds to count roots for and send."""
+    lemmas = list(dict.fromkeys((r.lemma, r.pos) for r in found.readings))[:SHOWN]
+    shown = set(lemmas)
+    return replace(found, readings=tuple(r for r in found.readings if (r.lemma, r.pos) in shown), wiktionary=found.wiktionary[:SHOWN - len(lemmas)])
+
+
+def looked_up_en(found: Lookup, links: Links | None = None, everything: bool = False) -> State:
     """The outcome of a completed English → Arabic lookup, with the coverage note: the dictionary's words, then
-    the entries only Wiktionary has (Lookup.wiktionary). Entries link to their root and related forms with links."""
+    the entries only Wiktionary has (Lookup.wiktionary), the first SHOWN of them unless everything, with a link
+    to the rest. Entries link to their root and related forms with links."""
     query = found.query
     if found.readings or found.wiktionary:
-        results = _results(found.readings, links, homographs=False, found=found.wiktionary, read_all=True)
-        more = _more(results)
+        shown = found if everything else first_entries(found)
+        results = _results(shown.readings, links, homographs=False, found=shown.wiktionary, read_all=True)
+        more = len(found.wiktionary)  # no lemma joins them (Dictionary._english_lookup), so none is shown with one
         status = (
-            f"{_n(len(found.readings), 'Arabic word')} for “{query}”" + (f", and {more} more {'entry' if more == 1 else 'entries'} from Wiktionary" if more else "")
+            f"{_n(len(found.readings), 'Arabic word')} for “{query}”" + (f", and {_from_wiktionary(more, 'more ')}" if more else "")
             if found.readings else f"{_from_wiktionary(more)} for “{query}”"
         )
-        return State(status, [COVERAGE, _entries(results, h2, links)])
+        total = len({(r.lemma, r.pos) for r in found.readings}) + more
+        rest = not everything and total > SHOWN and p(class_="show-all")[
+            # Not "of 344": the status counts readings, and a lemma may have two.
+            f"Showing the first {SHOWN} entries. ",
+            a(href=_url({**(links.lookup if links else {"q": query, "lang": "en"}), "show": "all"}))["Show all entries"],
+        ]
+        return State(status, [COVERAGE, _entries(results, h2, links, fold=False), rest])
     # Arabic typed here is meant the other way round, so switching direction keeps it.
     arabic = bool(ARABIC.search(query))
     back = f"/?{urlencode({'q': query})}" if arabic else "/"

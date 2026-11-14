@@ -328,6 +328,8 @@ Launch as a web application whose home view opens directly on Word lookup, with 
        - the credit.
     - Token details in the Text view follow the same order, but leave out frequency, other forms and regional pronunciations.
     - A word only Wiktionary has goes straight from its headword line to its meanings.
+    - When a reading's lemma is common (in the top 10% of lemmas by frequency), Wiktionary's other entries for the word fold under one closed "N more entries from Wiktionary" disclosure, together with those that only relate it to another word. Rare words and senses (من "aphid") then don't push the common reading's neighbours down. They are folded, never dropped. A word whose readings are less common or have no frequency (تغريدة) shows them open.
+    - An English lookup shows its first 25 entries, with a link to show all of them: "male given name" has 344.
   - **Register.** AraDict covers Modern Standard Arabic, as its CAMeL core does. Aratools does too: both are built on the Buckwalter lexicon of MSA news text. Wiktionary also records Classical, obsolete, archaic, rare and dialectal uses. About 4% of its senses carry such a label (2,051 of 47,111 in the pinned extraction), for example كِتاب as an obsolete verbal noun of كَتَبَ, where MSA uses كِتابة.
     - Every sense, form and relation that Wiktionary labels this way is shown with its label, never without it.
     - A label on one side of a relation also shows on the other side: كَتَبَ's list of verbal nouns marks كِتاب as obsolete, too.

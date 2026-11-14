@@ -9,6 +9,8 @@ from urllib.request import urlopen
 
 import pytest
 
+from aradict import views
+
 
 def test_word_page_lists_readings_grouped_by_lemma(client):
     page = client.get("/", params={"q": "كتب"})
@@ -626,6 +628,19 @@ def test_english_lookup_shows_arabic_entries_like_arabic_lookup(client):
     assert entries(same) == [re.sub("q=book", "q=Book+", e) for e in entries(page)]
 
 
+def test_an_english_lookup_shows_its_first_entries_and_links_to_all(client, monkeypatch):
+    monkeypatch.setattr(views, "SHOWN", 1)  # as if "book" had more than views.SHOWN entries
+    page = client.get("/", params={"q": "book", "lang": "en"}).text
+    assert page.count('class="entry"') == 1 and "2 Arabic words for “book”" in page
+    rest = re.search(r'<p class="show-all">(.*?)</p>', page).group(1)
+    assert text(rest) == "Showing the first 1 entries. Show all entries"
+    assert links(rest) == {"Show all entries": {"q": ["book"], "lang": ["en"], "show": ["all"]}}
+    page = client.get("/", params={"q": "book", "lang": "en", "show": "all"}).text
+    assert page.count('class="entry"') == 2 and 'class="show-all"' not in page
+    kitab = next(e for e in entries(page) if "كِتاب</span></h2>" in e)
+    assert links(kitab)["all 2 forms of كِتاب"]["show"] == ["all"]  # its views return to every entry
+
+
 def test_english_entries_link_to_their_family_which_returns_to_the_english_lookup(client):
     kitab = next(e for e in entries(client.get("/", params={"q": "book", "lang": "en"}).text) if "كِتاب</span></h2>" in e)
     english = {"q": ["book"], "lang": ["en"]}
@@ -947,6 +962,19 @@ def test_entries_that_only_relate_the_word_to_another_are_listed_after_its_entri
     assert credit(also)[1] == {"CC BY-SA 4.0, opens in a new tab": LICENCE, "كتب on Wiktionary, opens in a new tab": "https://en.wiktionary.org/wiki/كتب#Arabic"}
     assert page.index('<section class="also">') > page.index("كَتَّبَ")
     assert "كُتُب</span></p>" not in also
+
+
+def test_a_common_words_wiktionary_entries_wait_behind_one_disclosure(wiktionary_client, monkeypatch):
+    # كَتَبَ is a common lemma, so Wiktionary's rarer كَتَّبَ and the entries that only relate كتب to another
+    # word fold under one closed disclosure, counted as the status counts them.
+    monkeypatch.setattr(views, "COMMON", 100)  # the fixture ranks its few lemmas among themselves
+    page = wiktionary_client.get("/", params={"q": "كتب"}).text
+    fold = page.index('<details class="more"><summary>3 more entries from Wiktionary</summary>')
+    kitab, katab, kattaba = entries(page)
+    assert page.index(kitab) < page.index(katab) < fold < page.index(kattaba) < page.index('<section class="also">')
+    assert '<details class="more">' in wiktionary_client.post("/text", data={"text": "كتب"}).text  # and in its token details
+    # The dictionary has no frequency for تَغْرِيد, so Wiktionary's تَغْرِيدَة "a tweet" stays in view.
+    assert 'class="more"' not in wiktionary_client.get("/", params={"q": "تغريدة"}).text
 
 
 def test_in_the_text_view_a_word_only_wiktionary_has_opens_its_entry(wiktionary_client):
