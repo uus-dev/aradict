@@ -4,7 +4,7 @@ import html
 import logging
 import re
 import unicodedata
-from urllib.parse import parse_qs, urlencode, urlsplit
+from urllib.parse import parse_qs, unquote, urlencode, urlsplit
 from urllib.request import urlopen
 
 
@@ -793,6 +793,8 @@ def test_an_open_root_letter_wiktionary_fills_is_marked_and_opens_the_full_roots
     assert links(qal) == {
         "Root ق و (filled from Wiktionary) ل 7 words": {"q": ["قال"], "root": ["ق.و.ل"]},
         "all 5 forms of قال": {"q": ["قال"], "related": ["قال"], "pos": ["verb"]},
+        # Its verbal nouns, from Wiktionary (#23), each opening its own lookup.
+        "قَوْل": {"q": ["قَوْل"]}, "مَقَال": {"q": ["مَقَال"]}, "مَقَالَة": {"q": ["مَقَالَة"]},
     }
     assert f'<span class="ar" lang="ar" dir="rtl">ق {FILLED} ل</span>' in heading(qal)
     assert credit(qal)[1]["قال on Wiktionary, opens in a new tab"] == "https://en.wiktionary.org/wiki/قال#Arabic"
@@ -832,3 +834,72 @@ def test_a_filled_roots_view_lists_its_words_then_the_open_roots_others_with_the
     by_form = wiktionary_client.get("/", params=lookup | {"sort": "-form"}).text
     assert column(by_form, "Form")[0] == "يَقُول" and headers(by_form)["Form"] == ("descending", lookup)
     assert column(by_form.split('<h2 class="rv-sub">')[1], "Form") == ["مَقالات", "مَقال"]
+
+
+# --- Forms, pronunciation and relations from Wiktionary (#23) ------------------------------------
+
+def row(part: str, label: str) -> str:
+    """The value of the labelled row in part of a page."""
+    return re.search(rf"<dt>{label}</dt><dd(?: [^>]*)?>(.*?)</dd>(?=<dt>|</dl>)", part).group(1)
+
+
+def words(part: str) -> list[tuple[str, str]]:
+    """Each word in a row of words, as a screen reader reads it, and the lookup it opens."""
+    return [(text(word), unquote(html.unescape(href))) for href, word in re.findall(r'<li><a href="([^"]*)">(.*?)</li>', part)]
+
+
+def test_a_headword_shows_its_transliteration_and_pronunciation_under_it(wiktionary_client):
+    kitab = entries(wiktionary_client.get("/", params={"q": "كتاب"}).text)[0]
+    say = re.search(r'<p class="say">(.*?)</p>', heading(kitab)).group(1)
+    assert text(say) == "Pronunciation: kitāb /ki.taːb/"
+    assert '<span class="tr" lang="ar-Latn">kitāb</span>' in say  # Arabic in Latin letters, as Arabizi is marked
+    assert heading(kitab).index("</h2>") < heading(kitab).index('<p class="say">')
+    # Token details say it too.
+    page = wiktionary_client.post("/text", data={"text": "كتب"}).text
+    katab = next(e for e in entries(page[page.index('<div id="w0"'):]) if "كَتَب</span></h3>" in e)
+    assert text(re.search(r'<p class="say">(.*?)</p>', heading(katab)).group(1)) == "Pronunciation: kataba /ka.ta.ba/"
+
+
+def test_a_noun_shows_its_plural_and_gender_each_form_opening_its_own_lookup(wiktionary_client):
+    kitab, katib, kuttab = entries(wiktionary_client.get("/", params={"q": "كتاب", "diacritics": "off"}).text)
+    assert words(row(about(kitab), "Plural")) == [("كُتُب kutub", "/?q=كُتُب")]
+    assert text(row(about(kitab), "Gender")) == "masculine"
+    assert words(row(about(kuttab), "Plural")) == [("كَتَاتِيب katātīb", "/?q=كَتَاتِيب")]
+    # After the meanings, before the other forms.
+    order = ["<dt>Meanings</dt>", "<dt>Plural</dt>", "<dt>Gender</dt>", "<dt>Verbal noun of</dt>", "<dt>Forms</dt>", '<p class="credit">']
+    assert [kitab.index(part) for part in order] == sorted(kitab.index(part) for part in order)
+
+
+def test_a_verb_lists_its_verbal_nouns_in_wiktionarys_order_marking_an_obsolete_one(wiktionary_client):
+    # كِتَاب says it is an obsolete verbal noun of كَتَبَ, so كَتَبَ's list says so too (PRD, Wiktionary layer, Register).
+    katab = next(e for e in entries(wiktionary_client.get("/", params={"q": "كتب"}).text) if "كَتَب</span></h2>" in e)
+    assert words(row(about(katab), "Verbal nouns")) == [
+        ("كِتَابَة kitāba", "/?q=كِتَابَة"), ("كَتْب katb", "/?q=كَتْب"), ("كِتَاب kitāb Obsolete", "/?q=كِتَاب"),
+    ]
+
+
+def test_a_relation_is_a_labelled_row_not_a_meaning_and_keeps_its_label(wiktionary_client):
+    kitab = entries(wiktionary_client.get("/", params={"q": "كتاب"}).text)[0]
+    assert words(row(about(kitab), "Verbal noun of")) == [
+        ("كَتَبَ kataba Measure I Obsolete", "/?q=كَتَبَ"), ("كَاتَبَ kātaba Measure III", "/?q=كَاتَبَ"),
+    ]
+    assert '<span class="qualifier">Obsolete</span>' in row(about(kitab), "Verbal noun of")
+    assert "verbal noun" not in text(row(about(kitab), "Meanings"))
+
+
+def test_regional_pronunciations_come_last_collapsed_on_the_word_view_only(wiktionary_client):
+    kitab = entries(wiktionary_client.get("/", params={"q": "كتاب"}).text)[0]
+    regional = re.search(r"<dt>Regional</dt><dd>(.*?</details>)</dd>", about(kitab)).group(1)
+    assert regional.startswith('<details class="regional"><summary>11 pronunciations</summary>')  # closed until opened
+    assert "<dt>Egypt</dt><dd>[keˈtæːb]</dd>" in regional and "<dt>Lebanese Arabic</dt><dd>[kteːb]</dd>" in regional
+    order = ["<dt>Forms</dt>", "<dt>Regional</dt>", '<p class="credit">']
+    assert [kitab.index(part) for part in order] == sorted(kitab.index(part) for part in order)
+    page = wiktionary_client.post("/text", data={"text": "كتاب"}).text
+    assert "<dt>Plural</dt>" in page and "Regional" not in page
+
+
+def test_wiktionary_content_is_always_inside_an_entry_with_the_credit(wiktionary_client):
+    pages = [wiktionary_client.get("/", params={"q": word}).text for word in ("كتاب", "كتب", "قال", "جدة")]
+    pages.append(wiktionary_client.post("/text", data={"text": "كتب كتاب قال"}).text)
+    shown = [e for page in pages for e in entries(page) if '<p class="say">' in e or "<dt>Meanings</dt>" in e or " of</dt>" in e]
+    assert len(shown) > 10 and all('<p class="credit">' in e for e in shown)

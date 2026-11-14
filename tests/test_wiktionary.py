@@ -10,6 +10,7 @@ import pytest
 from aradict import wiktionary
 from aradict.data import EXPECTED
 from aradict.dictionary import Dictionary
+from aradict.wiktionary import Form, Relation
 
 
 @pytest.fixture(scope="module")
@@ -57,7 +58,80 @@ def test_a_lemma_joins_its_own_entry_not_one_spelled_with_the_same_letters(real)
     # كُتّاب "Quran school", not كِتَاب "book" and not كُتَّاب "plural of كَاتِب", whose only sense is a relation.
     [entry] = real.wiktionary("كُتّاب", "noun").entries
     assert (entry.word, senses(entry)) == ("كُتَّاب", ["a traditional school for teaching Qur'an"])
-    assert ("كَتَاتِيب", ("plural",)) in entry.forms
+    assert Form("كَتَاتِيب", ("plural",), "katātīb") in entry.forms
+
+
+# --- Forms, pronunciation and relations (#23) ----------------------------------------------------
+
+def test_an_entry_keeps_its_relations_apart_from_its_meanings_with_their_labels(real):
+    # Wiktionary's كِتَاب is an obsolete verbal noun of كَتَبَ (PRD, Wiktionary layer, Register).
+    [kitab] = real.wiktionary("كِتاب", "noun").entries
+    assert kitab.relations == (
+        Relation("verbal noun of", "كَتَبَ", "kataba", ("Measure I", "obsolete")),
+        Relation("verbal noun of", "كَاتَبَ", "kātaba", ("Measure III",)),
+    )
+    assert "book" in senses(kitab)
+
+
+def test_an_entry_whose_senses_are_all_relations_is_kept(real_wiktionary):
+    # كُتُب "plural of كِتَاب", which the #20 build left out. A label the relation's own words
+    # already say ("Classical Arabic spelling of") isn't repeated.
+    [kutub] = wiktionary.entries(real_wiktionary, "كُتُب", "noun")
+    assert (kutub.senses, kutub.relations) == ((), (Relation("plural of", "كِتَاب", "kitāb", ()),))
+    [classical] = wiktionary.entries(real_wiktionary, "كِتٰب", "noun")
+    assert classical.relations == (Relation("Classical Arabic spelling of", "كِتَاب", "kitāb", ()),)
+
+
+def test_a_relation_to_two_words_is_of_the_same_kind_for_both(real):
+    [farigh] = real.wiktionary("فارِغ", "adj").entries
+    assert {r.kind for r in farigh.relations} == {"active participle of"} and len(farigh.relations) == 2
+
+
+def test_a_lemma_wiktionary_has_only_as_a_relation_joins_that_entry(real):
+    # Wiktionary's إِقَالَة is only "verbal noun of أَقَالَ"; it is CAMeL's lemma إِقالَة, and gives its root (#26).
+    found = real.wiktionary("إِقالَة", "noun")
+    assert found.joined.relations == (Relation("verbal noun of", "أَقَالَ", "ʔaqāla", ("Measure IV",)),)
+    assert real.filled_root("إِقالَة", "noun", "ق.#.ل") == "ق.ي.ل"
+
+
+def test_an_entry_keeps_its_plurals_gender_and_verbal_nouns_with_their_transliteration(real):
+    [kitab] = real.wiktionary("كِتاب", "noun").entries
+    assert kitab.forms[:2] == (Form("كِتَاب", ("canonical", "masculine"), None), Form("كُتُب", ("plural",), "kutub"))
+    [kataba] = real.wiktionary("كَتَب", "verb").entries
+    assert [f.form for f in kataba.forms if "noun-from-verb" in f.tags] == ["كِتَابَة", "كَتْب", "كِتَاب"]
+
+
+def test_a_label_on_one_side_of_a_relation_shows_on_the_other(real):
+    # كِتَاب says it is an obsolete verbal noun of كَتَبَ; كَتَبَ's list of verbal nouns says so too, in Wiktionary's order.
+    [kataba] = real.wiktionary("كَتَب", "verb").entries
+    assert [(f.form, f.tags) for f in kataba.forms if "noun-from-verb" in f.tags] == [
+        ("كِتَابَة", ("noun-from-verb",)), ("كَتْب", ("noun-from-verb",)), ("كِتَاب", ("noun-from-verb", "obsolete")),
+    ]
+
+
+def test_an_entry_keeps_its_transliteration_and_pronunciations(real):
+    [kitab] = real.wiktionary("كِتاب", "noun").entries
+    assert kitab.romanization == "kitāb"
+    assert kitab.ipa[0] == ("/ki.taːb/", "")  # Modern Standard Arabic's has no place
+    assert ("[keˈtæːb]", "Egypt") in kitab.ipa and ("[kteːb]", "Lebanese Arabic") in kitab.ipa
+
+
+def test_a_pronunciation_kaikki_copies_from_another_entry_on_the_page_is_left_out(real_wiktionary):
+    # kaikki.org gives كَتْب (katb) the pronunciation of كَتَبَ, /ka.ta.ba/, which its romanization says isn't its own.
+    [katb] = wiktionary.entries(real_wiktionary, "كَتْب", "noun")
+    assert (katb.romanization, katb.ipa) == ("katb", ())
+
+
+@pytest.mark.parametrize("ipa, romanization", [
+    ("/ki.taːb/", "kitāb"), ("/d͡ʒa.maːl/", "jamāl"), ("/ʕa.ra.biː/", "ʕarabiyy"), ("/ʔin.ɡliː.zijj/", "ʔinglīziyy"),
+    ("/aʃ.ʃarq al.ʔaw.satˤ/", "aš-šarq al-ʔawsaṭ"), ("/tˤibː/", "ṭibb"), ("/ħad͡ʒ.d͡ʒa.ra/", "ḥajjara"),
+])
+def test_a_pronunciation_fits_the_entrys_romanization(ipa, romanization):
+    assert wiktionary.says(ipa, romanization)
+
+
+def test_a_pronunciation_of_another_word_does_not_fit():
+    assert not wiktionary.says("/ka.ta.ba/", "katb") and not wiktionary.says("/qa.mar/", "qamara")
 
 
 def test_homographs_from_different_etymologies_stay_apart(real):
@@ -154,7 +228,8 @@ def test_a_filled_root_holds_every_lemma_filled_to_it_and_the_open_roots_others_
     family = real.root_family("ق.و.ل")
     assert {r.lemma for r in family} == {"قال", "قاوَل", "مَقُولَة"}
     assert {r.root for r in family} == {"ق.#.ل"}  # each form keeps the root CAMeL gives it
-    assert {r.lemma for r in real.root_family("ق.ي.ل")} == {"أَقال", "ٱِسْتَقال", "مَقِيل", "قَيْلُولَة"}
+    # إِقالَة's only entry says it is the "verbal noun of أَقَالَ" (#23), and gives the root ق ي ل.
+    assert {r.lemma for r in real.root_family("ق.ي.ل")} == {"أَقال", "ٱِسْتَقال", "مَقِيل", "قَيْلُولَة", "إِقالَة"}
     # The lemmas Wiktionary can't place are listed apart, as not confirmed; not those it places elsewhere.
     unconfirmed = {r.lemma for r in real.unconfirmed("ق.و.ل")}
     assert {"مَقال", "قَوْل", "قَيْل"} <= unconfirmed and not {"قال", "أَقال", "قَيْلُولَة"} & unconfirmed

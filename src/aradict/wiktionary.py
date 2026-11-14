@@ -40,8 +40,9 @@ WIKI = "https://en.wiktionary.org/wiki/"
 
 
 # What the build keeps: raised whenever that changes, so that an older dataset is rebuilt, not misread.
-# 1 (#20) kept each sense's text; 2 (#22) its labels and sub-senses too.
-LAYOUT = 2
+# 1 (#20) kept each sense's text; 2 (#22) its labels and sub-senses too; 3 (#23) its relations, entries
+# that are only relations, the forms' transliterations and only the pronunciations that are the entry's own.
+LAYOUT = 3
 
 
 def dataset_path() -> Path:
@@ -69,14 +70,32 @@ class Sense:
     subsenses: tuple[Sense, ...] = ()
 
 
+class Form(NamedTuple):
+    """A form an entry's headword line gives: the headword itself, its plural, a verb's verbal noun."""
+
+    form: str  # كُتُب
+    tags: tuple[str, ...]  # kaikki.org's, "canonical", "masculine", "plural", "noun-from-verb", with any register label: "obsolete"
+    romanization: str | None  # kutub
+
+
+class Relation(NamedTuple):
+    """What a sense says when it relates the word to another rather than saying what it means."""
+
+    kind: str  # "verbal noun of", "plural of", "Classical Arabic spelling of"
+    word: str  # the other word, كَتَبَ
+    romanization: str | None  # kataba
+    labels: tuple[str, ...]  # "Measure I", and any register label: "obsolete"
+
+
 @dataclass(frozen=True)
 class Entry:
     """One Wiktionary entry: a headword with one part of speech and etymology."""
 
     word: str  # vocalized, كِتَاب
     pos: str  # Wiktionary's part of speech: noun, verb, adj, name, …
-    senses: tuple[Sense, ...]  # its meanings, in Wiktionary's order; relations ("verbal noun of …") are not senses
-    forms: tuple[tuple[str, tuple[str, ...]], ...]  # the headword line's forms with their tags: (كُتُب, ("plural",)), the headword with its gender
+    senses: tuple[Sense, ...]  # its meanings, in Wiktionary's order; none for an entry that is only relations (كُتُب)
+    relations: tuple[Relation, ...]  # "verbal noun of كَتَبَ", in Wiktionary's order; never meanings
+    forms: tuple[Form, ...]  # the headword line's forms: the headword with its gender, كُتُب "plural"
     inflections: tuple[str, ...]  # each spelling in its declension or conjugation table, once
     romanization: str | None  # kitāb
     ipa: tuple[tuple[str, str], ...]  # each pronunciation with where it is said, "" for Modern Standard Arabic
@@ -130,11 +149,14 @@ def letters(word: str) -> str:
 
 def entries(dataset: Path, lemma: str, pos: str) -> list[Entry]:
     """The Wiktionary entries of a CAMeL lemma with this part of speech, in Wiktionary's order.
-    Homographs from different etymologies (قَالَ "say" and قَالَ "nap") are separate entries."""
+    Homographs from different etymologies (قَالَ "say" and قَالَ "nap") are separate entries. An
+    entry that is only relations stands for the lemma only where no entry with meanings does: the
+    lemma كُتّاب is the Quran school, not the plural of كَاتِب, but the lemma كَتْب is "verbal noun of كَتَبَ"."""
     with closing(sqlite3.connect(f"{dataset.resolve().as_uri()}?mode=ro", uri=True)) as db:
         rows = db.execute("SELECT entry FROM entry WHERE letters = ? AND pos = ? ORDER BY rowid", (letters(lemma), wiktionary_pos(pos)))
         found = [_entry(json.loads(row)) for row, in rows]
-    return [e for e in found if not MARK.search(lemma) or not MARK.search(e.word) or spelling(e.word) == spelling(lemma)]
+    found = [e for e in found if not MARK.search(lemma) or not MARK.search(e.word) or spelling(e.word) == spelling(lemma)]
+    return [e for e in found if e.senses] or found
 
 
 class Join(NamedTuple):
@@ -151,7 +173,11 @@ def _entry(data: dict) -> Entry:
 
     def sense(data: dict) -> Sense:
         return Sense(data["gloss"], tuple(data["labels"]), tuple(map(sense, data["subsenses"])))
-    return Entry(**{key: tuples(value) for key, value in data.items()} | {"senses": tuple(map(sense, data["senses"]))})
+    return Entry(**{key: tuples(value) for key, value in data.items()} | {
+        "senses": tuple(map(sense, data["senses"])),
+        "relations": tuple(Relation(*r) for r in tuples(data["relations"])),
+        "forms": tuple(Form(*f) for f in tuples(data["forms"])),
+    })
 
 
 # --- The build ------------------------------------------------------------------------------
@@ -200,10 +226,18 @@ REGISTER = {
 QUALIFIER = re.compile(r"\(([^()]*)\)\s*")  # Wiktionary's labels before a gloss: "(transitive, causative) to cause to write"
 
 
+REGISTER_LABELS = {tag.replace("-", " ") for tag in REGISTER}  # as AraDict writes them: "Egyptian Arabic"
+
+
 def _labelled(gloss: str) -> tuple[str, list[str]]:
     """A gloss as Wiktionary shows it, split into its text and the labels in front of it."""
     m = QUALIFIER.match(gloss)
     return (gloss[m.end():], [label.strip() for label in m.group(1).split(",")]) if m else (gloss, [])
+
+
+def _register(tags) -> list[str]:
+    """The register labels among kaikki.org's tags, as AraDict writes them."""
+    return [tag.replace("-", " ") for tag in tags if tag in REGISTER or tag in REGISTER_LABELS]
 
 
 def _senses(item: dict) -> list[dict]:
@@ -216,7 +250,7 @@ def _senses(item: dict) -> list[dict]:
             continue
         levels = [_labelled(gloss) for gloss in s.get("raw_glosses") or s["glosses"]]
         shown = " ".join(label for _, labels in levels for label in labels).casefold()
-        register = [tag.replace("-", " ") for tag in s.get("tags", ()) if tag in REGISTER and tag.replace("-", " ").casefold() not in shown]
+        register = [label for label in _register(s.get("tags", ())) if label.casefold() not in shown]
         (gloss, labels), subs = levels[0], levels[1:]
         if not senses or senses[-1]["gloss"] != gloss:
             senses.append({"gloss": gloss, "labels": [], "subsenses": []})
@@ -230,29 +264,104 @@ def _senses(item: dict) -> list[dict]:
     return senses
 
 
+ARABIC = re.compile("[\u0600-\u06ff]")
+ROMANIZATION = re.compile(r"\(?([^,()“”:+]+)")  # what kaikki.org gives with a relation: "kataba", "(kataba) (form I)", "kātib, “writer”"
+FORM_OF_MEASURE = re.compile(r"\(form ([IVX]+q?)\)")
+
+
+def _relations(item: dict) -> list[list]:
+    """The entry's relations, each as [kind, word, romanization, labels]: "verbal noun of", كَتَبَ,
+    kataba and ["Measure I", "obsolete"]. A label its kind already says ("Classical Arabic spelling of")
+    isn't repeated, and a relation to no Arabic word ("capital of a column") is no relation."""
+    relations = []
+    for s in item.get("senses", ()):
+        if not s.get("glosses") or not _relation(s):
+            continue
+        gloss, (_, labels) = s["glosses"][-1], _labelled((s.get("raw_glosses") or s["glosses"])[-1])
+        labels += [label for label in _register(s.get("tags", ())) if label.casefold() not in " ".join(labels).casefold()]
+        targets = [t for t in s.get("form_of") or s.get("alt_of") or () if ARABIC.search(t["word"]) and gloss.find(t["word"]) > 0]
+        kind = targets and gloss[:min(gloss.find(t["word"]) for t in targets)].strip()  # "active participle of فَرَغَ or فَرِغَ"
+        for target in targets:
+            word, extra = target["word"], target.get("extra", "")
+            romanization, measure = ROMANIZATION.match(extra), FORM_OF_MEASURE.search(extra)
+            relations.append([kind, word, romanization and romanization.group(1).strip(), [
+                *([f"Measure {measure.group(1)}"] if measure else []), *(label for label in labels if label.casefold() not in kind.casefold()),
+            ]])
+    return relations
+
+
+# IPA's letters as kaikki.org's romanization writes them; IPA's j (romanized y) first, so the j that d͡ʒ becomes stays.
+IPA_LETTERS = [
+    ("j", "y"), ("d͡ʒ", "j"), ("ɡ", "g"), ("ðˤ", "ẓ"), ("sˤ", "ṣ"), ("dˤ", "ḍ"), ("tˤ", "ṭ"), ("lˤ", "l"), ("θ", "ṯ"), ("ħ", "ḥ"),
+    ("x", "ḵ"), ("ð", "ḏ"), ("ʃ", "š"), ("ɣ", "ḡ"), ("aː", "ā"), ("iː", "ī"), ("uː", "ū"), ("eː", "ē"), ("oː", "ō"),
+]
+
+
+def says(ipa: str, romanization: str) -> bool:
+    """Whether a pronunciation is of the word its romanization spells: /ki.taːb/ of kitāb, not /ka.ta.ba/
+    of katb. kaikki.org can give an entry the pronunciations of other entries on its page."""
+    said = re.sub(r"[/\[\].ˈˌ‿\s]", "", ipa)
+    for letter, written in IPA_LETTERS:
+        said = said.replace(letter, written)
+    said = re.sub(r"(\w)ː", r"\1\1", said)  # a doubled consonant: /tˤibː/, ṭibb
+    spelled = re.sub(r"[-\s]", "", romanization)
+    return said in (spelled, re.sub(r"iyy\b", "ī", spelled))  # ʕarabiyy is said /ʕa.ra.biː/
+
+
+def _form(f: dict) -> list:
+    """A form of the headword line as [form, tags, romanization], its register labels as AraDict writes them."""
+    form, romanization = f["form"], f.get("roman")
+    if not romanization and (m := re.fullmatch(r"(\S+) \(([^()]+)\)", form)):  # kaikki.org may put it in the form: "سُفُور (sufūr)"
+        form, romanization = m.groups()
+    tags = f.get("tags", [])
+    return [form, [tag for tag in tags if tag not in REGISTER] + _register(tags), romanization]
+
+
 def from_kaikki(item: dict) -> dict | None:
     """What the dataset keeps of one kaikki.org entry, or None for an entry AraDict doesn't show:
-    one of another part of speech, or one whose senses are all relations (كُتُب "plural of كِتَاب")."""
+    one of another part of speech, or one with neither meanings nor relations."""
     if item.get("pos") not in KEPT_POS:
         return None
-    senses = _senses(item)
-    if not senses:
+    senses, relations = _senses(item), _relations(item)
+    if not (senses or relations):
         return None
     forms = [f for f in item.get("forms", ()) if not NOT_FORMS & set(f.get("tags", ()))]
     # The forms its headword line gives, with their tags; those of its declension or conjugation table by spelling only.
-    head = [(f["form"], f.get("tags", [])) for f in forms if "source" not in f]
-    canonical = next((form for form, tags in head if "canonical" in tags), item["word"])
+    head = [_form(f) for f in forms if "source" not in f]
+    canonical = next((form for form, tags, _ in head if "canonical" in tags), item["word"])
+    romanization = next((f["form"] for f in item.get("forms", ()) if "romanization" in f.get("tags", ())), None)
+    ipa = [(s["ipa"], s.get("note") or ", ".join(s.get("tags", ())).replace("-", " ")) for s in item.get("sounds", ()) if "ipa" in s]
     return {
         "word": canonical,
         "pos": item["pos"],
         "senses": senses,
+        "relations": relations,
         "forms": head,
         "inflections": list(dict.fromkeys(f["form"] for f in forms if "source" in f)),
-        "romanization": next((f["form"] for f in item.get("forms", ()) if "romanization" in f.get("tags", ())), None),
-        "ipa": [(s["ipa"], s.get("note") or ", ".join(s.get("tags", ()))) for s in item.get("sounds", ()) if "ipa" in s],
+        "romanization": romanization,
+        # Modern Standard Arabic's only where they are the entry's own; kaikki.org can't tell whose the regional ones are.
+        "ipa": [(said, where) for said, where in ipa if where or not romanization or says(said, romanization)],
         "root": _root(item),
         "url": f"{WIKI}{item['word'].replace(' ', '_')}#Arabic",
     }
+
+
+def _share_labels(entries: list[dict]) -> None:
+    """A register label on one side of a relation shows on the other (PRD, Wiktionary layer, Register):
+    كِتَاب says it is an obsolete verbal noun of كَتَبَ, so كَتَبَ's verbal noun كِتَاب is marked obsolete
+    too; and a plural its singular marks rare is a rare plural of it. Words are matched by spelling."""
+    said: dict[tuple[str, str], set[str]] = {}  # (the word a relation is to, the word it is from): its register labels
+    listed: dict[tuple[str, str], set[str]] = {}  # (a headword, one of its forms): the form's register labels
+    for e in entries:
+        for _, word, _, labels in e["relations"]:
+            said.setdefault((spelling(word), spelling(e["word"])), set()).update(_register(labels))
+        for form, tags, _ in e["forms"]:
+            listed.setdefault((spelling(e["word"]), spelling(form)), set()).update(_register(tags))
+    for e in entries:
+        for form, tags, _ in e["forms"]:
+            tags += sorted(said.get((spelling(e["word"]), spelling(form)), set()) - set(tags))
+        for _, word, _, labels in e["relations"]:
+            labels += sorted(listed.get((spelling(word), spelling(e["word"])), set()) - set(labels))
 
 
 def build(source: Path, target: Path) -> int:
@@ -262,7 +371,8 @@ def build(source: Path, target: Path) -> int:
     target.parent.mkdir(parents=True, exist_ok=True)
     with closing(sqlite3.connect(partial)) as db, source.open(encoding="utf-8") as lines:
         db.execute("CREATE TABLE entry (letters TEXT NOT NULL, pos TEXT NOT NULL, entry TEXT NOT NULL)")
-        kept = (entry for line in lines if (entry := from_kaikki(json.loads(line))))
+        kept = [entry for line in lines if (entry := from_kaikki(json.loads(line)))]
+        _share_labels(kept)
         db.executemany("INSERT INTO entry VALUES (?, ?, ?)", (
             (letters(entry["word"]), entry["pos"], json.dumps(entry, ensure_ascii=False, separators=(",", ":"))) for entry in kept
         ))
