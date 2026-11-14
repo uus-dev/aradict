@@ -17,10 +17,11 @@ from pathlib import Path
 # forms that share a gloss (سابقي: "my former" as singular, dual and plural), سِفْر, the
 # other Arabic word for English "book", آر, at the database's lowest frequency, and إِجارَة, whose two
 # senses are stored under two roots. For the Wiktionary layer: جِدَّة, whose senses Wiktionary labels
-# obsolete and which has a homograph, and جَزْر, whose gloss has a meaning of each of its two homographs.
+# obsolete and which has a homograph, and جَزْر, whose gloss has a meaning of each of its two homographs;
+# تَغْرِيد, as which the dictionary reads تغريدة, a word only Wiktionary has ("his twittering").
 LEMMAS = frozenset({
     "كَتَب", "كِتاب", "كاتِب", "كُتّاب", "أَكْتَب", "مَدْرَسَة", "ٱِسْتَخْدَم", "قال", "مَقال", "لَيْسَ", "سابِق", "سِفْر", "آر", "إِجارَة",
-    "جِدَّة", "جَزْر",
+    "جِدَّة", "جَزْر", "تَغْرِيد",
 })
 
 

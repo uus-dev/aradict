@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from collections import Counter
 from collections.abc import Iterable
 from typing import NamedTuple
 from urllib.parse import urlencode
@@ -11,10 +12,11 @@ from htpy import Element, Node, a, blockquote, body, br, button, caption, code, 
 
 from . import wiktionary
 from .dictionary import MEASURES, Lookup, Reading, Segment, Token, alphabetical, opened
-from .readable import OBJECT, POS, POSSESSIVE
+from .readable import MARK, OBJECT, POS, POSSESSIVE
 from .wiktionary import Entry as WiktionaryEntry, Join, Sense
 
 ARABIC = re.compile("[\u0600-\u06ff]")  # Arabic script
+MARK_END = re.compile(f"{MARK.pattern}+$")  # the marks on a word's last letter
 ARABIC_RUN = re.compile("([\u0600-\u06ff]+(?:\\s+[\u0600-\u06ff]+)*)")  # Arabic words, with the spaces between them
 PRONOUNS = {*POSSESSIVE.values(), *OBJECT.values()}  # what an attached pronoun's part is labelled
 PAGES = [("word", "/", "Word"), ("text", "/text", "Text"), ("about", "/about", "About")]
@@ -219,9 +221,9 @@ def _entry(lemma: str, glosses: dict[str, list[Reading]], heading: Element, link
     ]
 
 
-def _wiktionary_only(entry: WiktionaryEntry, number: int, heading: Element, links: Links | None, brief: bool) -> Node:
-    """A homograph of a lemma that Wiktionary has and the dictionary doesn't (قَالَ "to nap" beside
-    قَالَ "to say"). Its headword line goes straight to its meanings."""
+def _wiktionary_only(entry: WiktionaryEntry, number: int | None, heading: Element, links: Links | None, brief: bool) -> Node:
+    """A word Wiktionary has and the dictionary doesn't: a homograph of a lemma (قَالَ "to nap" beside
+    قَالَ "to say"), or a word of its own (تَغْرِيدَة "tweet"). Its headword line goes straight to its meanings."""
     root = entry.root and entry.root.replace(" ", ".")  # Wiktionary spells it ق ي ل, the dictionary ق.ي.ل
     pos = POS.get(next((camel for camel, name in wiktionary.POS.items() if name == entry.pos), entry.pos), entry.pos)
     return section(class_="entry")[
@@ -229,7 +231,7 @@ def _wiktionary_only(entry: WiktionaryEntry, number: int, heading: Element, link
         div(class_="head")[div(class_="lemma")[
             heading[ar(entry.word)],
             _say([entry]),
-            p(class_="pos")[span(class_="badge")[pos], " ", _homograph(number), " ", span(class_="badge only")["Wiktionary only"]],
+            p(class_="pos")[span(class_="badge")[pos], number and [" ", _homograph(number)], " ", span(class_="badge only")["Wiktionary only"]],
         ]],
         _about([entry], brief=brief),
         p(class_="only-note")["Only in Wiktionary: no frequency, measure or word parts."],
@@ -282,10 +284,11 @@ def _facts(e: WiktionaryEntry) -> list[tuple[int, str, Node]]:
 
 def _words(words: Iterable[tuple[str, str | None, Iterable[str]]]) -> Node:
     """Words Wiktionary gives, each opening its own lookup, with its transliteration and any labels."""
-    return ul(class_="words")[(
-        li[a(href=_url({"q": word}))[ar(word)], romanization and [" ", span(class_="tr", lang="ar-Latn")[romanization]], ([" ", _label(label)] for label in labels)]
-        for word, romanization, labels in words
-    )]
+    return ul(class_="words")[(li[_word(*word)] for word in words)]
+
+
+def _word(word: str, romanization: str | None, labels: Iterable[str]) -> Node:
+    return [a(href=_url({"q": word}))[ar(word)], romanization and [" ", span(class_="tr", lang="ar-Latn")[romanization]], ([" ", _label(label)] for label in labels)]
 
 
 def _regional(e: WiktionaryEntry) -> Node:
@@ -367,23 +370,93 @@ def _n(count: int, noun: str) -> str:
     return f"{count} {noun}{'s' if count != 1 else ''}"
 
 
-def _entries(readings: Iterable[Reading], heading: Element = h2, links: Links | None = None, brief: bool = False, homographs: bool = True) -> Node:
-    """One entry per lemma and part of speech, in the order the readings arrive. Then, unless
-    homographs is false, Wiktionary's homographs that a gloss told apart from the lemma, once each."""
+class Results(NamedTuple):
+    """A word's results, in the order they are shown: the readings, one entry per lemma and part of speech
+    (groups, each with its Wiktionary entries, joins); the entries only Wiktionary has (apart), each with its
+    homograph number if it has one; and, last, the entries that only relate the word to another (also)."""
+
+    groups: dict[tuple[str, str], dict[str, list[Reading]]]
+    joins: dict[tuple[str, str], Join]
+    apart: list[tuple[WiktionaryEntry, int | None]]
+    also: list[WiktionaryEntry]
+
+
+def _results(readings: Iterable[Reading], links: Links | None = None, homographs: bool = True, found: Iterable[WiktionaryEntry] = ()) -> Results:
+    """One entry per lemma and part of speech, in the order the readings arrive. Then, unless homographs
+    is false, Wiktionary's homographs that a gloss told apart from the lemma, once each. Then the word's
+    entries that no lemma joins (found, see Dictionary.wiktionary_only): those with meanings, numbered as
+    homographs where two share a headword and part of speech; and those that only relate the word to
+    another, unless a reading already shows that word (كُتُب "plural of كِتَاب" is a reading of كِتاب)."""
     groups: dict[tuple[str, str], dict[str, list[Reading]]] = {}
     for reading in readings:
         groups.setdefault((reading.lemma, reading.pos), {}).setdefault(reading.gloss, []).append(reading)
     joins = {key: links.wiktionary.get(key, NO_ENTRIES) if links else NO_ENTRIES for key in groups}
     shown = [e for join in joins.values() for e in ([join.joined] if join.joined else join.entries)]
-    apart: list[tuple[WiktionaryEntry, int]] = []
+    apart: list[tuple[WiktionaryEntry, int | None]] = []
     for join in joins.values():
         if homographs and join.joined:
             others = [e for e in join.entries if e is not join.joined]
             apart += [(e, n) for n, e in enumerate(others, 2) if e not in shown and e not in (other for other, _ in apart)]
-    return div(class_="entries")[
-        (_entry(lemma, glosses, heading, links, brief, joins[lemma, pos]) for (lemma, pos), glosses in groups.items()),
-        (_wiktionary_only(e, n, heading, links, brief) for e, n in apart),
+    found = [e for e in found if e not in shown and e not in (other for other, _ in apart)]
+    only = [e for e in found if e.senses]
+    headword = {e: (e.pos, wiktionary.spelling(e.word)) for e in only}
+    sharing, numbered = Counter(headword.values()), Counter()
+    for e in only:
+        numbered[headword[e]] += 1
+        apart.append((e, numbered[headword[e]] if sharing[headword[e]] > 1 else None))
+    shows = {_unattached(r) for group in groups.values() for rs in group.values() for r in rs}
+    return Results(groups, joins, apart, [e for e in found if not e.senses and _bare(e.word) not in shows])
+
+
+def _bare(word: str) -> str:
+    """A word as the join spells it (wiktionary.spelling), without the case or mood ending it may end with."""
+    return MARK_END.sub("", wiktionary.spelling(word))
+
+
+def _unattached(r: Reading) -> str:
+    """The word a reading reads, as _bare spells it: its stem and endings, without attached words before it or a pronoun after it."""
+    # ponytail: a verb's person prefix (يَـ) goes with the attached words; no entry only relates such a form to another yet.
+    return _bare("".join(s.text for s in r.segments if s.role == "stem" or s.role == "suffix" and s.label not in PRONOUNS))
+
+
+def _entries(results: Results, heading: Element = h2, links: Links | None = None, brief: bool = False) -> Node:
+    return [
+        div(class_="entries")[
+            (_entry(lemma, glosses, heading, links, brief, results.joins[lemma, pos]) for (lemma, pos), glosses in results.groups.items()),
+            (_wiktionary_only(e, n, heading, links, brief) for e, n in results.apart),
+        ],
+        _also(results.also, heading),
     ]
+
+
+def _also(entries: list[WiktionaryEntry], heading: Element) -> Node:
+    """The word's entries that only relate it to another word (كَتْب "verbal noun of كَتَبَ"), listed after
+    its entries as in the #21 design, each with its relations and the credit."""
+    return entries and section(class_="also")[
+        heading["Also in Wiktionary"],
+        p(class_="also-sub")["Listed there as forms of other words, so they have no meanings of their own."],
+        ul[(
+            li[
+                p[
+                    e.romanization and [span(class_="tr", lang="ar-Latn")[e.romanization], ": "],
+                    [["; " if i else None, r.kind[:1].upper() + r.kind[1:], " ", _word(r.word, r.romanization, r.labels)] for i, r in enumerate(e.relations)],
+                ],
+                p(class_="form")[ar(e.word)],
+            ]
+            for e in entries
+        )],
+        _credit(entries),
+    ]
+
+
+def _more(results: Results) -> int:
+    """How many entries the results show besides the dictionary's, as the #21 design counts them: Wiktionary's
+    own, and those that only relate the word to another."""
+    return len(results.apart) + len(results.also)
+
+
+def _from_wiktionary(count: int) -> str:
+    return f"{count} {'entry' if count == 1 else 'entries'} from Wiktionary"
 
 
 def _intro() -> Node:
@@ -418,9 +491,15 @@ def looked_up(text: str, found: Lookup, links: Links | None = None) -> State:
         # The Text view reads Arabic script only.
         not latin and [" ", a(href=f"/text?{urlencode({'q': text})}")["Read them all in the Text view"], "."],
     ] if not found.complete else None
-    if found.readings:
+    if found.readings or found.wiktionary:
         arabizi = found.query if found.mode == "arabizi" else None
-        return State([f"{_n(len(found.readings), 'reading')} for ", ar(found.query)], [notice, _entries(found.readings, h2, links)], arabizi)
+        results = _results(found.readings, links, found=found.wiktionary)
+        more = _more(results)
+        status = (
+            [f"{_n(len(found.readings), 'reading')} for ", ar(found.query), f", and {more} more {'entry' if more == 1 else 'entries'} from Wiktionary" if more else None]
+            if found.readings else [f"{_from_wiktionary(more)} for ", ar(found.query)]
+        )
+        return State(status, [notice, _entries(results, h2, links)], arabizi)
     if latin:
         return State(["No Arabic word for ", _arabizi(words[0])], [notice, div(class_="empty")[
             p["AraDict read this as Arabic in Latin letters (Arabizi), but found no word it could stand for. You could:"],
@@ -460,7 +539,7 @@ def looked_up_en(found: Lookup, links: Links | None = None) -> State:
     their root and related forms with links."""
     query = found.query
     if found.readings:
-        return State(f"{_n(len(found.readings), 'Arabic word')} for “{query}”", [COVERAGE, _entries(found.readings, h2, links, homographs=False)])
+        return State(f"{_n(len(found.readings), 'Arabic word')} for “{query}”", [COVERAGE, _entries(_results(found.readings, links, homographs=False), h2, links)])
     # Arabic typed here is meant the other way round, so switching direction keeps it.
     arabic = bool(ARABIC.search(query))
     back = f"/?{urlencode({'q': query})}" if arabic else "/"
@@ -675,25 +754,30 @@ TEXT_FAILURE = State(
 )
 
 
-def _token(t: Token, ids: dict[str, str]) -> Node:
-    """A word as a button that opens its details; anything else as it was typed."""
-    if t.kind not in ("word", "unknown"):
-        return t.text
-    return button(type="button", class_=f"tok {t.kind}", popovertarget=ids[t.text])[
-        t.text, span(class_="sr-only", lang="en")[", ", _n(len(t.readings), "reading") if t.readings else "not in the dictionary"],
-    ]
+def _found(results: Results) -> str:
+    """What a word of a passage has, as its button and details say: "3 readings", "1 reading, 1 more from
+    Wiktionary", "1 entry from Wiktionary", or "not in the dictionary"."""
+    readings, more = sum(len(rs) for group in results.groups.values() for rs in group.values()), _more(results)
+    if readings:
+        return _n(readings, "reading") + (f", {more} more from Wiktionary" if more else "")
+    return _from_wiktionary(more) if more else "not in the dictionary"
 
 
-def _details(t: Token, id: str, joins: dict[tuple[str, str], Join], filled: dict[tuple[str, str, str], str]) -> Node:
-    """A word's readings, grouped by lemma as on the Word page, in a native popover. Each root links
-    to its words, and the root view returns to the word's lookup."""
+def _token(t: Token, ids: dict[str, str], found: str) -> Node:
+    """A word as a button that opens its details, saying what it has (found)."""
+    return button(type="button", class_=f"tok {t.kind}", popovertarget=ids[t.text])[t.text, span(class_="sr-only", lang="en")[", ", found]]
+
+
+def _details(t: Token, id: str, links: Links, results: Results) -> Node:
+    """A word's readings, grouped by lemma as on the Word page, then the entries only Wiktionary has, in a
+    native popover. Each root links to its words, and the root view returns to the word's lookup."""
     return div(id=id, class_="tok-pop", popover=True, role="dialog", aria_labelledby=f"{id}-h")[
         div(class_="tp-head")[
             h2(id=f"{id}-h")[ar(t.text)],
-            p[_n(len(t.readings), "reading") if t.readings else "not in the dictionary"],
+            p[_found(results)],
         ],
         div(class_="tp-body")[
-            _entries(t.readings, h3, Links({"q": t.text}, {}, {}, joins, filled), brief=True) if t.readings else p(class_="tp-msg")[
+            _entries(results, h3, links, brief=True) if t.kind == "word" else p(class_="tp-msg")[
                 "AraDict couldn't find this word in its Modern Standard Arabic dictionary."
             ],
         ],
@@ -713,6 +797,8 @@ def analysed(tokens: list[Token], joins: dict[tuple[str, str], Join] = {}, fille
         if t.kind in ("word", "unknown"):
             words.setdefault(t.text, t)
     ids = {word: f"w{i}" for i, word in enumerate(words)}
+    links = {word: Links({"q": word}, {}, {}, joins, filled) for word in words}
+    results = {word: _results(t.readings, links[word], found=t.wiktionary) for word, t in words.items()}
     n, unknown = sum(t.kind in ("word", "unknown") for t in tokens), sum(t.kind == "unknown" for t in tokens)
     status = f"{_n(n, 'word')}{f', {unknown} not in the dictionary' if unknown else ''}" if n else "No Arabic words to analyse."
     return State(status, [
@@ -722,9 +808,9 @@ def analysed(tokens: list[Token], joins: dict[tuple[str, str], Join] = {}, fille
                 p(class_="key-legend")[span(class_="known")["has readings"], " ", span(class_="unknown")["not in the dictionary"]],
             ],
             # The passage keeps its spaces and line breaks (white-space: pre-wrap).
-            div(class_="passage", lang="ar", dir="rtl")[(_token(t, ids) for t in tokens)],
+            div(class_="passage", lang="ar", dir="rtl")[(_token(t, ids, _found(results[t.text])) if t.text in words else t.text for t in tokens)],  # anything else as typed
         ],
-        (_details(t, ids[word], joins, filled) for word, t in words.items()),
+        (_details(t, ids[word], links[word], results[word]) for word, t in words.items()),
     ])
 
 
@@ -771,7 +857,8 @@ def about_page() -> Node:
             p[
                 "Its words and English meanings come from the CAMeL Tools morphology database ", code["calima-msa-r13"],
                 ", which builds on the Buckwalter Arabic Morphological Analyzer. That vocabulary dates from about 2002, "
-                "so newer words, such as the ones for “tweet” and “podcast”, are missing."
+                "so newer words, such as the ones for “tweet” and “podcast”, are missing from it. Where English Wiktionary has "
+                "such a word, as it has the one for “tweet”, AraDict shows Wiktionary's entry, marked “Wiktionary only”."
             ],
             # Measured in ACCEPTANCE.md (#17); tests/test_acceptance.py checks every number here against the database.
             p[

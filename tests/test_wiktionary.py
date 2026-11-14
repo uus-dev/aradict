@@ -244,6 +244,65 @@ def test_a_root_wiktionary_gives_with_other_letters_is_not_used(real):
     assert real.filled_root("سِوار", "noun", "س.#.ر") is None
 
 
+# --- Words only Wiktionary has (#24) -------------------------------------------------------------
+
+@pytest.mark.parametrize("word", ["تغريدة", "تغريدات", "والتغريدات", "بالتغريدة", "للتغريدات", "تغريدتها", "تغريداتهم", "تَغْرِيدَة"])
+def test_a_word_only_wiktionary_has_is_found_from_the_forms_its_entry_lists(real, word):
+    # CAMeL reads تغريدة only as تَغْرِيد "his twittering"; Wiktionary's تَغْرِيدَة "a tweet" lists its
+    # plural, definite and case forms. Attached words are stripped as Milestone 1 strips them.
+    [tweet] = [e for e in real.wiktionary_only(word) if e.word == "تَغْرِيدَة"]
+    assert "a tweet" in senses(tweet)
+
+
+def words(real, word: str, **options) -> set[str]:
+    return {e.word for e in real.wiktionary_only(word, **options)}
+
+
+def test_finding_a_word_by_its_forms_follows_the_lookups_letter_and_diacritic_rules(real):
+    assert "تَغْرِيدَة" in words(real, "تغريده")  # a final ه also finds ة
+    assert "تَغْرِيدَة" not in words(real, "تُغْرِيدَة")  # a vowel none of its forms has
+    assert "تَغْرِيدَة" in words(real, "تُغْرِيدَة", filter_diacritics=False)
+    # A bare ا finds any hamza; a typed one must match. No lemma joins Wiktionary's إِنْتَرْنَت "Internet": CAMeL's is إِنْتِرْنِت.
+    assert words(real, "انترنت") == words(real, "إنترنت") == {"إِنْتَرْنَت"} and words(real, "أنترنت") == set()
+    assert words(real, "قخغثص") == set()
+
+
+def test_an_entry_is_only_wiktionarys_unless_a_lemma_joins_it(real):
+    # The count of words only Wiktionary has (acceptance.wiktionary_only) rests on this.
+    [kitab] = real.wiktionary("كِتاب", "noun").entries
+    say, nap = real.wiktionary("قال", "verb").entries
+    [tweet] = [e for e in real.wiktionary_only("تغريدة") if e.word == "تَغْرِيدَة"]
+    assert real.joined(kitab) and real.joined(say)
+    assert not real.joined(nap) and not real.joined(tweet)  # a homograph CAMeL's gloss leaves out is Wiktionary's own (#22)
+    # Homographs a gloss can't tell apart all stay under the lemma (جَزْر), so each is joined.
+    assert all(real.joined(e) for e in real.wiktionary("جَزْر", "noun").entries)
+
+
+def test_only_the_words_no_lemma_of_the_dictionary_joins_are_found(real):
+    # كتب is CAMeL's كَتَب and كُتُب (of كِتاب). Wiktionary also has كَتَّبَ "cause to write" and two entries
+    # that only relate a word to another, كَتْب "verbal noun of كَتَبَ" and كِتٰب, a Classical spelling of كِتَاب;
+    # كُتُب "plural of كِتَاب" is CAMeL's reading too, which the page decides (views).
+    assert words(real, "كتب") == {"كَتَّبَ", "كَتْب", "كُتُب", "كِتٰب"}
+
+
+def test_autocomplete_offers_words_only_wiktionary_has_after_the_dictionarys_own(real):
+    offered = real.suggest("تغري")
+    assert "تَغْرِيدَة" in offered and offered.index("تَغْرِيدَة") > offered.index("تَغْرِيد")
+    assert "تَغْرِيدَة" not in real.suggest("تغ")  # the dictionary's fill the list
+
+
+def test_a_verbs_participles_and_verbal_nouns_are_not_its_spellings(real):
+    # كَتَبَ's conjugation lists كَاتِب and مَكْتُوب, and its headword line كِتَابَة: each is a word of its own.
+    assert not {e for w in ("كاتب", "مكتوب", "كتابة") for e in real.wiktionary_only(w) if e.word == "كَتَبَ"}
+
+
+def test_a_word_found_whole_is_not_also_looked_for_without_its_attached_words(real):
+    # ولد is وَلَد "boy" and وَلَدَ "give birth to"; و + لد would add the entries spelled لد.
+    assert all(wiktionary.key(e.word) != "لد" for e in real.wiktionary_only("ولد"))
+    # وبعد is و + بعد, with an entry of its own; و + ب + عد would add عَادَ "return" and وَعَدَ "promise".
+    assert {"عَادَ", "وَعَدَ"}.isdisjoint(words(real, "وبعد"))
+
+
 def test_without_the_dataset_a_lemma_has_no_wiktionary_entries(fixture_db, tmp_path):
     assert Dictionary(fixture_db).wiktionary("كِتاب", "noun") == ([], None)
     assert Dictionary(fixture_db, tmp_path / "missing.db").wiktionary("كِتاب", "noun") == ([], None)

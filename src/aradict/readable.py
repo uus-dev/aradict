@@ -20,6 +20,8 @@ SHADDA = "\u0651"
 VOWEL = re.compile(f"[{VOWELS}]")
 MARK = re.compile(f"[{VOWELS}{SHADDA}]")  # every mark, shadda too
 ALIFS = str.maketrans("أإآٱ", "اااا")  # alif's hamza forms and wasla, as a bare ا
+# The database keys stems by their bare letters: أ, إ, آ and ٱ as ا, ى as ي, and ة as ه.
+STEM_KEY = ALIFS | str.maketrans("ىة", "يه")
 _LETTER_VARIANTS = ALIFS | str.maketrans("ىة", "يت")  # one letter, however CAMeL's parts and spelling write it
 
 # Words for attached particles, keyed by tag and bare letters (a tag alone where it is unambiguous).
